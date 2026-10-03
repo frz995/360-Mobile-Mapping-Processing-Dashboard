@@ -89,6 +89,7 @@ import {
 } from './dataManagement/CatalogItem';
 import { DataForm, GRIDS } from './dataManagement/DataForm';
 import { SafeDeleteModal } from './dataManagement/SafeDeleteModal';
+import { usePermission } from '../hooks/usePermission';
 
 // Calculate Haversine distance in KM between two GPS coordinates
 function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -2252,6 +2253,11 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
   const isApprover = canHandleApprovals === true;
   const approvalGateActive = approveGateEnabled && !isApprover;
 
+  // Published-view capabilities used across this workspace.
+  const mayImportDatasets = usePermission('importDatasets');
+  const mayManageDatasets = usePermission('manageDatasets');
+  const mayDeleteData = usePermission('deleteData');
+
   const submitDeletionTickets = async (
     targets: Array<{ subgrid: string; poiCount: number; kmProcessed: number }>
   ): Promise<boolean> => {
@@ -2791,7 +2797,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                   </select>
                 </label>
               )}
-              {isGuestUser ? (
+              {!mayDeleteData ? (
                 <span className="text-[10px] text-text-muted border border-subtle px-2 py-1 rounded-md bg-inner">{tf('dataSelectionMapGuest')}</span>
               ) : (
                 <button
@@ -2879,7 +2885,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                         <SelectionMapOverlay
                           iframeRef={currentMapIframeRef}
                           containerRef={currentMapContainerRef}
-                          deletionMode={deleteModeActive && !isGuestUser}
+                          deletionMode={deleteModeActive && mayDeleteData}
                           mode={selectionNavMode}
                           onAddSubgrids={handleSpatialAdd}
                           subgridPoints={subgridPoints}
@@ -3061,7 +3067,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                     <span>Sync Now</span>
                   </button>
 
-                  {!isGuestUser && (
+                  {mayImportDatasets && (
                     <label className="flex items-center gap-2 bg-card hover:bg-inner border border-subtle px-3.5 py-2 rounded-xl transition-all cursor-pointer text-text-base font-semibold text-xs shadow-sm active:scale-95">
                       <FileText size={13} className="text-emerald-400" />
                       <span>Import CSV</span>
@@ -3202,7 +3208,6 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                   await handleRestoreRecycleBinItem(item);
                   refreshRecycleBinCount();
                 }}
-                isGuestUser={isGuestUser}
                 onRefreshMap={onRefreshMap}
               />
             </div>
@@ -3226,7 +3231,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                       {isBulkPublishing ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
                       <span>Publish Selected ({selectedRowIds.size})</span>
                     </button>
-                    {!isGuestUser && (
+                    {mayDeleteData && (
                       <button
                         onClick={handleBulkDelete}
                         className="px-4 py-2 bg-inner hover:bg-red-950/80 text-red-400 hover:text-red-300 border border-red-900/60 rounded-xl font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
@@ -3411,7 +3416,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                     <ShieldAlert size={14} className="text-rose-400 shrink-0" />
                                     <span>QC Audit</span>
                                   </button>
-                                  {!isGuestUser ? (
+                                  {mayManageDatasets ? (
                                     <>
                                       <button
                                         onClick={() => {
@@ -3556,7 +3561,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                   )}
                                 </td>
                                 <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                  {!isGuestUser ? (
+                                  {mayManageDatasets ? (
                                     <>
                                       <button
                                         onClick={() => handlePublishRecord(daily)}

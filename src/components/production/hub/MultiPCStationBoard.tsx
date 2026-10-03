@@ -27,6 +27,7 @@ import {
 } from '../../../services/api/stationBoard';
 import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
 import { DailyProcessingRegistry } from './DailyProcessingRegistry';
+import { usePermission } from '../../../hooks/usePermission';
 
 export interface MultiPCStationBoardProps {
   subgrid: string;
@@ -287,6 +288,8 @@ export const MultiPCStationBoard: React.FC<MultiPCStationBoardProps> = ({
   projectSettings,
   stationObservations
 }) => {
+  // Advancing the batch through blur -> stitch -> enhance -> mask.
+  const mayRunPipeline = usePermission('runPipeline');
   const cleanSg = subgrid.trim().toUpperCase();
   const incomingTotal = totalFrames > 0 ? totalFrames : 0;
 
@@ -673,7 +676,9 @@ export const MultiPCStationBoard: React.FC<MultiPCStationBoardProps> = ({
           <button
             type="button"
             onClick={onAdvanceToQA}
-            className="px-4 py-2 bg-text-base text-card hover:opacity-90 font-medium text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+            disabled={!mayRunPipeline}
+            title={mayRunPipeline ? undefined : 'Your role does not include 4-PC flight board progression'}
+            className="px-4 py-2 bg-text-base text-card hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <span>Proceed to 360° QA Review</span>
             <ArrowRight size={14} />

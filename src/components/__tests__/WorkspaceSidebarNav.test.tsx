@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
+import { screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { WorkspaceSidebarNav } from '../WorkspaceSidebarNav'
 import type { WorkspaceKey } from '../../utils/urlRouter'
+import { renderWithPermissions } from '../../test/permissions'
 
 const translate = (k: string) => k
 
 function renderNav(activeWorkspace: WorkspaceKey = 'dashboard') {
-  return render(
+  return renderWithPermissions(
     <WorkspaceSidebarNav
       translate={translate}
       activeWorkspace={activeWorkspace}
@@ -49,7 +50,7 @@ describe('WorkspaceSidebarNav', () => {
 
   it('calls onNavigate when a workspace button is clicked', () => {
     const onNavigate = vi.fn()
-    render(
+    renderWithPermissions(
       <WorkspaceSidebarNav
         translate={translate}
         activeWorkspace="dashboard"
@@ -69,7 +70,7 @@ describe('WorkspaceSidebarNav', () => {
     const onRefresh = vi.fn()
     const onOpenAbout = vi.fn()
     const onToggleSidebar = vi.fn()
-    render(
+    renderWithPermissions(
       <WorkspaceSidebarNav
         translate={translate}
         activeWorkspace="dashboard"
@@ -90,7 +91,7 @@ describe('WorkspaceSidebarNav', () => {
   })
 
   it('shows the pending approval count badge on the Administration icon', () => {
-    render(
+    renderWithPermissions(
       <WorkspaceSidebarNav
         translate={translate}
         activeWorkspace="dashboard"
@@ -108,7 +109,7 @@ describe('WorkspaceSidebarNav', () => {
   })
 
   it('omits the approval badge when there are no pending requests', () => {
-    render(
+    renderWithPermissions(
       <WorkspaceSidebarNav
         translate={translate}
         activeWorkspace="dashboard"
@@ -132,7 +133,7 @@ describe('WorkspaceSidebarNav', () => {
 
   it('renders the mobile drawer when opened and closes it via the close button', () => {
     const onCloseMobileNav = vi.fn()
-    render(
+    renderWithPermissions(
       <WorkspaceSidebarNav
         translate={translate}
         activeWorkspace="dashboard"
@@ -153,7 +154,7 @@ describe('WorkspaceSidebarNav', () => {
 
   it('closes the mobile drawer when Escape is pressed', () => {
     const onCloseMobileNav = vi.fn()
-    render(
+    renderWithPermissions(
       <WorkspaceSidebarNav
         translate={translate}
         activeWorkspace="dashboard"
@@ -174,7 +175,7 @@ describe('WorkspaceSidebarNav', () => {
   it('navigates and closes the drawer when a mobile workspace item is clicked', () => {
     const onNavigate = vi.fn()
     const onCloseMobileNav = vi.fn()
-    render(
+    renderWithPermissions(
       <WorkspaceSidebarNav
         translate={translate}
         activeWorkspace="dashboard"

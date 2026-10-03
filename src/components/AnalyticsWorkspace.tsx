@@ -12,7 +12,7 @@ import { buildBoundarySubgridSet } from '../utils/projectBoundary';
 import type { ProcessingJobRecord } from '../types/production';
 import { computeSurveyAnalytics, type SurveyAnalytics } from '../utils/surveyAnalytics';
 import { ANALYTICS_TAB_LABELS } from './production/analytics/analyticsCommon';
-import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
+import { UnderlineTabStrip, TabContentTransition, type ChromeTab } from './production/chrome';
 import { OverviewPanel } from './production/analytics/OverviewPanel';
 import { LedgerPanel } from './production/analytics/LedgerPanel';
 import { CoveragePanel } from './production/analytics/CoveragePanel';
@@ -209,7 +209,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
             />
           </div>
 
-          <div key={activeTab} className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 overflow-y-auto animate-panel-enter">
+          <TabContentTransition activeKey={activeTab} className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 overflow-y-auto">
             {/* Active tab panel */}
             {activeTab === 'overview' && <OverviewPanel analytics={analytics} translate={translate} />}
             {activeTab === 'ledger' && (
@@ -223,7 +223,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
             )}
             {activeTab === 'coverage' && <CoveragePanel analytics={analytics} translate={translate} />}
             {activeTab === 'quality' && <QualityPanel analytics={analytics} translate={translate} />}
-          </div>
+          </TabContentTransition>
         </div>
       </div>
     </div>

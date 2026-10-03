@@ -11,7 +11,7 @@ import { createProductionApiClient } from '../services/productionApi';
 import type { ProductionApiClient } from '../services/productionApi';
 import type { DatasetRecord, StorageTab } from '../types/production';
 import { getProductionApiSettings } from './production/storage/storageCommon';
-import { Masthead, UnderlineTabStrip, type ChromeTab } from './production/chrome';
+import { Masthead, UnderlineTabStrip, TabContentTransition, type ChromeTab } from './production/chrome';
 import { OverviewPanel } from './production/storage/OverviewPanel';
 import { BrowserPanel } from './production/storage/BrowserPanel';
 import { ValidationPanel } from './production/storage/ValidationPanel';
@@ -105,7 +105,7 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
             />
           </div>
 
-          <div key={activeTab} className="p-4 flex-1 flex flex-col min-h-0 animate-panel-enter">
+          <TabContentTransition activeKey={activeTab} className="p-4 flex-1 flex flex-col min-h-0">
             {/* Active tab panel */}
             {activeTab === 'browser' && (
               <BrowserPanel
@@ -130,7 +130,7 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
                 datasets={datasets}
               />
             )}
-          </div>
+          </TabContentTransition>
         </div>
       </div>
     </div>

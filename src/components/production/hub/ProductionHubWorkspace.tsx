@@ -217,7 +217,6 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 sessionSource={restoredSession ?? undefined}
                 onSurveySourceChange={setIntakeSession}
                 projectSettings={projectSettings}
-                isGuestUser={isGuestUser}
               />
             )}
 
@@ -259,7 +258,6 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
                 userLabel={userLabel}
-                isGuestUser={isGuestUser}
               />
             )}
 
@@ -275,7 +273,6 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
                 userLabel={userLabel}
-                isGuestUser={isGuestUser}
               />
             )}
 

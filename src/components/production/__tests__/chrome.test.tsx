@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { UnderlineTabStrip } from '../chrome'
+import { UnderlineTabStrip, TabContentTransition } from '../chrome'
 
 const tabs = [
   { key: 'overview', label: 'Overview' },
@@ -32,6 +32,13 @@ describe('UnderlineTabStrip', () => {
     expect(ledger).toHaveAttribute('tabindex', '0')
     expect(overview).toHaveAttribute('aria-selected', 'false')
     expect(overview).toHaveAttribute('tabindex', '-1')
+  })
+
+  it('renders an animated indicator line inside the active tab', () => {
+    renderStrip('ledger')
+    const ledger = screen.getByRole('tab', { name: 'Ledger' })
+    const indicator = screen.getByTestId('animated-tab-indicator')
+    expect(ledger).toContainElement(indicator)
   })
 
   it('calls onChange when a tab button is clicked', () => {
@@ -75,5 +82,34 @@ describe('UnderlineTabStrip', () => {
   it('uses tabLabel renderer when provided', () => {
     render(<UnderlineTabStrip tabs={tabs} active="overview" onChange={vi.fn()} tabLabel={(k) => `LBL-${k}`} />)
     expect(screen.getByRole('tab', { name: 'LBL-overview' })).toBeInTheDocument()
+  })
+})
+
+describe('TabContentTransition', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('renders tabpanel with correct role and attributes', () => {
+    render(
+      <TabContentTransition activeKey="overview">
+        <div>Overview Content</div>
+      </TabContentTransition>
+    )
+    const panel = screen.getByRole('tabpanel')
+    expect(panel).toBeInTheDocument()
+    expect(panel).toHaveAttribute('id', 'tabpanel-overview')
+    expect(panel).toHaveAttribute('aria-labelledby', 'tab-overview')
+    expect(screen.getByText('Overview Content')).toBeInTheDocument()
+  })
+
+  it('renders activeKey content appropriately', () => {
+    render(
+      <TabContentTransition activeKey="ledger">
+        <div>Ledger Content</div>
+      </TabContentTransition>
+    )
+    expect(screen.getByText('Ledger Content')).toBeInTheDocument()
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'tabpanel-ledger')
   })
 })

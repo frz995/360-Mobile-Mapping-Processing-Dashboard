@@ -15,7 +15,7 @@ import {
   Shield
 } from 'lucide-react';
 import type { WorkspaceKey } from './utils/urlRouter';
-import type { AuthzCapability } from './lib/authz';
+import { canAny, type AuthzCapability, type RolePermissionsMatrix } from './lib/authz';
 
 export type WorkspaceTag = 'live' | 'planned' | 'reserved';
 
@@ -26,29 +26,30 @@ export interface WorkspaceDefinition {
   icon: ElementType;
   tag: WorkspaceTag;
   /**
-   * Optional AuthZ capabilities that grant access to this workspace. A
-   * user may open the workspace if they hold ANY of these capabilities.
-   * Undefined (or empty) means "no special restriction" (viewAll applies).
-   * Metadata only for P1.3 — enforcement is wired in P2; setting this has
-   * no effect on current rendering, so the dashboard is visually untouched.
+   * AuthZ capabilities that grant access to this workspace (any-of semantics).
+   * Undefined or empty means "no special restriction" — `viewAll` applies, so
+   * every authenticated role can open it. Enforced by WorkspaceSidebarNav
+   * (disabled item) and WorkspaceRouter (denied placeholder).
    */
   guard?: AuthzCapability[];
 }
 
 export const WORKSPACES: WorkspaceDefinition[] = [
-  { key: 'project', labelKey: 'workspaceProject', descriptionKey: 'workspaceProjectDesc', icon: FolderPlus, tag: 'live' },
+  { key: 'project', labelKey: 'workspaceProject', descriptionKey: 'workspaceProjectDesc', icon: FolderPlus, tag: 'live', guard: ['manageProjects'] },
   { key: 'dashboard', labelKey: 'dashboard', descriptionKey: 'workspaceDashboardDesc', icon: LayoutDashboard, tag: 'live' },
-  { key: 'data', labelKey: 'data', descriptionKey: 'workspaceDataDesc', icon: Database, tag: 'live' },
+  { key: 'data', labelKey: 'data', descriptionKey: 'workspaceDataDesc', icon: Database, tag: 'live', guard: ['importDatasets'] },
   { key: 'settings', labelKey: 'settings', descriptionKey: 'workspaceSettingsDesc', icon: Settings, tag: 'live', guard: ['manageSettings'] },
-  { key: 'production', labelKey: 'workspaceProduction', descriptionKey: 'workspaceProductionDesc', icon: Workflow, tag: 'live' },
-  { key: 'pcmon', labelKey: 'workspacePcMon', descriptionKey: 'workspacePcMonDesc', icon: Activity, tag: 'live' },
-  { key: 'storage', labelKey: 'workspaceStorage', descriptionKey: 'workspaceStorageDesc', icon: HardDrive, tag: 'live' },
-  { key: 'processing', labelKey: 'workspaceProcessing', descriptionKey: 'workspaceProcessingDesc', icon: Cpu, tag: 'live' },
-  { key: 'lineage', labelKey: 'workspaceLineage', descriptionKey: 'workspaceLineageDesc', icon: GitBranch, tag: 'live' },
+  { key: 'production', labelKey: 'workspaceProduction', descriptionKey: 'workspaceProductionDesc', icon: Workflow, tag: 'live', guard: ['runIntake'] },
+  { key: 'pcmon', labelKey: 'workspacePcMon', descriptionKey: 'workspacePcMonDesc', icon: Activity, tag: 'live', guard: ['operateStations'] },
+  { key: 'storage', labelKey: 'workspaceStorage', descriptionKey: 'workspaceStorageDesc', icon: HardDrive, tag: 'live', guard: ['manageStorage'] },
+  // `processing` and `lineage` are consolidated into ProductionHubWorkspace
+  // (see WorkspaceRouter) but remain routable URLs, so they carry its guard.
+  { key: 'processing', labelKey: 'workspaceProcessing', descriptionKey: 'workspaceProcessingDesc', icon: Cpu, tag: 'live', guard: ['runIntake'] },
+  { key: 'lineage', labelKey: 'workspaceLineage', descriptionKey: 'workspaceLineageDesc', icon: GitBranch, tag: 'live', guard: ['runIntake'] },
   { key: 'analytics', labelKey: 'workspaceAnalytics', descriptionKey: 'workspaceAnalyticsDesc', icon: BarChart3, tag: 'live' },
   { key: 'roadAnalysis', labelKey: 'workspaceRoadAnalysis', descriptionKey: 'workspaceRoadAnalysisDesc', icon: Route, tag: 'live' },
   { key: 'reports', labelKey: 'workspaceReports', descriptionKey: 'workspaceReportsDesc', icon: FileText, tag: 'live' },
-  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live', guard: ['manageUsers', 'approveDeletions'] }
+  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live', guard: ['manageUsers'] }
 ];
 
 export function getWorkspaceDefinition(key: WorkspaceKey): WorkspaceDefinition {
@@ -61,6 +62,15 @@ export function getWorkspaceDefinition(key: WorkspaceKey): WorkspaceDefinition {
  */
 export function getWorkspaceGuards(key: WorkspaceKey): AuthzCapability[] {
   return getWorkspaceDefinition(key).guard || [];
+}
+
+/** True when the role may open the workspace (unguarded workspaces always pass). */
+export function canAccessWorkspace(
+  key: WorkspaceKey,
+  role: string | null | undefined,
+  matrix?: RolePermissionsMatrix | null
+): boolean {
+  return canAny(role, getWorkspaceGuards(key), matrix);
 }
 
 export interface WorkspaceCategory {

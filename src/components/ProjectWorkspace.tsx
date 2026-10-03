@@ -8,11 +8,11 @@ import { ProjectGalleryCard, resolveUserBasemapKey } from './common/ProjectGalle
 import { FocusCardGrid, FocusCard } from './common/FocusCards';
 import { DEFAULT_BASEMAP } from '../config/defaults';
 import type { UserProject, ProjectDraft, ProjectStatus } from '../services/projects';
+import { usePermission } from '../hooks/usePermission';
 
 type ProjectTab = 'all' | 'active' | 'archived';
 
 interface ProjectWorkspaceProps {
-  isGuestUser?: boolean;
   translate?: (key: string) => string;
   activeProject?: UserProject | null;
   projectList?: UserProject[];
@@ -41,7 +41,6 @@ const REGION_PRESETS: Record<string, { crs: string; region: string; bbox: [numbe
 };
 
 export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
-  isGuestUser = false,
   translate = (k) => k,
   activeProject,
   projectList = [],
@@ -95,7 +94,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
     }
   }, [projectsLoaded, onRefreshProjects]);
 
-  const canWrite = !isGuestUser;
+  // Creating, editing, archiving or deleting a project.
+  const canWrite = usePermission('manageProjects');
 
   const userBasemapKey =
     resolveUserBasemapKey((projectSettings as any)?.defaultBasemap) ??

@@ -22,13 +22,13 @@ import {
 } from '../utils/reportDocuments';
 import type { ProcessingJobRecord, DatasetRecord } from '../types/production';
 import { REPORTS_TAB_LABELS } from './production/reports/reportsCommon';
-import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
+import { UnderlineTabStrip, TabContentTransition, type ChromeTab } from './production/chrome';
+import { usePermission } from '../hooks/usePermission';
 
 export interface ReportsWorkspaceProps {
   projectSettings: any;
   setProjectSettings: React.Dispatch<React.SetStateAction<any>>;
   authSession?: any;
-  isGuestUser?: boolean;
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   onBackToDashboard?: () => void;
@@ -50,13 +50,14 @@ const TABS: ChromeTab<ReportsTab>[] = [
 
 export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
   projectSettings,
-  isGuestUser,
   onBackToDashboard: _onBackToDashboard,
   translate = (k) => k,
   batchLogs = [],
   dailyData = [],
   onRefreshData: _onRefreshData
 }) => {
+  // All five report generators are exports of the published view.
+  const mayExportReports = usePermission('exportPublishedReports');
   const [activeTab, setActiveTab] = useState<ReportsTab>(() => {
     const reportsTabs = ['executive', 'daily', 'subgrid', 'qa', 'lineage'] as const;
     return restoreWorkspaceTab<typeof reportsTabs[number]>('reports', reportsTabs) ?? 'executive';
@@ -108,7 +109,7 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
   );
 
   const generate = (builder: () => string) => {
-    if (isGuestUser) return;
+    if (!mayExportReports) return;
     openPrintableReport('GeoSphere 360 Report', builder());
   };
 
@@ -136,14 +137,14 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
             />
           </div>
 
-          <div key={activeTab} className="p-4 sm:p-5 flex flex-col gap-4 min-h-0 overflow-y-auto animate-panel-enter">
+          <TabContentTransition activeKey={activeTab} className="p-4 sm:p-5 flex flex-col gap-4 min-h-0 overflow-y-auto">
             {/* Active report panel */}
             {activeTab === 'executive' && (
               <ReportActionCard
                 title={translate('reportsExecTitle')}
                 desc={translate('reportsExecDesc')}
                 onGenerate={() => generate(() => buildExecutiveReportHtml(analytics))}
-                disabled={isGuestUser}
+                disabled={!mayExportReports}
                 translate={translate}
               />
             )}
@@ -152,7 +153,7 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
                 title={translate('reportsDailyTitle')}
                 desc={translate('reportsDailyDesc')}
                 onGenerate={() => generate(() => buildDailyReportHtml(dailyData))}
-                disabled={isGuestUser}
+                disabled={!mayExportReports}
                 translate={translate}
               />
             )}
@@ -161,7 +162,7 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
                 title={translate('reportsSubgridTitle')}
                 desc={translate('reportsSubgridDesc')}
                 onGenerate={() => generate(() => buildSubgridReportHtml(analytics))}
-                disabled={isGuestUser}
+                disabled={!mayExportReports}
                 translate={translate}
               />
             )}
@@ -170,7 +171,7 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
                 title={translate('reportsQaTitle')}
                 desc={translate('reportsQaDesc')}
                 onGenerate={() => generate(() => buildQaReportHtml({ jobs, analytics }))}
-                disabled={isGuestUser}
+                disabled={!mayExportReports}
                 translate={translate}
               />
             )}
@@ -179,11 +180,11 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
                 title={translate('reportsLineageTitle')}
                 desc={translate('reportsLineageDesc')}
                 onGenerate={() => generate(() => buildLineageReportHtml({ datasets, jobs }))}
-                disabled={isGuestUser}
+                disabled={!mayExportReports}
                 translate={translate}
               />
             )}
-          </div>
+          </TabContentTransition>
         </div>
       </div>
     </div>

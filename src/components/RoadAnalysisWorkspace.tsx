@@ -60,6 +60,7 @@ import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
 import { RoadImportPanel, type ImportPreview } from './roadAnalysis/RoadImportPanel';
 import { RoadAnalysisPrintPanel } from './roadAnalysis/RoadAnalysisPrintPanel';
 import { ShareMapDialog } from '../share/ShareMapDialog';
+import { usePermission } from '../hooks/usePermission';
 import { buildRoadSnapshot, buildShareSegments, buildExplorerBlock } from '../utils/mapShares';
 import { RoadCatalogPanel, RoadAttributeTableDrawer, resolveLayerFeatures, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
 import type { CatalogVectorLayer } from '../utils/gisImportParser';
@@ -564,6 +565,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   addNotification,
   addAuditLog
 }) => {
+  // Drawing/persisting the analysis layer and minting public share links.
+  const mayAuthorRoadAnalysis = usePermission('manageRoadAnalysis');
+  const mayShareMaps = usePermission('sharePublishedMaps');
   const userKey = useMemo(() => getAuthStorageUserKey(authSession, isGuestUser), [authSession, isGuestUser]);
 
   const defaultBasemapKey = useMemo(() => {
@@ -2239,6 +2243,42 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     ]
   );
 
+  const handleReorderCatalogLayers = useCallback(
+    (next: CatalogVectorLayer[]) => {
+      setCatalogLayers((prev) => {
+        const ordered = next.filter((l) => prev.some((p) => p.id === l.id));
+        persistRoadAnalysisCache(userKey, {
+          activeTab,
+          selectedStateCode,
+          selectedDistrictIds,
+          planSource,
+          mapBasemap,
+          showRoadLines,
+          manualGeoJson,
+          extractedLines,
+          catalogLayers: ordered,
+          systemStyles,
+          catalogPlanLayerId
+        });
+        return ordered;
+      });
+      setHasUnsavedEdits(true);
+    },
+    [
+      userKey,
+      activeTab,
+      selectedStateCode,
+      selectedDistrictIds,
+      planSource,
+      mapBasemap,
+      showRoadLines,
+      manualGeoJson,
+      extractedLines,
+      systemStyles,
+      catalogPlanLayerId
+    ]
+  );
+
   const handleRemoveCatalogLayer = useCallback(
     (layerId: string) => {
       setActiveTableLayer((prev) => (prev?.id === layerId ? null : prev));
@@ -2427,7 +2467,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 Saved {lastSavedAt}
               </span>
             )}
-            {!isGuestUser && (
+            {mayShareMaps && (
               <button
                 type="button"
                 onClick={() => setShareOpen(true)}
@@ -2441,13 +2481,19 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
             <button
               type="button"
               onClick={handleSaveState}
-              disabled={isSaving || isSaved}
+              disabled={isSaving || isSaved || !mayAuthorRoadAnalysis}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all shadow-sm ${
                 isSaved
                   ? 'bg-sky-600 opacity-60 text-white cursor-default'
                   : 'bg-sky-600 hover:bg-sky-500 text-white opacity-100 cursor-pointer active:scale-95'
               } disabled:cursor-not-allowed`}
-              title={isSaved ? 'All changes saved to database' : 'Save region, plan source, basemap and road extraction to database'}
+              title={
+                !mayAuthorRoadAnalysis
+                  ? 'Your role does not include road analysis layer authoring'
+                  : isSaved
+                    ? 'All changes saved to database'
+                    : 'Save region, plan source, basemap and road extraction to database'
+              }
             >
               {isSaving ? (
                 <Loader2 size={13} className="animate-spin" />
@@ -2855,6 +2901,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   onPreviewSystemStyles={handlePreviewSystemStyles}
                   onUpdateCatalogLayer={handleUpdateCatalogLayer}
                   onLiveUpdateCatalogLayer={handlePreviewCatalogLayer}
+                  onReorderCatalogLayers={handleReorderCatalogLayers}
                   onRemoveCatalogLayer={handleRemoveCatalogLayer}
                   onZoomToLayer={handleZoomToLayer}
                   onSetAsActivePlan={handleSetAsActivePlan}

@@ -9,6 +9,7 @@ import { PhotoSphereViewerComponent } from '../../PhotoSphereViewerComponent';
 import { resolvePanoramaUrl } from '../../../services/storageUrls';
 import { SectionLabel, MetaList, TextAction } from '../chrome';
 import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
+import { usePermission } from '../../../hooks/usePermission';
 
 export interface QAAuditStationProps {
   subgrid: string;
@@ -62,6 +63,9 @@ export const QAAuditStation: React.FC<QAAuditStationProps> = ({
   addAuditLog,
   userLabel
 }) => {
+  // Inspecting frames needs runQaqc; signing the batch off needs reviewQaqc.
+  const mayRunQaqc = usePermission('runQaqc');
+  const mayReviewQaqc = usePermission('reviewQaqc');
   const cleanSg = subgrid.trim().toUpperCase();
   const batchTotal = pairedRecords.length > 0 ? pairedRecords.length : totalFrames;
 
@@ -168,6 +172,14 @@ export const QAAuditStation: React.FC<QAAuditStationProps> = ({
   };
 
   const handleSignOff = () => {
+    if (!mayReviewQaqc) {
+      addNotification?.({
+        type: 'warning',
+        title: 'Sign-off Blocked',
+        message: 'Your role does not include QA Sign-off. Ask an administrator to grant it from Administration > Roles.'
+      });
+      return;
+    }
     void appendStageEventToSupabase({
       subgrid: cleanSg,
       stage: 'qa',
@@ -342,7 +354,8 @@ export const QAAuditStation: React.FC<QAAuditStationProps> = ({
                   key={d.type}
                   type="button"
                   onClick={() => handleFlagDefect(d.type)}
-                  disabled={!currentFrame}
+                  disabled={!currentFrame || !mayRunQaqc}
+                  title={mayRunQaqc ? undefined : 'Your role does not include QA inspection'}
                   className={DEFECT_BUTTON_CLASS}
                 >
                   {d.label}
@@ -360,7 +373,8 @@ export const QAAuditStation: React.FC<QAAuditStationProps> = ({
             <button
               type="button"
               onClick={handleSignOff}
-              disabled={!cleanSg}
+              disabled={!cleanSg || !mayReviewQaqc}
+              title={mayReviewQaqc ? 'Record the manual audit for this batch' : 'Your role does not include QA Sign-off'}
               className="self-start px-3.5 py-2 bg-text-base text-card hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <Check size={14} />

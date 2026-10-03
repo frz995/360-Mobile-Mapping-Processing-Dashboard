@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getRoleCapabilities,
   can,
+  isAuthzCapability,
   ROLE_ADMINISTRATOR,
   ROLE_OPERATOR,
   ROLE_QA_INSPECTOR,
@@ -9,18 +10,21 @@ import {
 } from '../authz';
 
 /**
- * A1.4 — Pin the UI capability matrix to the SERVER-side boundary.
+ * Pin the RLS-enforced slice of the UI vocabulary to the SERVER-side boundary.
  *
- * The authoritative authorization boundary now lives in PostgreSQL
- * (supabase/security_functions.sql -> sec.can(), applied by
- * supabase/security_rls_apply.sql). This test documents the exact matrix the
- * SQL helper enforces so that src/lib/authz.ts (a UX-only mirror) cannot
- * silently drift from what the database actually allows.
+ * Postgres `sec.can()` (supabase/migrations/0009_security_functions.sql, applied
+ * by 0010/0012/0015/0020/0022) and the Python BFF (`worker/bff/app.py`) are the
+ * real enforcement boundary. They only know the eight capabilities below.
  *
- * If you change a capability name or role assignment here, you MUST also
- * update sec.can() in supabase/security_functions.sql to match.
+ * `src/lib/authz.ts` is a superset: it also carries the Production-pipeline and
+ * Published-view capabilities that gate the UI but have no SQL counterpart yet
+ * (that unification is phase 8.2 of implementation_plan_v22.md). This test
+ * therefore pins only the enforced subset — it must NOT be widened to the whole
+ * union, or it would assert enforcement that does not exist.
+ *
+ * If you rename one of these eight, you MUST update sec.can() and the BFF too.
  */
-const CAPABILITIES = [
+const ENFORCED_CAPABILITIES = [
   'manageDatasets',
   'manageSettings',
   'manageUsers',
@@ -33,16 +37,16 @@ const CAPABILITIES = [
 
 describe('A1.4 authz mirrors server-side RLS (sec.can)', () => {
   it('exposes a stable capability set that matches security_functions.sql', () => {
-    // Every capability name in the SQL matrix must exist here. If a
-    // capability was added to sec.can() but not authz.ts, add it to BOTH.
+    // Every capability name in the SQL matrix must exist in the UI vocabulary.
     const caps = getRoleCapabilities(ROLE_ADMINISTRATOR);
-    for (const cap of CAPABILITIES) {
-      expect(caps).toContain(cap);
+    for (const cap of ENFORCED_CAPABILITIES) {
+      expect(caps, `${cap} must exist in authz.ts`).toContain(cap);
+      expect(isAuthzCapability(cap)).toBe(true);
     }
   });
 
   it('Administrator can perform every write capability (sec.can admin=all)', () => {
-    for (const cap of CAPABILITIES) {
+    for (const cap of ENFORCED_CAPABILITIES) {
       expect(can(ROLE_ADMINISTRATOR, cap), `admin should have ${cap}`).toBe(true);
     }
   });
@@ -71,7 +75,7 @@ describe('A1.4 authz mirrors server-side RLS (sec.can)', () => {
 
   it('Viewer is read-only (viewAll only) exactly as sec.can Viewer branch', () => {
     expect(can(ROLE_VIEWER, 'viewAll')).toBe(true);
-    for (const cap of CAPABILITIES) {
+    for (const cap of ENFORCED_CAPABILITIES) {
       if (cap === 'viewAll') continue;
       expect(can(ROLE_VIEWER, cap), `viewer should NOT have ${cap}`).toBe(false);
     }

@@ -32,11 +32,11 @@ describe('SystemShowcase Component', () => {
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
     expect(screen.getByRole('heading', { level: 2, name: 'Project Management' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: '360° Imagery' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'Processing Pipeline' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'GIS Workspace' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'Data Management' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'QA / QC' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'WebGIS Dashboard & Data Management' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Road Analysis & Project Explorer' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Production Hub' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'PC Monitoring & NAS Storage' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Analytics, Reports & Administration' })).toBeInTheDocument();
   });
 
   it('triggers onEnterDashboard with "auth" when Sign In button is clicked', () => {
@@ -58,23 +58,41 @@ describe('SystemShowcase Component', () => {
     const launchBtn = screen.getAllByRole('button', { name: /Launch Workspace/i })[0];
     fireEvent.click(launchBtn);
 
-    expect(handleEnter).toHaveBeenCalledWith('data');
+    expect(handleEnter).toHaveBeenCalledWith('project');
+  });
+
+  it('triggers onEnterDashboard with { isDirectEnter: true } when Enter Module button is clicked', () => {
+    vi.useFakeTimers();
+    const handleEnter = vi.fn();
+    render(<SystemShowcase onEnterDashboard={handleEnter} />);
+
+    // Click "Enter Project" button inside the Project Management section
+    const enterProjectBtn = screen.getByRole('button', { name: /Enter Project/i });
+    fireEvent.click(enterProjectBtn);
+
+    // Fast-forward cinematic launch portal timer (700ms)
+    act(() => {
+      vi.advanceTimersByTime(750);
+    });
+
+    expect(handleEnter).toHaveBeenCalledWith('project', { isDirectEnter: true });
+    vi.useRealTimers();
   });
 
   it('allows switching modules using module navigation pills', () => {
     vi.useFakeTimers();
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
-    // Click 'Data Management' module pill
-    const dataPill = screen.getByRole('button', { name: /^Data Management$/i });
-    fireEvent.click(dataPill);
+    // Click 'Production Hub' module pill
+    const prodPill = screen.getByRole('button', { name: /^Production Hub$/i });
+    fireEvent.click(prodPill);
 
     // Advance timers for the deferred smooth-scroll inside act
     act(() => {
       vi.advanceTimersByTime(300);
     });
 
-    expect(screen.getByText(/Maintain project datasets, metadata, files and processing records in one environment/i)).toBeInTheDocument();
+    expect(screen.getByText(/Move every subgrid from stitched intake to WebGIS release through gated stations/i)).toBeInTheDocument();
     vi.useRealTimers();
   });
 
@@ -83,7 +101,7 @@ describe('SystemShowcase Component', () => {
 
     // Each of the six module timelines numbers its steps 1..3
     expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(6);
-    expect(screen.getByText('Ingest')).toBeInTheDocument();
+    expect(screen.getByText('Create')).toBeInTheDocument();
   });
 
   it('triggers Panotrack district 3D popup when clicking bottom-left geodetic card in 3D Earth view', async () => {
@@ -232,6 +250,59 @@ describe('SystemShowcase Component', () => {
 
     expect(within(popupDialog).getByText('Segamat')).toBeInTheDocument();
     expect(within(popupDialog).getByText('Tangkak')).toBeInTheDocument();
+  });
+
+  it('opens expand image popup modal when clicking gallery card and closes on backdrop click', async () => {
+    render(<SystemShowcase onEnterDashboard={vi.fn()} />);
+
+    // Find the first gallery card
+    const galleryCard = document.getElementById('module-gallery-card-0');
+    expect(galleryCard).toBeInTheDocument();
+
+    // Click gallery card to open expand popup
+    fireEvent.click(galleryCard!);
+
+    const popup = screen.getByTestId('gallery-image-popup');
+    expect(popup).toBeInTheDocument();
+    expect(within(popup).getByText(/Snapshot 1 of/i)).toBeInTheDocument();
+    expect(within(popup).getByAltText(/Project Management screenshot 1/i)).toBeInTheDocument();
+
+    // Click background overlay to close popup
+    const backdrop = screen.getByTestId('gallery-popup-backdrop');
+    act(() => {
+      fireEvent.click(backdrop);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('gallery-image-popup')).not.toBeInTheDocument();
+    });
+  });
+
+  it('navigates next and previous snapshots inside the expanded gallery modal', () => {
+    render(<SystemShowcase onEnterDashboard={vi.fn()} />);
+
+    const galleryCard = document.getElementById('module-gallery-card-0');
+    fireEvent.click(galleryCard!);
+
+    const popup = screen.getByTestId('gallery-image-popup');
+    expect(popup).toBeInTheDocument();
+    expect(within(popup).getByText(/Snapshot 1 of/i)).toBeInTheDocument();
+
+    // Click Next button
+    const nextBtn = within(popup).getByRole('button', { name: /Next screenshot/i });
+    act(() => {
+      fireEvent.click(nextBtn);
+    });
+    expect(within(popup).getByText(/Snapshot 2 of/i)).toBeInTheDocument();
+    expect(within(popup).getByAltText(/Project Management screenshot 2/i)).toBeInTheDocument();
+
+    // Click Previous button
+    const prevBtn = within(popup).getByRole('button', { name: /Previous screenshot/i });
+    act(() => {
+      fireEvent.click(prevBtn);
+    });
+    expect(within(popup).getByText(/Snapshot 1 of/i)).toBeInTheDocument();
+    expect(within(popup).getByAltText(/Project Management screenshot 1/i)).toBeInTheDocument();
   });
 });
 

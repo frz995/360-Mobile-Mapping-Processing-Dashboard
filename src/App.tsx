@@ -92,7 +92,13 @@ import {
   touchLastActivity,
   clearLastActivity
 } from './utils/workspaceLocation';
-import { can } from './lib/authz';
+import { can, type RolePermissionsMatrix } from './lib/authz';
+import { PermissionProvider } from './hooks/usePermission';
+import {
+  fetchRolePermissions,
+  getCachedRolePermissions,
+  subscribeRolePermissions
+} from './services/api/permissions';
 
 // Loading-workspace window shown after entering a project (or as a guest).
 // ProjectOnboarding reaches 100% / all ticks at 3000ms; keep this a beat longer
@@ -145,6 +151,8 @@ export default function App() {
   const [showLanding, setShowLanding] = useState<boolean>(() => parseWorkspace() !== 'signin');
   const [authSession, setAuthSession] = useState<any>(null);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
+  const pendingModuleRef = useRef<string | null>(null);
+  const gateTriggeredRef = useRef<string | null>(null);
   const [selectedDailyRunId, setSelectedDailyRunId] = useState<string | null>(null);
 
   // Daily Operations Handover & Briefing Modal State
@@ -402,28 +410,40 @@ export default function App() {
       // Direct launch into dashboard (clean view, no spotlight dimming)
       goToWorkspace('dashboard');
       setFocusedSection(null);
+    } else if (targetView === 'project') {
+      // Project Management & Register
+      goToWorkspace('project');
+      setFocusedSection(null);
+    } else if (targetView === 'roadAnalysis') {
+      // Road Analysis & Project Explorer
+      goToWorkspace('roadAnalysis');
+      setFocusedSection(null);
+    } else if (targetView === 'pcmon') {
+      // PC Monitoring & NAS Storage
+      goToWorkspace('pcmon');
+      setFocusedSection(null);
     } else if (targetView === 'webgis' || targetView === 'dashboard') {
-      // 1. WebGIS & Main Dashboard
+      // WebGIS & Main Dashboard
       goToWorkspace('dashboard');
       setFocusedSection('map');
     } else if (targetView === 'data' || targetView === 'processing') {
-      // 2. Data Management & Masterlist Ledgers
+      // Data Management & Masterlist Ledgers
       goToWorkspace('data');
       setFocusedSection(null);
     } else if (targetView === 'production') {
-      // 3. Production Workspace & 4-Station Processing
+      // Production Workspace & 4-Station Processing Hub
       goToWorkspace('production');
       setFocusedSection(null);
     } else if (targetView === 'qaqc' || targetView === 'qa-inspector') {
-      // 4. QA/QC 360° Spherical Defect Workspace
+      // QA/QC 360° Spherical Defect Workspace
       goToWorkspace('dashboard');
       setFocusedSection('qa');
     } else if (targetView === 'postgis') {
-      // 5. PostGIS Spatial Hub & Vector Staging
+      // PostGIS Spatial Hub & Vector Staging
       goToWorkspace('data');
       setFocusedSection(null);
-    } else if (targetView === 'reports' || targetView === 'reports-rbac' || targetView === 'analytics-audit' || targetView === 'settings') {
-      // 6. Reports, Audit Trail & RBAC Governance
+    } else if (targetView === 'insights' || targetView === 'reports' || targetView === 'reports-rbac' || targetView === 'analytics-audit' || targetView === 'settings') {
+      // Insights, Reports, Analytics & Governance
       goToWorkspace('reports');
       setFocusedSection(null);
     } else if (targetView === 'storage') {
@@ -446,33 +466,7 @@ export default function App() {
 
   // Helper: Routes directly to the canvas matching the chosen module
   const navigateToModule = (targetView?: string | null) => {
-    if (!targetView) {
-      goToWorkspace('dashboard');
-      return;
-    }
-
-    if (targetView === 'data' || targetView === 'postgis') {
-      goToWorkspace('data');
-    } else if (targetView === 'processing') {
-      goToWorkspace('data');
-    } else if (targetView === 'settings') {
-      goToWorkspace('settings');
-    } else if (targetView === 'production') {
-      goToWorkspace('production');
-    } else if (targetView === 'storage') {
-      goToWorkspace('storage');
-    } else if (targetView === 'lineage') {
-      goToWorkspace('lineage');
-    } else if (targetView === 'reports') {
-      goToWorkspace('reports');
-    } else if (targetView === 'analytics') {
-      goToWorkspace('analytics');
-    } else if (targetView === 'administration' || targetView === 'admin') {
-      goToWorkspace('administration');
-    } else {
-      // 'webgis', 'qa-inspector', 'analytics-audit', etc.
-      goToWorkspace('dashboard');
-    }
+    handleEnterModule(targetView);
   };
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
@@ -568,8 +562,8 @@ export default function App() {
 
   // ===== Supabase Auth Protection State =====
 
-  // 2. Guest Login Handler (routes directly with 5s spotlight animation)
-  const handleGuestLogin = () => {
+  // 2. Guest Login Handler (routes directly with onboarding loading gate)
+  const handleGuestLogin = (directModule?: string | null | unknown) => {
     setAuthError(null);
     const guestSession = {
       user: {
@@ -584,17 +578,32 @@ export default function App() {
       isGuest: true
     };
 
-    setAuthSession(guestSession);
+    const requestedModule = typeof directModule === 'string' ? directModule : null;
+    const targetModule = requestedModule || pendingModuleRef.current || pendingModule || 'dashboard';
+    pendingModuleRef.current = targetModule;
+    setPendingModule(targetModule);
 
-    // Guests get the same "Workspace Loading" experience before entering the
-    // read-only app, then route to their requested module.
-    const targetModule = pendingModule || 'webgis';
+    // Cache guest session in sessionStorage for persistent tab-reload support
+    try {
+      sessionStorage.setItem('geosphere360_guest_session', JSON.stringify(guestSession));
+    } catch { /* storage unavailable — non-fatal */ }
+
+    // Prevent triggerGate useEffect from re-triggering duplicate timers
+    gateTriggeredRef.current = 'guest';
+
+    setAuthSession(guestSession);
+    setShowLanding(false);
+
+    // Guests get the "Getting ready for your workspace…" onboarding loading gate,
+    // then route directly to their selected module.
     setProjectGate('loading');
     window.setTimeout(() => {
       setProjectGate('idle');
-      handleEnterModule(targetModule);
+      const finalTarget = pendingModuleRef.current || targetModule;
+      pendingModuleRef.current = null;
+      setPendingModule(null);
+      handleEnterModule(finalTarget);
     }, GATE_LOADING_MS);
-    setPendingModule(null);
 
     addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
   };
@@ -609,6 +618,10 @@ export default function App() {
       const userKey = resolveUserStorageKey(authSession, authSession?.isGuest);
       clearActiveProjectId(userKey);
     } catch { /* ignore */ }
+    try {
+      sessionStorage.removeItem('geosphere360_guest_session');
+    } catch { /* ignore */ }
+    gateTriggeredRef.current = null;
     try {
       await supabase.auth.signOut();
     } catch (e) { }
@@ -661,6 +674,21 @@ export default function App() {
         setShowLanding(false); // Authenticated user stays on Dashboard
         pruneBloatedUserMetadata();
       } else {
+        // Check if there is an active guest session in sessionStorage for tab refresh
+        const cachedGuest = sessionStorage.getItem('geosphere360_guest_session');
+        if (cachedGuest) {
+          try {
+            const parsed = JSON.parse(cachedGuest);
+            if (parsed?.isGuest) {
+              hadSession = true;
+              restoredSessionRef.current = true;
+              setAuthSession(parsed);
+              setShowLanding(false);
+              setAuthLoading(false);
+              return;
+            }
+          } catch { /* ignore */ }
+        }
         setAuthSession(null);
         setShowLanding(true);  // Guest / unauthenticated user returns to Landing
         clearWorkspaceLocation();
@@ -720,7 +748,18 @@ export default function App() {
     authSession?.user?.role ||
     authSession?.user?.app_metadata?.role ||
     authSession?.user?.raw_app_meta_data?.role;
-  const canHandleApprovals = !isGuestUser && can(effectiveUserRole, 'approveDeletions');
+
+  // The admin-editable role → capability matrix. Loaded once and re-read whenever
+  // an administrator saves it from Administration › Roles, so every gate below
+  // (and every `usePermission` consumer) flips without a reload.
+  const [roleMatrix, setRoleMatrix] = useState<RolePermissionsMatrix>(() => getCachedRolePermissions());
+  useEffect(() => {
+    const unsubscribe = subscribeRolePermissions(setRoleMatrix);
+    fetchRolePermissions().then(setRoleMatrix);
+    return unsubscribe;
+  }, []);
+
+  const canHandleApprovals = !isGuestUser && can(effectiveUserRole, 'approveDeletions', roleMatrix);
 
   // Admin-visible pending deletion-request badge on the Administration icon.
   useEffect(() => {
@@ -779,11 +818,14 @@ export default function App() {
   const triggerGate = useCallback((session: any, isGuest: boolean) => {
     if (isGuest) {
       // Guests still get the "Workspace Loading" experience on session restore,
-      // then resume the page they were viewing.
+      // then resume their requested module or current page.
+      const target = pendingModuleRef.current || pendingModule || currentPage || 'dashboard';
       setProjectGate('loading');
       window.setTimeout(() => {
         setProjectGate('idle');
-        handleEnterModule(currentPage);
+        pendingModuleRef.current = null;
+        setPendingModule(null);
+        handleEnterModule(target);
       }, GATE_LOADING_MS);
       return;
     }
@@ -836,7 +878,6 @@ export default function App() {
 
   // Show the picker/welcome gate after auth resolves (covers page refresh with
   // a persisted session, and the explicit sign-in path — both funnel here).
-  const gateTriggeredRef = useRef<string | null>(null);
   useEffect(() => {
     if (authLoading) return;
     const sessionUid = authSession?.user?.id || (authSession?.isGuest ? 'guest' : null);
@@ -2668,13 +2709,20 @@ export default function App() {
         batchLogs={batchLogs}
         projectSettings={projectSettings}
         activeProject={activeProject}
-        onEnterDashboard={(targetView?: string) => {
+        onEnterDashboard={(targetView?: string, options?: { isDirectEnter?: boolean }) => {
           if (!authSession) {
             if (targetView === 'auth') {
               goToWorkspace('signin');
               return;
             }
-            setPendingModule(targetView || 'webgis');
+            if (options?.isDirectEnter) {
+              // Direct "Enter Module" clicked by guest: auto sign in and show workspace loading gate directly into the selected module!
+              handleGuestLogin(targetView || 'dashboard');
+              return;
+            }
+            // "Launch Workspace" (header/rail/outro): route to sign-in page to let user choose
+            setPendingModule(targetView || 'dashboard');
+            pendingModuleRef.current = targetView || 'dashboard';
             goToWorkspace('signin');
           } else {
             setShowLanding(false);
@@ -2682,7 +2730,7 @@ export default function App() {
               goToWorkspace('dashboard');
               return;
             }
-            handleEnterModule(targetView || 'webgis');
+            handleEnterModule(targetView || 'dashboard');
           }
         }}
       />
@@ -2787,7 +2835,7 @@ export default function App() {
           {/* Guest Login Button */}
           <button
             type="button"
-            onClick={handleGuestLogin}
+            onClick={() => handleGuestLogin()}
             className="w-full py-2.5 px-4 bg-card hover:bg-card active:bg-inner text-text-base hover:text-text-base border border-subtle text-xs font-semibold rounded-lg shadow-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
           >
             <User size={15} className="text-text-muted" />
@@ -2818,6 +2866,7 @@ export default function App() {
 
   const t = (key: string) => translate(projectSettings?.language, key);
   return (
+    <PermissionProvider role={effectiveUserRole} isGuest={isGuestUser} matrix={roleMatrix}>
     <div
       data-theme={currentTheme}
       style={{ backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)' }}
@@ -4028,7 +4077,6 @@ export default function App() {
               {currentPage === 'project' ? (
                 <ProjectWorkspace
                   key="workspace-project"
-                  isGuestUser={isGuestUser}
                   translate={t}
                   activeProject={activeProject}
                   projectList={projectList}
@@ -4301,5 +4349,6 @@ export default function App() {
 
       </div >
     </div >
+    </PermissionProvider>
   );
 }

@@ -12,6 +12,7 @@ import { supabase } from '../../../services/supabase';
 import { SectionLabel, MetaList } from '../chrome';
 import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
 import { computeTrajectorySpan } from './IntakePairingStation';
+import { usePermission } from '../../../hooks/usePermission';
 
 export interface WebGISPublishGateProps {
   subgrid: string;
@@ -33,7 +34,6 @@ export interface WebGISPublishGateProps {
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
-  isGuestUser?: boolean;
 }
 
 export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
@@ -46,9 +46,9 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
   onViewInDataManagement,
   addNotification,
   addAuditLog,
-  userLabel,
-  isGuestUser
+  userLabel
 }) => {
+  const mayPublishToWebGIS = usePermission('publishToWebGIS');
   const cleanSg = subgrid.trim().toUpperCase();
   const effectiveTotal = pairedRecords.length > 0 ? pairedRecords.length : totalFrames;
   const nasBase = (projectSettings?.nasWorkBasePath || '').replace(/\/+$/, '');
@@ -87,7 +87,7 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
   );
   const trajectoryDistance = trajectorySpan.km !== null ? trajectorySpan.km * 1000 : null;
 
-  const canPublish = promotableRecords.length > 0 && !isGuestUser;
+  const canPublish = promotableRecords.length > 0 && mayPublishToWebGIS;
 
   const buildRows = () =>
     promotableRecords.map((r) => {
@@ -129,8 +129,8 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
       return;
     }
 
-    if (isGuestUser) {
-      const message = 'Guest sessions cannot write to the GIS database. Sign in to promote records.';
+    if (!mayPublishToWebGIS) {
+      const message = 'Your role does not include Publish to WebGIS. Ask an administrator to grant it from Administration > Roles.';
       setPublishError(message);
       addNotification?.({ type: 'warning', title: 'Promotion Blocked', message });
       return;
@@ -338,8 +338,8 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
             onClick={handleRequestPublish}
             disabled={isPublishing || !canPublish}
             title={
-              isGuestUser
-                ? 'Guest sessions cannot write to the database'
+              !mayPublishToWebGIS
+                ? 'Your role does not include Publish to WebGIS'
                 : promotableRecords.length === 0
                   ? 'No paired record has both a verified filename and a usable GPS fix'
                   : undefined

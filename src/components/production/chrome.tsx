@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 
 /* =====================================================================
    Production Workspace console chrome.
@@ -74,13 +75,19 @@ export function UnderlineTabStrip<K extends string>({
   tabs,
   active,
   onChange,
-  tabLabel
+  tabLabel,
+  id,
+  className = ''
 }: {
   tabs: ChromeTab<K>[];
   active: K;
   onChange: (key: K) => void;
   tabLabel?: (key: K) => string;
+  id?: string;
+  className?: string;
 }) {
+  const autoId = React.useId();
+  const groupId = id || `tab-strip-${autoId.replace(/:/g, '')}`;
   const tabsRef = React.useRef<Record<string, HTMLButtonElement | null>>({});
 
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -98,32 +105,81 @@ export function UnderlineTabStrip<K extends string>({
   };
 
   return (
-    <div role="tablist" aria-label="Panel tabs" className="flex items-stretch gap-1 overflow-x-auto border-b border-divider shrink-0">
-      {tabs.map((tab) => {
-        const isActive = active === tab.key;
-        return (
-          <button
-            key={tab.key}
-            ref={(el) => { tabsRef.current[String(tab.key)] = el; }}
-            role="tab"
-            aria-selected={isActive}
-            tabIndex={isActive ? 0 : -1}
-            onClick={() => onChange(tab.key)}
-            onKeyDown={onKeyDown}
-            className={`relative flex items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-semibold tracking-wide whitespace-nowrap transition-all duration-200 ease-out cursor-pointer ${
-              isActive ? 'text-text-base' : 'text-text-muted hover:text-text-base'
-            }`}
-          >
-            {tab.icon}
-            {tabLabel ? tabLabel(tab.key) : tab.label}
-            {tab.badge}
-            {isActive && (
-              <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full animate-[tabUnderlineBreathable_0.22s_cubic-bezier(0.16,1,0.3,1)_forwards]" style={{ backgroundColor: 'var(--text-primary)', boxShadow: '0 0 8px color-mix(in srgb, var(--text-primary) 70%, transparent)' }} />
-            )}
-          </button>
-        );
-      })}
-    </div>
+    <LayoutGroup id={groupId}>
+      <div role="tablist" aria-label="Panel tabs" className={`relative flex items-stretch gap-1 overflow-x-auto border-b border-divider shrink-0 select-none ${className}`}>
+        {tabs.map((tab) => {
+          const isActive = active === tab.key;
+          return (
+            <button
+              key={tab.key}
+              ref={(el) => { tabsRef.current[String(tab.key)] = el; }}
+              role="tab"
+              aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => onChange(tab.key)}
+              onKeyDown={onKeyDown}
+              className={`relative flex items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-semibold tracking-wide whitespace-nowrap transition-colors duration-150 ease-out cursor-pointer ${
+                isActive ? 'text-text-base' : 'text-text-muted hover:text-text-base'
+              }`}
+            >
+              {tab.icon}
+              {tabLabel ? tabLabel(tab.key) : tab.label}
+              {tab.badge}
+              {isActive && (
+                <motion.span
+                  layoutId={`underline-indicator-${groupId}`}
+                  transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                  className="absolute inset-x-2 bottom-0 h-[2px] rounded-full z-10 pointer-events-none"
+                  style={{
+                    backgroundColor: 'var(--text-primary)',
+                    boxShadow: '0 0 10px color-mix(in srgb, var(--text-primary) 70%, transparent)'
+                  }}
+                  data-testid="animated-tab-indicator"
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </LayoutGroup>
+  );
+}
+
+export function TabContentTransition({
+  activeKey,
+  children,
+  className = '',
+  variant = 'silk'
+}: {
+  activeKey: string;
+  children: React.ReactNode;
+  className?: string;
+  variant?: 'silk' | 'slide';
+}) {
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={activeKey}
+        role="tabpanel"
+        id={`tabpanel-${activeKey}`}
+        aria-labelledby={`tab-${activeKey}`}
+        initial={
+          variant === 'slide'
+            ? { opacity: 0, x: 12 }
+            : { opacity: 0, y: 7 }
+        }
+        animate={{ opacity: 1, x: 0, y: 0 }}
+        exit={
+          variant === 'slide'
+            ? { opacity: 0, x: -12 }
+            : { opacity: 0, y: -7 }
+        }
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        className={`w-full flex-1 flex flex-col min-h-0 ${className}`}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
   );
 }
 

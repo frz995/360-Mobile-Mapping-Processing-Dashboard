@@ -17,6 +17,7 @@ import { appendStageEventToSupabase } from '../../../services/api/stageEventLedg
 import { probeStationAgent, renameNasFilesOnStation } from '../../../services/stationAgentApi';
 import { fetchDashboardApi } from '../../../services/cloudflareApi';
 import { DEFAULT_4_WORKSTATIONS, type WorkstationStationConfig } from '../../../types/production';
+import { usePermission } from '../../../hooks/usePermission';
 
 export interface PairedFrameRecord {
   index: number;
@@ -188,6 +189,8 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   projectSettings,
   isGuestUser
 }) => {
+  // Gate for every write in this station (CSV import, metadata rename).
+  const mayRunIntake = usePermission('runIntake');
   const [availableSubgrids, setAvailableSubgrids] = useState<SubgridOption[]>(DEFAULT_AVAILABLE_SUBGRIDS);
   const [hasScannedSubgrids, setHasScannedSubgrids] = useState<boolean>(false);
   const [isCustomSubgrid, setIsCustomSubgrid] = useState<boolean>(() => !DEFAULT_AVAILABLE_SUBGRIDS.some((s) => s.code === subgrid));
@@ -1153,7 +1156,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
               <TextAction
                 icon={<FileSpreadsheet size={11} />}
                 onClick={handleRenameOnNas}
-                disabled={isGuestUser || renameBusy || renameableRecords.length === 0}
+                disabled={!mayRunIntake || renameBusy || renameableRecords.length === 0}
                 title="Batch-rename the stitched images to their metadata names directly on the NAS via a station agent"
               >
                 {renameBusy ? 'Renaming…' : renameableRecords.length > 0 ? `Rename Batch (${renameableRecords.length})` : 'Rename Batch'}

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MultiPCStationBoard } from '../hub/MultiPCStationBoard';
+import { renderWithPermissions, withPermissions } from '../../../test/permissions';
 import type {
   StationAgentObservation,
   StationBoardRow,
@@ -54,7 +55,7 @@ const ENDED_EARLY = {
 };
 
 function baseUrl(extra: Partial<Record<WorkstationStationId, StationAgentObservation>> = {}, props: Record<string, unknown> = {}) {
-  return render(
+  return renderWithPermissions(
     <MultiPCStationBoard
       subgrid="N93E70"
       totalFrames={92}
@@ -190,7 +191,7 @@ describe('MultiPCStationBoard (auto-detected flight board)', () => {
   });
 
   it('shows a not-selected guard without a subgrid', () => {
-    render(
+    renderWithPermissions(
       <MultiPCStationBoard
         subgrid=""
         totalFrames={0}
@@ -202,7 +203,7 @@ describe('MultiPCStationBoard (auto-detected flight board)', () => {
   });
 
   it('appends STARTED and PROGRESS ledger events while a station runs, then COMPLETED', async () => {
-    const mounted = render(
+    const mounted = renderWithPermissions(
       <MultiPCStationBoard
         subgrid="N93E70"
         totalFrames={92}
@@ -221,13 +222,15 @@ describe('MultiPCStationBoard (auto-detected flight board)', () => {
 
     // WAITING -> IN_PROGRESS: STARTED event from agent telemetry
     mounted.rerender(
-      <MultiPCStationBoard
+      withPermissions(
+        <MultiPCStationBoard
         subgrid="N93E70"
         totalFrames={92}
         onAdvanceToQA={onAdvanceQaMock}
         userLabel="QA Lead"
         stationObservations={{ stitch: obsFor('stitch', { ...RUNNING, output: { stage: '03_Stitching', subgrids: { N93E70: { files: 7, last_write_at: '2026-09-26T08:04:00+00:00', growing: true } } } }) } as any}
       />
+      )
     );
     await waitFor(() => {
       expect(mockedAppendEvent.mock.calls.some(([e]) => e.stage === 'stitch' && e.event === 'STARTED')).toBe(true);
@@ -235,13 +238,15 @@ describe('MultiPCStationBoard (auto-detected flight board)', () => {
 
     // 7 -> 12 frames: PROGRESS event with the new count
     mounted.rerender(
-      <MultiPCStationBoard
+      withPermissions(
+        <MultiPCStationBoard
         subgrid="N93E70"
         totalFrames={92}
         onAdvanceToQA={onAdvanceQaMock}
         userLabel="QA Lead"
         stationObservations={{ stitch: obsFor('stitch', { ...RUNNING, output: { stage: '03_Stitching', subgrids: { N93E70: { files: 12, last_write_at: '2026-09-26T08:06:00+00:00', growing: true } } } }) } as any}
       />
+      )
     );
     await waitFor(() => {
       expect(mockedAppendEvent.mock.calls.some(([e]) => e.stage === 'stitch' && e.event === 'PROGRESS')).toBe(true);
@@ -249,13 +254,15 @@ describe('MultiPCStationBoard (auto-detected flight board)', () => {
 
     // process exits with the batch target reached: COMPLETED event (file mtime)
     mounted.rerender(
-      <MultiPCStationBoard
+      withPermissions(
+        <MultiPCStationBoard
         subgrid="N93E70"
         totalFrames={92}
         onAdvanceToQA={onAdvanceQaMock}
         userLabel="QA Lead"
         stationObservations={{ stitch: obsFor('stitch', COMPLETED) } as any}
       />
+      )
     );
     await waitFor(() => {
       const completedCall = mockedAppendEvent.mock.calls.find(([e]) => e.stage === 'stitch' && e.event === 'COMPLETED');

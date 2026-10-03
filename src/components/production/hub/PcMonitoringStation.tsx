@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { StatusDot } from '../chrome';
 import { useStationAgents } from '../../../hooks/useStationAgents';
+import { usePermission } from '../../../hooks/usePermission';
 import {
   DEFAULT_4_WORKSTATIONS,
   type StationAgentObservation,
@@ -17,7 +18,6 @@ import {
 
 export interface PcMonitoringStationProps {
   projectSettings?: { workstationsConfig?: WorkstationStationConfig[] } & Record<string, unknown>;
-  isGuestUser?: boolean;
   addNotification?: (item: { title: string; message: string; category?: string; read?: boolean }) => void;
   addAuditLog?: (type: string, title: string, details: string, status?: string) => void;
   userLabel: string;
@@ -113,11 +113,12 @@ function offlineDetail(obs: StationAgentObservation | undefined, port?: number):
 
 export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
   projectSettings,
-  isGuestUser,
   addNotification,
   addAuditLog,
   userLabel
 }) => {
+  // Opening an RDP / remote pane on a processing workstation.
+  const mayOperateStations = usePermission('operateStations');
   const [focusedStation, setFocusedStation] = useState<WorkstationStationId | null>(null);
   const workstations: WorkstationStationConfig[] =
     (projectSettings?.workstationsConfig as WorkstationStationConfig[] | undefined) || DEFAULT_4_WORKSTATIONS;
@@ -243,7 +244,7 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
               <div className="px-3 py-2.5 flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={isGuestUser || !ws.ipAddress}
+                  disabled={!mayOperateStations || !ws.ipAddress}
                   onClick={() => handleLaunchRdp(ws)}
                   className="flex-1 py-1.5 bg-inner border border-subtle hover:border-divider text-text-base text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -252,7 +253,7 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
                 </button>
                 <button
                   type="button"
-                  disabled={isGuestUser || !remotePaneUrl(ws)}
+                  disabled={!mayOperateStations || !remotePaneUrl(ws)}
                   onClick={() => setFocusedStation(ws.id)}
                   className="flex-1 py-1.5 bg-text-base text-card hover:opacity-90 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   title={remotePaneUrl(ws) ? 'Remote desktop in browser (noVNC)' : 'Enable VNC port for this station under Providers → Workstations'}
@@ -290,7 +291,7 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
                 </div>
                 <button
                   type="button"
-                  disabled={isGuestUser || !ws.ipAddress}
+                  disabled={!mayOperateStations || !ws.ipAddress}
                   onClick={() => handleLaunchRdp(ws)}
                   className="text-[10px] font-bold text-text-muted hover:text-text-base flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                   title="Open native RDP in a new window"
@@ -316,7 +317,7 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
                   </p>
                   <button
                     type="button"
-                    disabled={isGuestUser || !ws.ipAddress}
+                    disabled={!mayOperateStations || !ws.ipAddress}
                     onClick={() => handleLaunchRdp(ws)}
                     className="mt-1 px-3 py-1.5 bg-inner border border-subtle hover:border-divider text-text-base text-[10px] font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >

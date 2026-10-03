@@ -29,6 +29,7 @@ import {
   REGION_DEFAULTS
 } from '../../../config/defaults';
 import { DEFAULT_4_WORKSTATIONS, type WorkstationStationConfig } from '../../../types/production';
+import { usePermission } from '../../../hooks/usePermission';
 
 export interface BucketPublicationGateProps {
   subgrid: string;
@@ -39,7 +40,6 @@ export interface BucketPublicationGateProps {
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
-  isGuestUser?: boolean;
   /** Paired frames (metadata names) — the one-click upload list. */
   pairedRecords?: PairedFrameRecord[];
   /** Survey run folder id (e.g. 20220904 / BP_20220630) for the final-image check. */
@@ -260,10 +260,11 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
   addNotification,
   addAuditLog,
   userLabel,
-  isGuestUser,
   pairedRecords,
   surveyFolder
 }) => {
+  // Every bucket write (frame upload + manifest push) is gated on this capability.
+  const mayPublishSequences = usePermission('publishSequences');
   const cleanSg = subgrid.trim().toUpperCase();
   // Real frame count only. An unknown total is reported as unknown and blocks
   // the push rather than being padded to a round number.
@@ -427,7 +428,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
   };
 
   const handleUploadImagesToBucket = async () => {
-    if (imgUpload.running || isGuestUser) return;
+    if (imgUpload.running || !mayPublishSequences) return;
     if (!hasFinalImages) {
       addNotification?.({
         type: 'warning',
@@ -743,9 +744,9 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
       return;
     }
 
-    if (isGuestUser) {
+    if (!mayPublishSequences) {
       setVerifiedCount(0);
-      setInventoryError('Guest sessions cannot read bucket storage. Sign in to run an inventory check.');
+      setInventoryError('Your role does not include Cloud Bucket Image Upload. Ask an administrator to grant it from Administration > Roles.');
       setIsVerifying(false);
       return;
     }
@@ -979,7 +980,7 @@ pause
       setPushStep('SYNCING');
       setPushProgress(80);
 
-      const usesSupabaseChannel = bucketConfig.provider === 'supabase' && !isGuestUser;
+      const usesSupabaseChannel = bucketConfig.provider === 'supabase' && mayPublishSequences;
 
       if (usesSupabaseChannel) {
         const manifestBlob = new Blob([JSON.stringify(manifestObj, null, 2)], { type: 'application/json' });
@@ -1001,7 +1002,7 @@ pause
         setPushLogs((prev) => [
           ...prev,
           `${stamp()} No in-browser upload channel for ${bucketConfig.providerLabel}${
-            isGuestUser ? ' (guest session)' : ''
+            mayPublishSequences ? '' : ' (read-only role)'
           }. manifest.json downloaded — run the sync command to transfer the frames.`
         ]);
       }
@@ -1321,7 +1322,7 @@ pause
             <button
               type="button"
               onClick={handleUploadImagesToBucket}
-              disabled={imgUpload.running || isGuestUser || uploadMode.mode === 'unavailable' || !hasBatch || finalImages === null || !hasFinalImages || (uploadMode.mode === 'browser' && uploadFrames.length === 0)}
+              disabled={imgUpload.running || !mayPublishSequences || uploadMode.mode === 'unavailable' || !hasBatch || finalImages === null || !hasFinalImages || (uploadMode.mode === 'browser' && uploadFrames.length === 0)}
               title={
                 uploadMode.mode === 'unavailable'
                   ? uploadMode.reason

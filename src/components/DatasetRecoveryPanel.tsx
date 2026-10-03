@@ -15,6 +15,7 @@ import {
   X
 } from 'lucide-react';
 import { ContentLoading } from './common/ContentLoading';
+import { usePermission } from '../hooks/usePermission';
 import {
   RecycleBinItem,
   fetchRecycleBinFromSupabase,
@@ -23,15 +24,15 @@ import {
 
 export interface DatasetRecoveryPanelProps {
   onRestoreItem: (item: RecycleBinItem) => Promise<void> | void;
-  isGuestUser?: boolean;
   onRefreshMap?: () => void;
 }
 
 export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
   onRestoreItem,
-  isGuestUser = false,
   onRefreshMap
 }) => {
+  // Restoring, purging and emptying the recycle bin are all deletion operations.
+  const mayDeleteData = usePermission('deleteData');
   const [items, setItems] = useState<RecycleBinItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -73,7 +74,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
   );
 
   const handleRestore = async (item: RecycleBinItem) => {
-    if (isGuestUser) return;
+    if (!mayDeleteData) return;
     setRestoringId(item.id);
     try {
       await onRestoreItem(item);
@@ -96,7 +97,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
   };
 
   const handleDeletePermanently = async (id: string, subgrid: string) => {
-    if (isGuestUser) return;
+    if (!mayDeleteData) return;
     if (!window.confirm(`Permanently purge ${subgrid} from the Recycle Bin? This cannot be undone.`)) return;
 
     await deleteFromRecycleBinInSupabase(id);
@@ -109,7 +110,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
   };
 
   const handleEmptyAll = async () => {
-    if (isGuestUser || items.length === 0) return;
+    if (!mayDeleteData || items.length === 0) return;
     if (!window.confirm(`Empty all ${items.length} records from the Recycle Bin permanently?`)) return;
 
     for (const it of items) {
@@ -160,7 +161,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
           <span>Refresh</span>
         </button>
 
-        {items.length > 0 && !isGuestUser && (
+        {items.length > 0 && mayDeleteData && (
           <button
             onClick={handleEmptyAll}
             className="flex items-center gap-1.5 bg-rose-950/40 hover:bg-rose-950/60 text-rose-300 border border-rose-700/40 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all shadow-sm cursor-pointer"
@@ -294,7 +295,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
                   <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => handleRestore(item)}
-                      disabled={isRestoring || isGuestUser}
+                      disabled={isRestoring || !mayDeleteData}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-[10px] font-bold transition-all shadow-sm cursor-pointer disabled:opacity-40 active:scale-95"
                     >
                       {isRestoring ? (
@@ -305,7 +306,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
                       <span>Restore</span>
                     </button>
 
-                    {!isGuestUser && (
+                    {mayDeleteData && (
                       <button
                         onClick={() => handleDeletePermanently(item.id, item.subgrid)}
                         className="p-1.5 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-md transition-colors cursor-pointer border border-transparent hover:border-rose-500/30"

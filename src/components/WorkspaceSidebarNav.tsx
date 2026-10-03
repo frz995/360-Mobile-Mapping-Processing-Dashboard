@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
-import { ChevronRight, Info, RefreshCw, X } from 'lucide-react';
-import { WORKSPACES, WORKSPACE_CATEGORIES, type WorkspaceDefinition } from '../workspaces';
+import { useEffect, useMemo } from 'react';
+import { ChevronRight, Info, Lock, RefreshCw, X } from 'lucide-react';
+import { WORKSPACES, WORKSPACE_CATEGORIES, canAccessWorkspace, type WorkspaceDefinition } from '../workspaces';
+import { useCapabilities } from '../hooks/usePermission';
 import type { WorkspaceKey } from '../utils/urlRouter';
 
 interface WorkspaceSidebarNavProps {
@@ -44,7 +45,8 @@ function NavItem({
   tourActive,
   onNavigate,
   translate,
-  badge
+  badge,
+  allowed = true
 }: {
   definition: WorkspaceDefinition;
   active: boolean;
@@ -53,18 +55,34 @@ function NavItem({
   onNavigate: (key: WorkspaceKey) => void;
   translate: (key: string) => string;
   badge?: number;
+  /** False when the current role holds none of the workspace's guard capabilities. */
+  allowed?: boolean;
 }) {
   const Icon = definition.icon;
+  // Locked items keep their slot (no layout shift) but are inert and explain why.
+  const label = translate(definition.labelKey);
+  const title = allowed ? label : `${label} — restricted for your role`;
   return (
     <button
-      onClick={() => onNavigate(definition.key)}
-      className={`${activeButtonClass(active, isSidebarExpanded)} ${tourActive ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''}`}
-      title={translate(definition.labelKey)}
-      aria-label={translate(definition.labelKey)}
+      onClick={() => allowed && onNavigate(definition.key)}
+      disabled={!allowed}
+      aria-disabled={!allowed}
+      className={`${activeButtonClass(active, isSidebarExpanded)} ${tourActive ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''} ${
+        allowed ? '' : 'opacity-40 cursor-not-allowed'
+      }`}
+      title={title}
+      aria-label={title}
       aria-current={active ? 'page' : undefined}
     >
       <div className="relative shrink-0 flex items-center justify-center">
         <Icon size={20} className="shrink-0 transition-transform duration-200" />
+        {!allowed && (
+          <Lock
+            size={9}
+            className="absolute -bottom-0.5 -right-0.5 shrink-0 text-text-base"
+            aria-hidden="true"
+          />
+        )}
         {!isSidebarExpanded && (
           <span
             className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${active ? 'opacity-100 scale-100' : 'opacity-0 scale-0'}`}
@@ -77,7 +95,7 @@ function NavItem({
         )}
       </div>
       <span className={labelClass(isSidebarExpanded)}>
-        <span className="truncate">{translate(definition.labelKey)}</span>
+        <span className="truncate">{label}</span>
         {definition.tag !== 'live' && (
           <span
             className={`w-1.5 h-1.5 rounded-full ml-2 shrink-0 ${definition.tag === 'planned' ? 'bg-amber-400' : 'bg-inner'}`}
@@ -113,6 +131,16 @@ export function WorkspaceSidebarNav({
   const workspaceDefByKey = new Map<string, WorkspaceDefinition>(WORKSPACES.map((w) => [w.key, w]));
   const settingsDef = WORKSPACES.find((w) => w.key === 'settings')!;
 
+  // Every nav entry is guarded by its `WorkspaceDefinition.guard` capability set.
+  // Denied entries stay in place (locked + dimmed) so the rail never reflows.
+  const { role, matrix } = useCapabilities();
+  const allowedKeys = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const w of WORKSPACES) map.set(w.key, canAccessWorkspace(w.key, role, matrix));
+    return map;
+  }, [role, matrix]);
+  const isAllowed = (key: WorkspaceKey) => allowedKeys.get(key) !== false;
+
   // Close the mobile drawer via Escape.
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -146,6 +174,7 @@ export function WorkspaceSidebarNav({
                 onNavigate={onNavigateItem}
                 translate={translate}
                 badge={w.key === 'administration' ? approvalBadgeCount : undefined}
+                allowed={isAllowed(w.key)}
               />
             );
           })}
@@ -176,6 +205,7 @@ export function WorkspaceSidebarNav({
         tourActive={tourStep === 10}
         onNavigate={onNavigateItem}
         translate={translate}
+        allowed={isAllowed('settings')}
       />
 
       <button

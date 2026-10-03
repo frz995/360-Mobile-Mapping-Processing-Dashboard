@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import type { DailyTimeSeries, BatchLog } from '../../types/dashboard'
 import { deleteFromSupabase, fetchStagingPanoramasFromSupabase, publishToSupabase, saveDeletionRequestToSupabase, verifyCsvImageFilenamesInStorage } from '../../services/supabase'
 
@@ -35,6 +35,7 @@ vi.mock('../../services/supabase', () => {
 })
 
 import { DataManagementPage } from '../DataManagementPage'
+import { renderWithPermissions } from '../../test/permissions'
 
 const dailyFixture = (): DailyTimeSeries => ({
   id: 'd-1',
@@ -65,7 +66,7 @@ const batchFixture = (): BatchLog => ({
 })
 
 function renderPage(props: Partial<Parameters<typeof DataManagementPage>[0]> = {}) {
-  return render(
+  return renderWithPermissions(
     <DataManagementPage
       dailyData={props.dailyData ?? []}
       setDailyData={props.setDailyData ?? (() => {})}

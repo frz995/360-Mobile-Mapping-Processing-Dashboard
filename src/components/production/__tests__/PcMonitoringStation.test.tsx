@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { screen, fireEvent, cleanup } from '@testing-library/react'
 import { PcMonitoringStation } from '../hub/PcMonitoringStation'
 import { DEFAULT_4_WORKSTATIONS } from '../../../types/production'
+import { renderWithPermissions } from '../../../test/permissions'
 
 const stationMocks = vi.hoisted(() => ({ useStationAgents: vi.fn() }))
 
@@ -61,7 +62,7 @@ describe('PcMonitoringStation', () => {
 
   it('renders four station metric cards with agent metrics', () => {
     const ws = setup()
-    render(<PcMonitoringStation userLabel="QA Lead" projectSettings={{ workstationsConfig: ws }} />)
+    renderWithPermissions(<PcMonitoringStation userLabel="QA Lead" projectSettings={{ workstationsConfig: ws }} />)
     expect(screen.getByText(/4\/4 agents online/)).toBeInTheDocument()
     expect(screen.getAllByText('34%').length).toBe(4) // CPU on every card
     expect(screen.getAllByText('11%').length).toBe(4) // GPU
@@ -74,7 +75,7 @@ describe('PcMonitoringStation', () => {
 
   it('renders embedded VNC panes only for stations with a VNC channel configured', () => {
     const ws = setup({ vncStations: 2 })
-    const { container } = render(
+    const { container } = renderWithPermissions(
       <PcMonitoringStation userLabel="QA Lead" projectSettings={{ workstationsConfig: ws }} />
     )
     const iframes = container.querySelectorAll('iframe')
@@ -87,7 +88,7 @@ describe('PcMonitoringStation', () => {
   it('ships no invented station addresses: unconfigured stations expose no remote actions', () => {
     expect(DEFAULT_4_WORKSTATIONS.every((w) => w.ipAddress === undefined)).toBe(true)
     const ws = setup({ addresses: false })
-    const { container } = render(
+    const { container } = renderWithPermissions(
       <PcMonitoringStation userLabel="QA Lead" projectSettings={{ workstationsConfig: ws }} />
     )
     expect(container.querySelectorAll('iframe')).toHaveLength(0)
@@ -100,7 +101,7 @@ describe('PcMonitoringStation', () => {
     const ws = setup()
     const addNotification = vi.fn()
     const addAuditLog = vi.fn()
-    render(
+    renderWithPermissions(
       <PcMonitoringStation
         userLabel="QA Lead"
         projectSettings={{ workstationsConfig: ws }}

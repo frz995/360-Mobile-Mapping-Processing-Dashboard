@@ -58,7 +58,8 @@ import {
   rehydrateDistrictBoundary
 } from './boundary/malaysiaDistricts';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
-import { isAdminRole, isGuestEmail } from '../lib/authz';
+import { isGuestEmail } from '../lib/authz';
+import { usePermission } from '../hooks/usePermission';
 
 const SETTINGS_TABS: ChromeTab<'settings' | 'theme-pack' | 'diagnostics'>[] = [
   {
@@ -935,11 +936,11 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       (authSession?.user?.role === 'admin' ? 'Administrator' : 'Viewer')
     );
 
-  const isAdmin = !isGuest && (
-    isAdminRole(userEffectiveRole) ||
-    isAdminRole(authSession?.user?.role) ||
-    isAdminRole(authSession?.user?.app_metadata?.role)
-  );
+  // Authorization RBAC helper: only a role holding `manageSettings` may modify
+  // system settings. Reads the live role matrix, so an administrator can grant
+  // or revoke this without touching the database.
+  const mayManageSettings = usePermission('manageSettings');
+  const isAdmin = !isGuest && mayManageSettings;
 
   const cardBg = themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-card border-subtle text-text-base';
   const innerCardBg = themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-card border-subtle';

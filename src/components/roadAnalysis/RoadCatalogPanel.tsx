@@ -29,6 +29,12 @@ import {
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
 import { getCatalogSamplePropKeys, pickCatalogLabelField } from '../../utils/catalogLayerLabels';
 import { CommitSlider } from './CommitSlider';
+import {
+  ReorderList,
+  ReorderItem,
+  ReorderHandle,
+  ReorderActionButtons
+} from '../common/ReorderList';
 
 export interface SystemLayerStyles {
   districtBoundary: {
@@ -68,6 +74,11 @@ export interface RoadCatalogPanelProps {
    */
   onPreviewSystemStyles?: (updater: (prev: SystemLayerStyles) => SystemLayerStyles) => void;
   onUpdateCatalogLayer: (layerId: string, updates: Partial<CatalogVectorLayer>) => void;
+  /**
+   * Persist a new draw order for the imported layers. The catalog layers are
+   * added to the map in array order, so index order *is* the z-order.
+   */
+  onReorderCatalogLayers: (layers: CatalogVectorLayer[]) => void;
   /**
    * Live-only catalog layer style preview during slider drags. State-only, must
    * NOT persist or mark the workspace dirty.
@@ -518,6 +529,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
   onPreviewSystemStyles,
   onUpdateCatalogLayer,
   onLiveUpdateCatalogLayer,
+  onReorderCatalogLayers,
   onRemoveCatalogLayer,
   onZoomToLayer,
   onSetAsActivePlan,
@@ -537,6 +549,19 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
   const [fallbackTableLayer, setFallbackTableLayer] = useState<CatalogVectorLayer | null>(null);
   const [expandedSubgrid, setExpandedSubgrid] = useState<string | null>(null);
   const [activatingLayerId, setActivatingLayerId] = useState<string | null>(null);
+
+  const handleMoveCatalogLayer = useCallback(
+    (layerId: string, direction: -1 | 1) => {
+      const index = catalogLayers.findIndex((l) => l.id === layerId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= catalogLayers.length) return;
+      const next = [...catalogLayers];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
+      onReorderCatalogLayers(next);
+    },
+    [catalogLayers, onReorderCatalogLayers]
+  );
 
   const handleActivatePlan = useCallback((layer: CatalogVectorLayer) => {
     if (!onSetAsActivePlan) return;
@@ -1300,8 +1325,13 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {catalogLayers.map((layer) => {
+          <ReorderList
+            values={catalogLayers}
+            onReorder={onReorderCatalogLayers}
+            as="ul"
+            className="flex flex-col gap-2.5 list-none p-0 m-0"
+          >
+            {catalogLayers.map((layer, layerIndex) => {
               const isActivePlan =
                 Boolean(activePlanName) &&
                 (catalogPlanLayerId ? catalogPlanLayerId === layer.id : activePlanName === layer.name);
@@ -1309,8 +1339,14 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
               const isTableActive = currentTableLayer?.id === layer.id;
 
               return (
-                <div
+                <ReorderItem
                   key={layer.id}
+                  value={layer}
+                  id={layer.id}
+                  onMoveUp={() => handleMoveCatalogLayer(layer.id, -1)}
+                  onMoveDown={() => handleMoveCatalogLayer(layer.id, 1)}
+                  canMoveUp={layerIndex > 0}
+                  canMoveDown={layerIndex < catalogLayers.length - 1}
                   className={`rounded-xl border transition-all flex flex-col overflow-hidden ${
                     layer.visible
                       ? 'border-subtle bg-inner/40 hover:border-sky-500/40 shadow-sm'
@@ -1321,6 +1357,13 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                   <div className="p-2.5 flex flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {/* Draw order handle */}
+                        <ReorderHandle
+                          showKeyboardShortcuts
+                          title="Drag to change layer draw order"
+                          aria-label={`Reorder ${layer.name}`}
+                        />
+
                         {/* Visibility toggle */}
                         <button
                           type="button"
@@ -1484,6 +1527,11 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                             )}
                           </button>
                         )}
+                      </div>
+
+                      {/* Accessible draw-order fallback (no dragging required) */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <ReorderActionButtons />
                       </div>
 
                       {/* Remove Layer (Symbol only) */}
@@ -1966,10 +2014,10 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                       </div>
                     </div>
                   )}
-                </div>
+                </ReorderItem>
               );
             })}
-          </div>
+          </ReorderList>
         )}
       </div>
 

@@ -269,25 +269,20 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
         if (!isMobile) {
             // DESKTOP: 2 Flanking Mid-Height Cards + 4 Lower-Curve Cards strictly matching user's sketch!
             // Slot 0: 01 Project Management (Mid-Left with horizontal ──o line)
-            // Slot 1: 02 360° Imagery (Lower-Left Box 1 with ┌── line from globe rim)
-            // Slot 2: 03 Processing Pipeline (Lower-Center-Left Box 2 with │ straight line under Johor)
-            // Slot 3: 04 QA / QC (Lower-Center-Right Box 3 with │ straight line under Indonesia)
-            // Slot 4: 05 GIS Workspace (Lower-Right Box 4 with ──┐ line pointing LEFT to globe)
-            // Slot 5: 06 Data Management (Mid-Right with horizontal o── line)
+            // Slot 1: 02 WebGIS Dashboard & Data (Lower-Left Box 1 with ┌── line from globe rim)
+            // Slot 2: 03 Road Analysis & Explorer (Lower-Center-Left Box 2 with │ straight line under Johor)
+            // Slot 3: 04 Production Hub (Lower-Center-Right Box 3 with │ straight line under Indonesia)
+            // Slot 4: 05 PC Monitoring & NAS (Lower-Right Box 4 with ──┐ line pointing LEFT to globe)
+            // Slot 5: 06 Analytics, Reports & Admin (Mid-Right with horizontal o── line)
             const getSlotType = (modId: string, idx: number): number => {
                 switch (modId) {
-                    case 'data':       return 0; // 01 Project Management
-                    case 'qaqc':       return 1; // 02 360° Imagery (Box 1)
-                    case 'production': return 2; // 03 Processing Pipeline (Box 2)
-                    case 'reports':    return 3; // 04 QA / QC (Box 3)
-                    case 'webgis':     return 4; // 05 GIS Workspace (Box 4)
-                    case 'postgis':    return 5; // 06 Data Management
-                    // Backward-compat aliases
-                    case 'image':      return 1;
-                    case 'pipeline':   return 2;
-                    case 'gis':        return 4;
-                    case 'analytics':  return 5;
-                    default:           return idx % 6;
+                    case 'project':      return 0; // 01 Project Management
+                    case 'dashboard':    return 1; // 02 WebGIS Dashboard & Data (Box 1)
+                    case 'roadAnalysis': return 2; // 03 Road Analysis & Explorer (Box 2)
+                    case 'production':   return 3; // 04 Production Hub (Box 3)
+                    case 'pcmon':        return 4; // 05 PC Monitoring & NAS (Box 4)
+                    case 'insights':     return 5; // 06 Analytics, Reports & Admin
+                    default:             return idx % 6;
                 }
             };
 
@@ -303,7 +298,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
             const card0_cx = card0_left + dhw;
             const card0_cy = globeCY - 0.08 * globeR;
 
-            // Slot 5 (06 Data Management): Mid-Right, outside globe rim
+            // Slot 5 (06 Analytics, Reports & Admin): Mid-Right, outside globe rim
             const card5_left = Math.max(globeCX + globeR + 20, vw * 0.72);
             const card5_cx = Math.min(vw - margin - dhw, card5_left + dhw);
             const card5_cy = globeCY - 0.08 * globeR;
@@ -316,12 +311,12 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
             const card3_cx = globeCX + centerHalfGap + dhw;
             const card3_cy = Math.min(vh - dhh - 24, globeCY + globeR * 0.62);
 
-            // Slot 1 (02 360° Imagery - Box 1): Lower-Left, between Card 01 and Box 2
+            // Slot 1 (02 WebGIS Dashboard & Data - Box 1): Lower-Left, between Card 01 and Box 2
             const card1_left = Math.max(card0_left + 36, (card2_cx - dhw) - desktopCardW - Math.max(16, vw * 0.015));
             const card1_cx = card1_left + dhw;
             const card1_cy = Math.min(vh - dhh - 30, globeCY + globeR * 0.38);
 
-            // Slot 4 (05 GIS Workspace - Box 4): Lower-Right, between Box 3 and Card 06
+            // Slot 4 (05 PC Monitoring & NAS - Box 4): Lower-Right, between Box 3 and Card 06
             const card4_right = Math.min((card5_cx + dhw) - 36, (card3_cx + dhw) + desktopCardW + Math.max(16, vw * 0.015));
             const card4_left = card4_right - desktopCardW;
             const card4_cx = card4_left + dhw;
@@ -366,33 +361,33 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                     pathD = `M ${gx} ${gy} H ${cardRight}`;
                     bracketD = `M ${cardRight} ${card.cy - 6} L ${cardRight} ${card.cy + 6}`;
                 } else if (s === 1) {
-                    // Slot 1 (02 360° Imagery - Box 1): line from card top turning RIGHT towards globe
+                    // Slot 1 (02 WebGIS Dashboard & Data - Box 1): line from card top turning RIGHT towards globe
                     gy = card.top - 20;
                     const dogleg = Math.max(46, vw * 0.036);
                     gx = card.cx + dogleg;
                     pathD = `M ${gx} ${gy} H ${card.cx} V ${card.top}`;
                     bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
                 } else if (s === 2) {
-                    // Slot 2 (03 Processing Pipeline - Box 2): │ vertical drop under Johor to card top
+                    // Slot 2 (03 Road Analysis & Explorer - Box 2): │ vertical drop under Johor to card top
                     gx = card.cx;
                     gy = card.top - 34;
                     pathD = `M ${gx} ${gy} V ${card.top}`;
                     bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
                 } else if (s === 3) {
-                    // Slot 3 (04 QA / QC - Box 3): │ vertical drop under Indonesia to card top
+                    // Slot 3 (04 Production Hub - Box 3): │ vertical drop under Indonesia to card top
                     gx = card.cx;
                     gy = card.top - 34;
                     pathD = `M ${gx} ${gy} V ${card.top}`;
                     bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
                 } else if (s === 4) {
-                    // Slot 4 (05 GIS Workspace - Box 4): line from card top turning LEFT towards globe
+                    // Slot 4 (05 PC Monitoring & NAS - Box 4): line from card top turning LEFT towards globe
                     gy = card.top - 20;
                     const dogleg = Math.max(46, vw * 0.036);
                     gx = card.cx - dogleg;
                     pathD = `M ${gx} ${gy} H ${card.cx} V ${card.top}`;
                     bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
                 } else {
-                    // Slot 5 (06 Data Management): Horizontal line from globe right rim to card left edge
+                    // Slot 5 (06 Analytics, Reports & Admin): Horizontal line from globe right rim to card left edge
                     gx = globeCX + globeR;
                     gy = card.cy;
                     const cardLeft = card.left;
@@ -650,7 +645,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                                         background: '#0b1018',
                                     }}
                                 >
-                                    <TourVideo moduleId={hoveredMod.id} active isMobile={isMobile} />
+                                    <TourVideo moduleId={hoveredMod.tourVideoId ?? hoveredMod.id} active isMobile={isMobile} />
 
                                     <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />
 
@@ -841,7 +836,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                             >
                                 {/* Phones decode nothing in the ring itself —
                                     the centred preview owns playback there. */}
-                                <TourVideo moduleId={mod.id} active={!isMobile} isMobile={isMobile} />
+                                <TourVideo moduleId={mod.tourVideoId ?? mod.id} active={!isMobile} isMobile={isMobile} />
 
                                 {/* Readability scrim only — card body stays opaque */}
                                 <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />

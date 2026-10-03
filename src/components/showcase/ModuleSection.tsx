@@ -58,7 +58,15 @@ export const ModuleSection: React.FC<ModuleSectionProps> = ({ mod, index, total,
                     className={`order-1 w-full ${textFirst ? 'lg:order-2 lg:col-start-7 lg:col-span-6' : 'lg:order-1 lg:col-start-1 lg:col-span-6'
                         }`}
                 >
-                    <CoverflowGallery index={index} moduleId={mod.id} images={mod.images} hotspots={mod.hotspots} />
+                    <CoverflowGallery
+                        index={index}
+                        moduleId={mod.id}
+                        moduleTitle={mod.title}
+                        moduleSubtitle={mod.subtitle}
+                        moduleDescription={mod.description}
+                        images={mod.images}
+                        hotspots={mod.hotspots}
+                    />
                 </motion.div>
 
                 {/* Narrative */}

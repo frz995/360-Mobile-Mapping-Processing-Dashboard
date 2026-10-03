@@ -29,6 +29,11 @@ export interface SystemModule {
     icon: React.ElementType;
     /** Optional raster module icon (favored over `icon` when set). */
     iconImage?: string;
+    /**
+     * Optional override for the hero tour-card video slug
+     * (`/videos/tour-<slug>.mp4` + `-poster.png`). Defaults to `id`.
+     */
+    tourVideoId?: string;
     workflow: WorkflowStep[];
     specs: { label: string; value: string }[];
     hotspots: SectionHotspot[];

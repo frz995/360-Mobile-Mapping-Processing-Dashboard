@@ -49,8 +49,8 @@ export const WorkflowSection: React.FC<WorkflowSectionProps> = ({ onJumpTo }) =>
                     ))}
                 </h2>
 
-                <motion.p variants={revealItem} className="mt-3 text-xs sm:text-sm text-neutral-400 max-w-xl leading-relaxed">
-                    How mobile mapping survey telemetry transitions from on-premises GPU workers to cloud storage, visual QA/QC inspection, and published WebGIS layers.
+                <motion.p variants={revealItem} className="mt-3 text-xs sm:text-sm text-neutral-400 max-w-2xl leading-relaxed">
+                    End-to-end live tracking of mobile mapping data—from field acquisition through external 4-station processing monitoring, NAS storage health, multi-cloud bucket release gates, and WebGIS road coverage analysis.
                 </motion.p>
 
                 <motion.div variants={revealItem} className="w-full mt-4">

@@ -1,6 +1,33 @@
 import type { BasemapId } from '../config/defaults';
 
-export type UserRole = 'Administrator' | 'Survey Operator' | 'QA Inspector' | 'Viewer';
+/**
+ * Roles and the permission vocabulary live in src/lib/authz.ts — that module
+ * is the single source of truth. Re-exported here so the many admin surfaces
+ * that already import these names from '../types/admin' keep working.
+ */
+export type {
+  UserRole,
+  AuthzCapability,
+  AuthzScope,
+  RoleCapabilityItem,
+  RoleCapabilitiesMap,
+  RolePermissionsMatrix
+} from '../lib/authz';
+export {
+  USER_ROLES,
+  ROLE_ADMINISTRATOR,
+  ROLE_OPERATOR,
+  ROLE_QA_INSPECTOR,
+  ROLE_VIEWER,
+  ROLE_CAPABILITIES,
+  DEFAULT_ROLE_CAPABILITIES,
+  DEFAULT_ROLE_PERMISSIONS,
+  ENFORCED_CAPABILITIES,
+  LEGACY_CAPABILITY_ALIASES
+} from '../lib/authz';
+
+import type { UserRole } from '../lib/authz';
+
 export type UserStatus = 'Active' | 'Disabled' | 'Pending';
 
 export interface UserAccount {
@@ -278,102 +305,3 @@ export interface QAQCConfig {
   checkGps: boolean;
   pic?: string;
 }
-
-export interface RoleCapabilityItem {
-  id: string;
-  label: string;
-  description: string;
-  scope: 'workspace' | 'webgis';
-}
-
-export type RoleCapabilitiesMap = Record<string, boolean>;
-
-export type RolePermissionsMatrix = Record<UserRole | 'guest', RoleCapabilitiesMap>;
-
-export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityItem[] = [
-  // Production Workspace (Dashboard)
-  { id: 'manageUsers', label: 'User Directory & Role Assignment', description: 'Provision, assign roles, and revoke platform access', scope: 'workspace' },
-  { id: 'manageSettings', label: 'System & Storage Configuration', description: 'Modify NAS, Cloudflare R2, PostGIS and pipeline settings', scope: 'workspace' },
-  { id: 'publishSequences', label: 'Publish to Production WebGIS', description: 'Promote staged trajectory batches into published state', scope: 'workspace' },
-  { id: 'runPipeline', label: 'Run AI Blurring & Enhancement', description: 'Trigger NAS GPU batch enhancement and anonymization', scope: 'workspace' },
-  { id: 'reviewQaqc', label: 'QA/QC Inspection & Defect Sign-off', description: 'Flag, audit, and resolve QA defect records', scope: 'workspace' },
-  { id: 'deleteData', label: 'Spatial Safe Deletion', description: 'Initiate or execute sequence deletion operations', scope: 'workspace' },
-
-  // Production WebGIS (Map Viewer)
-  { id: 'webgisUpload', label: 'Upload Spatial Datasets (CSV/KML/SHP)', description: 'Import road lines or external layers via Toolbox', scope: 'webgis' },
-  { id: 'webgisEditAttributes', label: 'Edit Spatial Attributes & Data Table', description: 'Modify station metadata and attributes in WebGIS', scope: 'webgis' },
-  { id: 'webgisCameraCalibration', label: 'Camera Calibration Controls', description: 'Adjust rig pitch, roll, yaw offsets in 360 viewer', scope: 'webgis' },
-  { id: 'webgisFlagDefects', label: 'Flag Field Defects', description: 'Mark and submit field defect markers on street panoramas', scope: 'webgis' },
-  { id: 'webgisExportData', label: 'Export Layers & High-Res Reports', description: 'Download GeoJSON, Shapefiles, and PDF audit summaries', scope: 'webgis' }
-];
-
-export const DEFAULT_ROLE_PERMISSIONS: RolePermissionsMatrix = {
-  Administrator: {
-    manageUsers: true,
-    manageSettings: true,
-    publishSequences: true,
-    runPipeline: true,
-    reviewQaqc: true,
-    deleteData: true,
-    webgisUpload: true,
-    webgisEditAttributes: true,
-    webgisCameraCalibration: true,
-    webgisFlagDefects: true,
-    webgisExportData: true
-  },
-  'Survey Operator': {
-    manageUsers: false,
-    manageSettings: false,
-    publishSequences: false,
-    runPipeline: true,
-    reviewQaqc: false,
-    deleteData: true,
-    webgisUpload: true,
-    webgisEditAttributes: false,
-    webgisCameraCalibration: true,
-    webgisFlagDefects: true,
-    webgisExportData: true
-  },
-  'QA Inspector': {
-    manageUsers: false,
-    manageSettings: false,
-    publishSequences: true,
-    runPipeline: false,
-    reviewQaqc: true,
-    deleteData: false,
-    webgisUpload: false,
-    webgisEditAttributes: true,
-    webgisCameraCalibration: false,
-    webgisFlagDefects: true,
-    webgisExportData: true
-  },
-  Viewer: {
-    manageUsers: false,
-    manageSettings: false,
-    publishSequences: false,
-    runPipeline: false,
-    reviewQaqc: false,
-    deleteData: false,
-    webgisUpload: false,
-    webgisEditAttributes: false,
-    webgisCameraCalibration: false,
-    webgisFlagDefects: false,
-    webgisExportData: true
-  },
-  guest: {
-    manageUsers: false,
-    manageSettings: false,
-    publishSequences: false,
-    runPipeline: false,
-    reviewQaqc: false,
-    deleteData: false,
-    webgisUpload: false,
-    webgisEditAttributes: false,
-    webgisCameraCalibration: false,
-    webgisFlagDefects: false,
-    webgisExportData: false
-  }
-};
-
-
-

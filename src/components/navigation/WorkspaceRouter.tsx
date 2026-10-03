@@ -1,6 +1,9 @@
 import React from 'react';
+import { ShieldAlert } from 'lucide-react';
 import type { WorkspaceKey, WorkspacePathQuery } from '../../utils/urlRouter';
-import { WorkspacePlaceholder, getWorkspaceDefinition } from '../../workspaces';
+import { WorkspacePlaceholder, canAccessWorkspace, getWorkspaceDefinition, getWorkspaceGuards } from '../../workspaces';
+import { ROLE_CAPABILITIES } from '../../lib/authz';
+import { useCapabilities } from '../../hooks/usePermission';
 
 const ProductionHubWorkspace = React.lazy(() => import('../production/hub/ProductionHubWorkspace').then(m => ({ default: m.ProductionHubWorkspace })));
 const NASStorageWorkspace = React.lazy(() => import('../NASStorageWorkspace').then(m => ({ default: m.NASStorageWorkspace })));
@@ -49,9 +52,56 @@ export const WorkspaceRouter = ({
   auditLogs,
   allKnownDefects
 }: WorkspaceRouterProps) => {
+  const { role, matrix, isGuest } = useCapabilities();
+
   // These pages are rendered directly in App.tsx — skip WorkspaceRouter
   if (currentPage === 'dashboard' || currentPage === 'settings' || currentPage === 'project' || currentPage === 'data') {
     return null;
+  }
+
+  // Defence in depth: the sidebar already locks guarded workspaces, but a
+  // direct URL / deep link must not mount a workspace the role cannot use.
+  if (
+    !isGuest &&
+    currentPage !== 'landing' &&
+    currentPage !== 'signin' &&
+    !canAccessWorkspace(currentPage, role, matrix)
+  ) {
+    const definition = getWorkspaceDefinition(currentPage);
+    const required = getWorkspaceGuards(currentPage)
+      .map((id) => ROLE_CAPABILITIES.find((c) => c.id === id)?.label || id)
+      .join(' or ');
+    return (
+      <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto animate-panel-enter">
+        <div className="bg-card border border-subtle rounded-xl p-4 flex items-center gap-3 shadow-sm">
+          <div className="p-2.5 bg-inner rounded-xl border border-subtle text-amber-400 shrink-0">
+            <ShieldAlert size={22} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-text-base tracking-wide">{t(definition.labelKey)}</h2>
+            <p className="text-[11px] text-text-muted mt-0.5 leading-relaxed">{t(definition.descriptionKey)}</p>
+          </div>
+        </div>
+        <div className="bg-card border border-subtle rounded-xl p-8 flex-1 flex flex-col items-center justify-center text-center gap-3 min-h-0">
+          <div className="p-3 bg-inner rounded-2xl border border-subtle text-text-muted">
+            <ShieldAlert size={28} strokeWidth={1.5} />
+          </div>
+          <h3 className="text-sm font-semibold text-text-base">Restricted for your role</h3>
+          <p className="text-xs text-text-muted max-w-md leading-relaxed">
+            Your role <span className="font-semibold text-text-base">{role}</span> does not include
+            {required ? <> <span className="font-mono text-[11px] text-text-base">{required}</span></> : ' this capability'}.
+            Ask an administrator to grant it from Administration &rsaquo; Roles.
+          </p>
+          <button
+            type="button"
+            onClick={() => goToWorkspace('dashboard')}
+            className="mt-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-inner hover:bg-slate-800 text-text-base border border-subtle transition-colors cursor-pointer"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (currentPage === 'storage') {
@@ -93,7 +143,6 @@ export const WorkspaceRouter = ({
       <PcMonitoringStation
         key="workspace-pcmon"
         projectSettings={projectSettings}
-        isGuestUser={isGuestUser}
         addNotification={addNotification}
         addAuditLog={addAuditLog}
         userLabel={userLabel}
@@ -120,7 +169,6 @@ export const WorkspaceRouter = ({
         projectSettings={projectSettings}
         setProjectSettings={setProjectSettings}
         authSession={authSession}
-        isGuestUser={isGuestUser}
         addNotification={addNotification}
         addAuditLog={addAuditLog}
         onBackToDashboard={() => goToWorkspace('dashboard')}

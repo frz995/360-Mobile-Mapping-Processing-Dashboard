@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
+import { screen, cleanup, fireEvent, act } from '@testing-library/react'
 import type { UserProject } from '../../services/projects'
 
 vi.mock('../../services/supabase', () => ({
@@ -11,6 +11,7 @@ vi.mock('../../services/supabase', () => ({
 }));
 
 import { ProjectWorkspace } from '../ProjectWorkspace'
+import { renderWithPermissions } from '../../test/permissions'
 
 const projectFixture = (over: Partial<UserProject> = {}): UserProject => ({
   id: 'proj-1',
@@ -28,10 +29,9 @@ const projectFixture = (over: Partial<UserProject> = {}): UserProject => ({
 })
 
 function renderPage(props: Partial<Parameters<typeof ProjectWorkspace>[0]> = {}) {
-  return render(
+  return renderWithPermissions(
     <ProjectWorkspace
       translate={props.translate ?? ((k: string) => k)}
-      isGuestUser={props.isGuestUser}
       activeProject={props.activeProject}
       projectList={props.projectList ?? []}
       projectsLoaded={props.projectsLoaded ?? true}

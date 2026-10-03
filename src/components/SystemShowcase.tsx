@@ -19,8 +19,7 @@ const useMediaQuery = (query: string): boolean => {
 };
 import {
     Compass,
-    Camera,
-    Database,
+        Database,
     ArrowRight,
     Cpu,
     Shield,
@@ -28,7 +27,7 @@ import {
     MapPin,
     Loader2,
 } from 'lucide-react';
-import { motion, useMotionValue, useMotionValueEvent, useReducedMotion, useScroll, useSpring } from 'framer-motion';
+import { LayoutGroup, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useScroll, useSpring } from 'framer-motion';
 import Lenis from 'lenis';
 import Snap from 'lenis/snap';
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
@@ -115,8 +114,59 @@ function findDistrictAt(lat: number, lng: number): { id: string; name: string; s
     return { id: nearest.meta.id, name: nearest.meta.name, state: nearest.meta.stateName, lat: nearest.meta.center[0], lng: nearest.meta.center[1] };
 }
 
+/**
+ * Module screenshot assets catalog.
+ * Points to public/screenshots/modules/<id>-NN.png
+ */
+const MODULE_MEDIA: Record<string, string[]> = {
+    project: [
+        '/screenshots/modules/project-01.png',
+        '/screenshots/modules/project-02.png',
+        '/screenshots/modules/project-03.png',
+        '/screenshots/modules/project-04.png',
+        '/screenshots/modules/project-05.png',
+    ],
+    dashboard: [
+        '/screenshots/modules/dashboard-01.png',
+        '/screenshots/modules/dashboard-02.png',
+        '/screenshots/modules/dashboard-03.png',
+        '/screenshots/modules/dashboard-04.png',
+        '/screenshots/modules/dashboard-05.png',
+        '/screenshots/modules/dashboard-06.png',
+    ],
+    roadAnalysis: [
+        '/screenshots/modules/roadAnalysis-01.png',
+        '/screenshots/modules/roadAnalysis-02.png',
+        '/screenshots/modules/roadAnalysis-03.png',
+        '/screenshots/modules/roadAnalysis-04.png',
+        '/screenshots/modules/roadAnalysis-05.png',
+        '/screenshots/modules/roadAnalysis-06.png',
+        '/screenshots/modules/roadAnalysis-07.png',
+        '/screenshots/modules/roadAnalysis-08.png',
+    ],
+    production: [
+        '/screenshots/modules/production-01.png',
+        '/screenshots/modules/production-02.png',
+        '/screenshots/modules/production-03.png',
+        '/screenshots/modules/production-04.png',
+        '/screenshots/modules/production-05.png',
+    ],
+    pcmon: [
+        '/screenshots/modules/pcmon-01.png',
+        '/screenshots/modules/pcmon-02.png',
+        '/screenshots/modules/pcmon-03.png',
+    ],
+    insights: [
+        '/screenshots/modules/insights-01.png',
+        '/screenshots/modules/insights-02.png',
+        '/screenshots/modules/insights-03.png',
+        '/screenshots/modules/insights-04.png',
+        '/screenshots/modules/insights-05.png',
+    ],
+};
+
 export interface SystemShowcaseProps {
-    onEnterDashboard?: (targetView?: string) => void;
+    onEnterDashboard?: (targetView?: string, options?: { isDirectEnter?: boolean }) => void;
     dailyData?: any[];
     batchLogs?: any[];
     projectSettings?: any;
@@ -134,7 +184,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     // Which scroll-story panel owns the viewport mid-band (-1 hero, 0..5 modules, 6 outro)
     const [activeSection, setActiveSection] = useState(HERO_SECTION);
     // Cinematic launch portal request (covers the swap into a workspace)
-    const [launch, setLaunch] = useState<{ view: string; title: string; image?: string } | null>(null);
+    const [launch, setLaunch] = useState<{ view: string; title: string; image?: string; isDirectEnter?: boolean } | null>(null);
     const reducedMotion = useReducedMotion();
 
     // Scroll story plumbing — the scroll port drives section tracking, the
@@ -372,10 +422,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     });
 
     // Cinematic launch: the portal overlay covers the hard swap into a workspace.
-    const handleLaunchModule = useCallback((view: string) => {
+    const handleLaunchModule = useCallback((view: string, isDirectEnter = false) => {
         if (!onEnterDashboard) return;
         if (reducedMotion) {
-            onEnterDashboard(view);
+            if (isDirectEnter) onEnterDashboard(view, { isDirectEnter: true });
+            else onEnterDashboard(view);
             return;
         }
         const mod = SYSTEM_MODULES.find((m) => m.id === view);
@@ -383,6 +434,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             view,
             title: mod ? mod.title.split('&')[0].trim() : 'Dashboard',
             image: mod?.images[0],
+            isDirectEnter,
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [onEnterDashboard, reducedMotion]);
@@ -392,7 +444,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         const t = window.setTimeout(() => {
             const view = launch.view;
             setLaunch(null);
-            if (onEnterDashboard) onEnterDashboard(view);
+            if (onEnterDashboard) {
+                if (launch.isDirectEnter) onEnterDashboard(view, { isDirectEnter: true });
+                else onEnterDashboard(view);
+            }
         }, 700);
         return () => window.clearTimeout(t);
     }, [launch, onEnterDashboard]);
@@ -413,463 +468,477 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         ? new Date(activeProject.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         : '—';
 
-    const SYSTEM_MODULES: SystemModule[] = [
-        // MODULE 1: PROJECT MANAGEMENT
+const SYSTEM_MODULES: SystemModule[] = [
+        // MODULE 1: PROJECT MANAGEMENT  → workspace `project`
         {
-            id: 'data',
-            category: 'Survey & Project Setup',
+            id: 'project',
+            category: 'Projects & Survey Scope',
             title: 'Project Management',
-            subtitle: 'Organise survey projects, areas, datasets and project information',
-            description: 'The starting point of every capture. Set up survey projects, define the districts and subgrid areas they cover, and keep the project ledger organised. Field CSV logs are validated against NAS storage and reconciled into the subgrid masterlist and daily records, so every area of the project stays accounted for.',
-            metricLabel: 'Surveyed Records',
-            metricValue: `${computedFrames.toLocaleString()} Frames`,
-            statusBadge: 'Survey Workspace',
-            images: [
-                '/screenshots/Dashboard_UI_17.png',
-                '/screenshots/Dashboard_UI_2.png',
-                '/screenshots/Dashboard_UI_4.png',
-                '/screenshots/Dashboard_UI_18.png'
-            ],
+            subtitle: 'Create delivery projects, define their geographic boundary and lock in the regional GIS scope',
+            description: 'Every delivery starts as a project. Pick a region preset to auto-fill the CRS, bounding box, basemap and capture equipment, commit the districts the survey covers, and keep active and completed projects in one register. Each project carries its own records, road plans and share links, so switching projects swaps the entire workspace cleanly.',
+            metricLabel: 'Active Project',
+            metricValue: activeProject?.name || projectSettings?.projectName || '—',
+            statusBadge: 'Project Register',
+            images: MODULE_MEDIA.project,
             icon: FolderKanban,
             iconImage: '/icon module/data_management.png',
+            tourVideoId: 'data',
             workflow: [
-                { step: '01. Set Up', action: 'Create survey projects, areas & subgrid boundaries' },
-                { step: '02. Collect', action: 'Import field CSV & raw panorama sets' },
-                { step: '03. Reconcile', action: 'Verify files against storage & update ledgers' }
+                { step: '01. Create', action: 'New project from a region preset' },
+                { step: '02. Bound', action: 'Commit districts & project boundary' },
+                { step: '03. Activate', action: 'Switch in — all data scoped to the project' }
             ],
             specs: [
-                { label: 'File Validation', value: 'NAS & Bucket Verification' },
-                { label: 'Ledger Types', value: 'Subgrid Masterlist & Daily Logs' },
-                { label: 'Inline Editing', value: 'Subgrid / Date / Equipment' }
+                { label: 'Region Presets', value: 'CRS · BBOX · Basemap · Equipment' },
+                { label: 'Boundary', value: 'District & State Multi-Select' },
+                { label: 'Isolation', value: 'Per-Project Data Scoping' }
             ],
             hotspots: [
                 {
-                    id: 'm2-switcher',
-                    x: 30,
-                    y: 18,
-                    title: 'Masterlist vs Daily Switcher',
-                    tag: 'Ledger Navigation',
-                    description: 'Toggle between Subgrid Masterlist (contract boundaries) and Daily Collection Logs (contractor field survey runs).',
-                    tip: 'Masterlist aggregates all daily survey runs into singular subgrid deliverables.'
-                },
-                {
-                    id: 'm2-table',
+                    id: 'p1-register',
                     x: 25,
-                    y: 52,
-                    title: 'Subgrid Registry & Metadata Table',
-                    tag: 'Registry Ledger',
-                    description: 'Tabular view with subgrid codes, survey dates, camera equipment types, and frame counts with inline editing.',
-                    tip: 'Press Enter after renaming subgrids or dates to save changes immediately.'
+                    y: 16,
+                    title: 'Project Register & Counts',
+                    tag: 'Project Ledger',
+                    description: 'All delivery projects as cards with contract reference, region, district chips and distance progress against target, plus total / active / completed counters.',
+                    tip: 'Filter by All, Active or Archived to focus the register.'
                 },
                 {
-                    id: 'm2-verify',
-                    x: 75,
-                    y: 52,
-                    title: 'Folder Verification & NAS Intake',
-                    tag: 'File Validation',
-                    description: 'Automated verifier checking NAS drive folders (/RAW/, /BLURRED/) against registered database entries.',
-                    tip: 'Run folder verification prior to dispatching batches to station pipelines.'
+                    id: 'p1-create',
+                    x: 88,
+                    y: 32,
+                    title: 'Create Project & Region Preset',
+                    tag: 'Project Setup',
+                    description: 'Configure a new campaign with name, contract reference, region and target distance; the region preset auto-fills CRS, bounding box, basemap and equipment.',
+                    tip: 'Target distance drives the progress bar on every project card.'
                 },
                 {
-                    id: 'm2-importer',
-                    x: 82,
-                    y: 20,
-                    title: 'CSV Trajectory Importer',
-                    tag: 'Intake Tool',
-                    description: 'Parses csvpanotrack files, validates lat/lng coordinates and timestamps, and creates staging panorama points.',
-                    tip: 'Drag and drop field CSVs directly into the importer for instant batch intake.'
-                }
-            ]
-        },
-
-        // MODULE 2: 360° IMAGERY
-        {
-            id: 'qaqc',
-            category: 'Captured Imagery Review',
-            title: '360° Imagery',
-            subtitle: 'Review captured panoramic imagery alongside spatial locations and survey metadata',
-            description: 'A full-screen panoramic review surface. Step through captured 360° frames in driving order, see exactly where each frame sits on the route with its heading and position, and read the survey metadata attached to every image. Optical quality checks run alongside each frame so blur and obstruction are caught before the delivery pass.',
-            metricLabel: 'Quality Compliance',
-            metricValue: `${slaPercent}% SLA`,
-            statusBadge: 'Panoramic Review',
-            images: [
-                '/screenshots/Dashboard_UI_26.png',
-                '/screenshots/Dashboard_UI_27.png',
-                '/screenshots/Dashboard_UI_28.png',
-                '/screenshots/Dashboard_UI_3.png'
-            ],
-            icon: Camera,
-            iconImage: '/icon module/qaqc.png',
-            workflow: [
-                { step: '01. Sequence', action: 'Load trajectory nodes in travel order' },
-                { step: '02. Review', action: 'Step through frames with heading & metadata' },
-                { step: '03. Flag', action: 'Mark blur, obstruction & bad GPS cases' }
-            ],
-            specs: [
-                { label: 'Sensor Format', value: '8K 360° Equirectangular' },
-                { label: 'Sharpness Metric', value: 'Tenengrad Variance (Min 12.0)' },
-                { label: 'Defect Classes', value: 'Blur, Obstruction, Bad GPS' }
-            ],
-            hotspots: [
-                {
-                    id: 'm4-viewer',
-                    x: 35,
-                    y: 45,
-                    title: '360° Panoramic Viewer Canvas',
-                    tag: 'Equirectangular Sphere',
-                    description: 'Hardware-accelerated viewer canvas supporting spherical pan, tilt, pitch, and zoom with compass heading.',
-                    tip: 'Press Spacebar on your keyboard to auto-advance through trajectory frames in driving sequence.'
+                    id: 'p1-boundary',
+                    x: 25,
+                    y: 75,
+                    title: 'Project Geographic Boundary',
+                    tag: 'District Boundary',
+                    description: 'Pick a Malaysia region, multi-select its districts and preview the boundary live on the map before committing it to the project.',
+                    tip: 'Click Apply to commit the selection as the project boundary.'
                 },
                 {
-                    id: 'm4-matrix',
-                    x: 75,
-                    y: 25,
-                    title: 'Defect Classification Matrix',
-                    tag: 'Defect Tagger',
-                    description: 'Classifies optical and positional anomalies into Blur, Nadir Obstruction, Horizon Leveling, or GPS Drift with confidence scores.',
-                    tip: 'Defects are permanently tagged and exported into contractor re-survey lists.'
-                },
-                {
-                    id: 'm4-tenengrad',
-                    x: 75,
-                    y: 58,
-                    title: 'Tenengrad Sharpness Analyzer',
-                    tag: 'Edge Gradient Math',
-                    description: 'Evaluates image focus using Tenengrad gradient variance in the middle horizon ROI (10% to 52% height).',
-                    tip: 'Adjust variance threshold in QAQC Studio to adapt to cloudy vs sunny conditions.'
-                },
-                {
-                    id: 'm4-strip',
-                    x: 50,
-                    y: 88,
-                    title: 'Trajectory Frame Sequence Strip',
-                    tag: 'Sequence Timeline',
-                    description: 'Timeline scrubber displaying all frames along the surveyed street with color-coded pass/fail status pins.',
-                    tip: 'Use Left/Right arrow keys for rapid keyboard navigation across hundreds of frames.'
-                }
-            ]
-        },
-
-        // MODULE 3: PROCESSING PIPELINE
-        {
-            id: 'production',
-            category: 'Pipeline & Worker Operations',
-            title: 'Processing Pipeline',
-            subtitle: 'Track data preparation, processing jobs, progress, failures and outputs',
-            description: 'A production pipeline that moves captured data from raw intake through blurring, stitching, enhancement and final assembly. Each subgrid advances through dedicated workstations and NAS GPU workers; progress is visible at a glance, failures are flagged early, and every finished output carries a full processing record.',
-            metricLabel: 'Pipeline Architecture',
-            metricValue: '4-Station + NAS GPU Worker',
-            statusBadge: 'Production Pipeline',
-            images: [
-                '/screenshots/Dashboard_UI_29.png',
-                '/screenshots/Dashboard_UI_30.png',
-                '/screenshots/Dashboard_UI_34.png',
-                '/screenshots/Dashboard_UI_31.png',
-                '/screenshots/Dashboard_UI_32.png',
-                '/screenshots/Dashboard_UI_33.png',
-                '/screenshots/Dashboard_UI_35.png'
-            ],
-            icon: Cpu,
-            iconImage: '/icon module/Production_pipeline.png',
-            workflow: [
-                { step: '01. Blur', action: 'PC 1: YOLOv8 face & license plate blur' },
-                { step: '02. Stitch', action: 'PC 2: PTGui / Creator 6 360° stitching' },
-                { step: '03. Enhance', action: 'PC 3: Lightroom preset color grading' }
-            ],
-            specs: [
-                { label: '4-Station Flow', value: 'PC1 Blur → PC2 Stitch → PC3 LR → PC4 PS' },
-                { label: 'FastAPI Daemon', value: 'Headless PyTorch CUDA Worker' },
-                { label: 'Lineage Engine', value: 'Asset Lineage Trace DAG' }
-            ],
-            hotspots: [
-                {
-                    id: 'm3-pipeline',
-                    x: 20,
-                    y: 40,
-                    title: 'Production Pipeline & Subgrid Matrix',
-                    tag: 'Subgrid Matrix',
-                    description: 'Central pipeline matrix tracking subgrid processing stages from RAW Intake through PC1 Blur, PC2 Stitch, PC3 Lightroom, and PC4 Photoshop.',
-                    tip: 'Click any subgrid row to inspect its active workstation stage.'
-                },
-                {
-                    id: 'm3-workstations',
+                    id: 'p1-switch',
                     x: 40,
-                    y: 35,
-                    title: '4-Station Multi-PC Configuration',
-                    tag: 'Station Routing',
-                    description: 'Configures LAN IP addresses, default operators, and NAS input/output directory routes for each physical station.',
-                    tip: 'Toggle between 4-Station Multi-PC workflow and automated NAS GPU Workers.'
-                },
-                {
-                    id: 'm3-handoff',
-                    x: 60,
-                    y: 35,
-                    title: 'Workstation Handoff Kanban Board',
-                    tag: 'Handoff Board',
-                    description: 'Board tracking subgrids moving sequentially across Blurring, Stitching, Lightroom, and Photoshop workstations.',
-                    tip: 'Track subgrids moving across physical PCs as they progress.'
-                },
-                {
-                    id: 'm3-lightroom',
-                    x: 75,
-                    y: 40,
-                    title: 'Station 3 Lightroom Preset Enhancer',
-                    tag: 'Color & Tone',
-                    description: 'Interactive designer to test exposure, contrast, shadows, and dehaze adjustments before running batch Lightroom presets.',
-                    tip: 'Use "Copy LR Preset Recipe" to apply identical settings in Adobe Lightroom Classic.'
-                },
-                {
-                    id: 'm3-nas',
-                    x: 50,
-                    y: 25,
-                    title: 'NAS & Daemon',
-                    tag: 'NAS & Daemon',
-                    description: 'Monitors NAS volume health, capacity quotas, GPU worker daemon connectivity, and indexed dataset catalogs.',
-                    tip: 'Click "Check Connectivity" to verify high-speed 10GbE network mounts.'
-                },
-                {
-                    id: 'm3-lineage',
-                    x: 50,
-                    y: 75,
-                    title: 'Data Lineage Trace Graph',
-                    tag: 'Lineage Graph',
-                    description: 'Visual DAG tree mapping raw input datasets through intermediate processing stages to final deliverable outputs.',
-                    tip: 'Every deliverable can be traced back to its exact operator, software version, and parameters.'
+                    y: 44,
+                    title: 'Active Project Switcher',
+                    tag: 'Data Isolation',
+                    description: 'Load any project to make it current; maps, records, road plans and share links are all scoped to the active project.',
+                    tip: 'The CURRENT badge marks the project the dashboard is scoped to.'
                 }
             ]
         },
 
-        // MODULE 4: QA / QC
+        // MODULE 2: WEBGIS DASHBOARD & DATA MANAGEMENT  → workspace `dashboard`
         {
-            id: 'reports',
-            category: 'Quality Assurance & Audit',
-            title: 'QA / QC',
-            subtitle: 'Review survey data and identify issues before final delivery',
-            description: 'The quality gate before delivery. Compile QA results across every surveyed area, verify defect rates against agreed thresholds, and follow coverage and capture gaps through to resolution. Formal progress and quality reports are exported ahead of sign-off, with every decision recorded in the audit trail.',
-            metricLabel: 'Delivery Readiness',
-            metricValue: `${slaPercent}% SLA`,
-            statusBadge: 'Quality Review',
-            images: [
-                '/screenshots/Dashboard_UI_39.png',
-                '/screenshots/Dashboard_UI_37.png',
-                '/screenshots/Dashboard_UI_36.png',
-                '/screenshots/Dashboard_UI_38.png',
-                '/screenshots/Dashboard_UI_14.png',
-                '/screenshots/Dashboard_UI_15.png'
-            ],
-            icon: Shield,
-            iconImage: '/icon module/security-audit.png',
-            workflow: [
-                { step: '01. Compile', action: 'Aggregate QA results by surveyed area' },
-                { step: '02. Verify', action: 'Check defect rates against agreed thresholds' },
-                { step: '03. Deliver', action: 'Export formal progress & quality reports' }
-            ],
-            specs: [
-                { label: 'Audit Trail', value: 'Immutable Event Timestamping' },
-                { label: 'Reporting', value: 'Formal Executive PDF / CSV Milestones' },
-                { label: 'Security', value: 'Role-Based Access Control (RBAC)' }
-            ],
-            hotspots: [
-                {
-                    id: 'm6-executive',
-                    x: 30,
-                    y: 35,
-                    title: 'Progress & Quality Audit Report',
-                    tag: 'Formal Export',
-                    description: 'Project-wide progress and quality summary over all surveyed subgrids covering distance, coverage, QA quality, and capture gaps in a print-ready document.',
-                    tip: 'Click "Generate & Print" to auto-open print dialog and export client-ready PDF.'
-                },
-                {
-                    id: 'm6-analytics',
-                    x: 70,
-                    y: 35,
-                    title: 'Project Survey Reports & Progress Ledger',
-                    tag: 'Survey Ledger',
-                    description: 'Contract progress tracking against total mileage targets with subgrid summaries and daily operation records.',
-                    tip: 'Tracks contractor SLA defect rates against allowed threshold percentages.'
-                },
-                {
-                    id: 'm6-operations',
-                    x: 50,
-                    y: 35,
-                    title: 'Survey Operations Analytics',
-                    tag: 'Operations Overview',
-                    description: 'Realtime charts of road capture analytics, publication status distribution (Published vs Partial), and daily throughput trends.',
-                    tip: 'Visualizes current database metrics without modifying raw imagery.'
-                },
-                {
-                    id: 'm6-coverage',
-                    x: 50,
-                    y: 65,
-                    title: 'Survey Coverage & Capture Gaps Analysis',
-                    tag: 'Gap Detection',
-                    description: 'Detects incomplete subgrids, survey frame shortages, and unpublished capture risks across regional grid zones.',
-                    tip: 'Flagged capture gaps automatically generate field re-survey work orders.'
-                },
-                {
-                    id: 'm6-audit',
-                    x: 70,
-                    y: 75,
-                    title: 'Immutable Audit Trail Ledger',
-                    tag: 'Event Logging',
-                    description: 'Cryptographically verified event logs recording every file upload, QA rejection, parameter edit, and user sign-in.',
-                    tip: 'Audit logs cannot be altered or deleted, ensuring full accountability.'
-                },
-                {
-                    id: 'm6-rbac',
-                    x: 50,
-                    y: 85,
-                    title: 'Role-Based Access Control (RBAC)',
-                    tag: 'Security Matrix',
-                    description: 'Granular role management for Admins, Operators, QA Reviewers, and Guests with permission restrictions.',
-                    tip: 'Guest mode allows safe read-only browsing without risk of modifying survey data.'
-                }
-            ]
-        },
-
-        // MODULE 5: GIS WORKSPACE
-        {
-            id: 'webgis',
-            category: 'Spatial Operations',
-            title: 'GIS Workspace',
-            subtitle: 'View, analyse and manage spatial datasets directly within the operational map',
-            description: 'The operational map of the project. Survey trajectories, subgrid boundaries and station points render on a vector basemap alongside the current status of incoming batches. Use the map to inspect progress by area, open a 360° frame from any route point, and jump into the workspace that manages the underlying data.',
+            id: 'dashboard',
+            category: 'WebGIS · Published View',
+            title: 'WebGIS Dashboard & Data Management',
+            subtitle: 'See published survey coverage on the map and keep the masterlist and daily records in order',
+            description: 'The published face of the project. Survey trajectories, subgrid boundaries and frame points render on a MapLibre basemap with a 360° viewer HUD and the Operational Action Center. Behind it, Data Management holds the Subgrid Masterlist, Daily field records and Dataset Recovery — CSV imports map their columns automatically, records publish to WebGIS individually or in bulk, and deletions pass through approval and the recycle bin.',
             metricLabel: 'Total Distance Mapped',
-            metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}% · ${activeJobs} Active)`,
-            statusBadge: 'Operational Map',
-            images: [
-                '/screenshots/Dashboard_UI_1.png',
-                '/screenshots/Dashboard_UI_13.png',
-                '/screenshots/Dashboard_UI_5.png',
-                '/screenshots/Dashboard_UI_6.png',
-                '/screenshots/Dashboard_UI_7.png',
-                '/screenshots/Dashboard_UI_8.png'
-            ],
+            metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}% of target)`,
+            statusBadge: 'Published View',
+            images: MODULE_MEDIA.dashboard,
             icon: Compass,
             iconImage: '/icon module/production_webgis.png',
+            tourVideoId: 'webgis',
             workflow: [
-                { step: '01. Ingest', action: 'Parse GPS/GNSS trajectory coordinates' },
-                { step: '02. Project', action: 'Cluster points into subgrid boundaries' },
-                { step: '03. Verify', action: 'Calculate geodesic road mileage' }
+                { step: '01. Import', action: 'Field CSV with automatic column mapping' },
+                { step: '02. Reconcile', action: 'Masterlist & daily records per subgrid' },
+                { step: '03. Publish', action: 'Push verified records to the WebGIS map' }
             ],
             specs: [
-                { label: 'Spatial Tracking', value: 'High-Precision GNSS' },
-                { label: 'Map Engine', value: 'MapLibre GL Vector Basemap' },
-                { label: 'Action Stream', value: 'Operational Action Center' }
+                { label: 'Map Engine', value: 'MapLibre GL + 360° HUD Viewer' },
+                { label: 'Ledgers', value: 'Masterlist · Daily · Dataset Recovery' },
+                { label: 'Safe Delete', value: 'Approval-Gated + Recycle Bin' }
             ],
             hotspots: [
                 {
-                    id: 'm1-kpi',
+                    id: 'd2-kpi',
                     x: 25,
                     y: 12,
-                    title: 'Project Overview',
+                    title: 'KPI Summary',
                     tag: 'Project Metrics',
-                    description: 'Current figures for Total Distance Mapped (KM), Processed 360 Panoramas, Active Processing Jobs, and Overall Pipeline Health SLA.',
-                    tip: 'Hover or click any metric card to inspect its underlying subgrid completion breakdown.'
+                    description: 'Distance mapped against target, processed 360° panoramas, active processing runs and overall data quality health for the active project.',
+                    tip: 'Figures come straight from the live daily and batch records.'
                 },
                 {
-                    id: 'm1-action',
+                    id: 'd2-map',
+                    x: 40,
+                    y: 55,
+                    title: 'Interactive WebGIS Map',
+                    tag: 'Spatial Trajectory',
+                    description: 'MapLibre GL canvas rendering survey trajectories, subgrid boundaries and frame points on your choice of basemap.',
+                    tip: 'Click any frame point to open it in the 360° viewer.'
+                },
+                {
+                    id: 'd2-hud',
+                    x: 82,
+                    y: 80,
+                    title: '360° HUD Viewer',
+                    tag: 'Spherical Preview',
+                    description: 'Embedded panorama viewer showing heading, coordinates and quality status for the selected frame, right on top of the map.',
+                    tip: 'Maximise the HUD for full-screen panoramic review.'
+                },
+                {
+                    id: 'd2-action',
                     x: 50,
                     y: 22,
                     title: 'Operational Action Center',
                     tag: 'Work Stream',
-                    description: 'Monitoring bar displaying ongoing workstation batches, QA defect flags requiring attention, and pending staging subgrids.',
-                    tip: 'Click the direct action button to jump straight to the required defect table.'
+                    description: 'Surfaces ongoing batches, QA defect flags that need attention and subgrids waiting to be published.',
+                    tip: 'Use the action buttons to jump straight to the record that needs work.'
                 },
                 {
-                    id: 'm1-map',
-                    x: 35,
-                    y: 56,
-                    title: 'Interactive Vector WebGIS Map',
-                    tag: 'Spatial Trajectory',
-                    description: 'Hardware-accelerated MapLibre GL canvas rendering road trajectory geometries, subgrid boundaries, and station point nodes.',
-                    tip: 'Click any station node along the route to load that frame in the 360° spherical viewer.'
+                    id: 'd2-ledger',
+                    x: 30,
+                    y: 18,
+                    title: 'Masterlist / Daily / Recovery',
+                    tag: 'Data Management',
+                    description: 'Switch between the Subgrid Masterlist, Daily field records and Dataset Recovery, with inline editing and bulk publish to WebGIS.',
+                    tip: 'The masterlist aggregates every daily run into a single subgrid deliverable.'
                 },
                 {
-                    id: 'm1-admin',
+                    id: 'd2-import',
                     x: 82,
-                    y: 52,
-                    title: 'Subgrid Processing & Admin Table',
-                    tag: 'Batch Queue',
-                    description: 'Subgrid batch ledger showing active processing status, station progress percentage, and frame counts.',
-                    tip: 'Filter by subgrid code (e.g. N94E70) to inspect specific regional processing batches.'
-                },
-                {
-                    id: 'm1-qa',
-                    x: 82,
-                    y: 84,
-                    title: '360 View & QA Mini-Inspector',
-                    tag: 'Spherical Preview',
-                    description: 'Embedded spherical panorama preview displaying heading orientation, coordinates, and optical quality status.',
-                    tip: 'Click the maximize icon to open the full-screen 8K panoramic defect workspace.'
+                    y: 20,
+                    title: 'CSV Importer & Column Mapping',
+                    tag: 'Intake Tool',
+                    description: 'Imports field CSVs and maps date, grid, subgrid, coordinates, heading, frame counts and equipment columns automatically by alias; duplicate images are skipped.',
+                    tip: 'Deleting records is submitted for approval instead of removing data outright.'
                 }
             ]
         },
 
-        // MODULE 6: DATA MANAGEMENT
+        // MODULE 3: ROAD ANALYSIS & PROJECT EXPLORER  → workspace `roadAnalysis`
         {
-            id: 'postgis',
-            category: 'Spatial Registry & Storage',
-            title: 'Data Management',
-            subtitle: 'Maintain project datasets, metadata, files and processing records in one environment',
-            description: 'One environment for everything the pipeline produces. Spatial datasets are staged in PostGIS with geospatial indexing, raw and processed imagery are tracked in storage with signed access, and every processing record stays in sync with the operational map. Verified datasets publish only after passing the quality gate.',
-            metricLabel: 'Spatial Infrastructure',
-            metricValue: 'PostGIS + GIST Index',
-            statusBadge: 'Spatial Database',
-            images: [
-                '/screenshots/Dashboard_UI_9.png',
-                '/screenshots/Dashboard_UI_10.png',
-                '/screenshots/Dashboard_UI_11.png',
-                '/screenshots/Dashboard_UI_12.png'
-            ],
-            icon: Database,
-            iconImage: '/icon module/database_management.png',
+            id: 'roadAnalysis',
+            category: 'Spatial Analysis',
+            title: 'Road Analysis & Project Explorer',
+            subtitle: 'Compare surveyed coverage against the planned road network and share the results',
+            description: 'Import a road plan from GeoJSON, CSV, KML/KMZ, GPX or zipped archives — decoded off the main thread and clipped to the project districts — then promote it as the baseline. Coverage is traced against the network to expose surveyed roads and gaps. The Project Explorer breaks the area down by Roads, Density, Complexity, Panotrack and Coverage with choropleth classes and operator-defined grids, and results leave as print layouts, 3D Map Studio scenes or password-protected share links.',
+            metricLabel: 'Plan Coverage',
+            metricValue: `${pctTarget}% of target`,
+            statusBadge: 'Coverage Analysis',
+            images: MODULE_MEDIA.roadAnalysis,
+            icon: MapPin,
+            iconImage: '/icon module/qaqc.png',
+            tourVideoId: 'qaqc',
             workflow: [
-                { step: '01. Stage', action: 'Write imported rows to staging tables' },
-                { step: '02. Index', action: 'Apply spatial GIST index on geometry' },
-                { step: '03. Publish', action: 'Synchronize verified rows to production' }
+                { step: '01. Import', action: 'Load road plan & GIS layers' },
+                { step: '02. Trace', action: 'Compare surveyed coverage & gaps' },
+                { step: '03. Share', action: 'Print, 3D Studio or share link' }
             ],
             specs: [
-                { label: 'Spatial Database', value: 'PostgreSQL + PostGIS Extension' },
-                { label: 'Spatial Index', value: 'GIST on Point Geometry (lat/lng)' },
-                { label: 'Staging Pipeline', value: 'csvpanotrack → staging → production' }
+                { label: 'GIS Import', value: 'GeoJSON · CSV · KML/KMZ · GPX · ZIP' },
+                { label: 'Explorer', value: 'Roads · Density · Complexity · Panotrack · Coverage' },
+                { label: 'Outputs', value: 'Print · 3D Studio · Share Link' }
             ],
             hotspots: [
                 {
-                    id: 'm5-schema',
+                    id: 'r3-catalog',
+                    x: 15,
+                    y: 30,
+                    title: 'Road Catalog & Plan Baseline',
+                    tag: 'Data Catalog',
+                    description: 'Every imported layer lives in the catalog; promote a road layer to become the active plan baseline the coverage is measured against.',
+                    tip: 'Catalog geometry is backed up to storage, so large plans survive reloads.'
+                },
+                {
+                    id: 'r3-import',
+                    x: 15,
+                    y: 55,
+                    title: 'GIS Import Panel',
+                    tag: 'Background Worker',
+                    description: 'Decodes GeoJSON, CSV, KML/KMZ, GPX and zipped layers, reports warnings and clips features to the project districts without freezing the map.',
+                    tip: 'Out-of-region features are clipped automatically on import.'
+                },
+                {
+                    id: 'r3-coverage',
+                    x: 55,
+                    y: 50,
+                    title: 'Coverage Gap Overlay',
+                    tag: 'Topology Trace',
+                    description: 'Surveyed trajectories are traced along the planned road network; unsurveyed segments are highlighted as coverage gaps.',
+                    tip: 'Toggle the gap overlay to plan the next field run.'
+                },
+                {
+                    id: 'r3-explorer',
+                    x: 82,
+                    y: 40,
+                    title: 'Project Explorer & Choropleth',
+                    tag: 'Area Breakdown',
+                    description: 'Roads, Density, Complexity, Panotrack and Coverage tabs with charts, choropleth classes and operator-defined grids over the project area.',
+                    tip: 'Edit the choropleth classes live in the settings editor.'
+                },
+                {
+                    id: 'r3-studio',
+                    x: 55,
+                    y: 20,
+                    title: '3D Map Studio',
+                    tag: '3D Scene',
+                    description: 'Tilted 3D scenes with basemap atmosphere and lighting for presentation-ready views of the survey area.',
+                    tip: 'Pair 3D Studio with the Explorer for client walkthroughs.'
+                },
+                {
+                    id: 'r3-share',
+                    x: 82,
+                    y: 85,
+                    title: 'Print & Share',
+                    tag: 'Outputs',
+                    description: 'Print layouts preview exactly what the Explorer shows, and public share links can be protected with a password.',
+                    tip: 'Shared maps open read-only — no account required.'
+                }
+            ]
+        },
+
+        // MODULE 4: PRODUCTION HUB  → workspace `production`
+        {
+            id: 'production',
+            category: 'Production Pipeline',
+            title: 'Production Hub',
+            subtitle: 'Move every subgrid from stitched intake to WebGIS release through gated stations',
+            description: 'One hub for the whole assembly line. The 4-PC Flight Board tracks each subgrid through PC 1 Privacy Blur, PC 2 PTGui stitching, PC 3 Lightroom enhancement and PC 4 Photoshop nadir patch. Stitched output is paired against its intake, accepted through 360° QA inspection, checked at the Cloud Bucket Gate and only then released to WebGIS — with every move recorded in the Stage History Ledger so any deliverable can be traced back.',
+            metricLabel: 'Active Runs',
+            metricValue: `${activeJobs} in progress`,
+            statusBadge: 'Gated Pipeline',
+            images: MODULE_MEDIA.production,
+            icon: Cpu,
+            iconImage: '/icon module/Production_pipeline.png',
+            tourVideoId: 'production',
+            workflow: [
+                { step: '01. Pair', action: 'Match stitched output to intake' },
+                { step: '02. Process', action: 'Blur → Stitch → Enhance → Nadir' },
+                { step: '03. Release', action: 'QA, bucket gate & WebGIS release' }
+            ],
+            specs: [
+                { label: 'Station Flow', value: 'PC1 Blur → PC2 Stitch → PC3 LR → PC4 PS' },
+                { label: 'Gates', value: 'Acceptance QA · Bucket · WebGIS Release' },
+                { label: 'Traceability', value: 'Stage History Event Ledger' }
+            ],
+            hotspots: [
+                {
+                    id: 'h4-stations',
+                    x: 12,
+                    y: 21,
+                    title: '4-PC Multi-Station Flight Board',
+                    tag: 'Station Board',
+                    description: 'Live card per workstation with software, IN/OUT NAS folders, progress and the last agent pulse, plus the Daily Processing Registry underneath.',
+                    tip: 'The board hydrates automatically once each station agent answers.'
+                },
+                {
+                    id: 'h4-intake',
+                    x: 23,
+                    y: 21,
+                    title: 'Stitched Intake & Pairing',
+                    tag: 'Intake',
+                    description: 'Pairs stitched panoramas with their survey runs and metadata CSVs, using real bucket manifests instead of guessed filenames.',
+                    tip: 'Unpaired frames are listed so nothing slips into release unnoticed.'
+                },
+                {
+                    id: 'h4-qa',
+                    x: 33,
+                    y: 21,
+                    title: 'Acceptance QA & 360° Inspection',
+                    tag: 'Quality Gate',
+                    description: 'Frame-by-frame 360° inspection with optical quality checks; rejected frames are flagged before anything reaches the bucket.',
+                    tip: 'Thresholds can be tuned in the QAQC Threshold Studio.'
+                },
+                {
+                    id: 'h4-bucket',
+                    x: 44,
+                    y: 21,
+                    title: 'Cloud Bucket Gate',
+                    tag: 'Storage Gate',
+                    description: 'Verifies accepted output against the cloud storage bucket so only complete, uploaded sets move on.',
+                    tip: 'Missing objects block the gate with a clear reason.'
+                },
+                {
+                    id: 'h4-release',
+                    x: 53,
+                    y: 21,
+                    title: 'WebGIS Release Gate',
+                    tag: 'Publication',
+                    description: 'Pre-flight checks then publishes the verified subgrid to the WebGIS view.',
+                    tip: 'Release only unlocks once QA and the bucket gate have passed.'
+                },
+                {
+                    id: 'h4-history',
+                    x: 62,
+                    y: 21,
+                    title: 'Stage History Ledger',
+                    tag: 'Event Ledger',
+                    description: 'Append-only record of every stage transition per subgrid — who moved it, when, and from which station.',
+                    tip: 'Use it to trace any deliverable back to its raw intake.'
+                }
+            ]
+        },
+
+        // MODULE 5: PC MONITORING & NAS STORAGE  → workspace `pcmon`
+        {
+            id: 'pcmon',
+            category: 'Infrastructure & Storage',
+            title: 'PC Monitoring & NAS Storage',
+            subtitle: 'Watch every workstation and the NAS that feeds them, and step in remotely',
+            description: 'Live CPU, GPU, RAM and storage metrics for each production PC, with a one-click RDP session or an in-browser remote console that can go full screen. When a station is down, the reason is spelled out — no address configured, or the agent is alive but cannot see its NAS mount. NAS & Daemon browses the working directories, reports capacity per volume and verifies file integrity against the records.',
+            metricLabel: 'Workstations',
+            metricValue: '4-PC + NAS',
+            statusBadge: 'Live Infrastructure',
+            images: MODULE_MEDIA.pcmon,
+            icon: Database,
+            iconImage: '/icon module/database_management.png',
+            tourVideoId: 'postgis',
+            workflow: [
+                { step: '01. Monitor', action: 'Live per-PC CPU / GPU / RAM / disk' },
+                { step: '02. Connect', action: 'One-click RDP or browser console' },
+                { step: '03. Verify', action: 'NAS capacity & file integrity' }
+            ],
+            specs: [
+                { label: 'Telemetry', value: 'CPU · GPU · RAM · Storage per PC' },
+                { label: 'Remote Access', value: 'RDP Handoff + noVNC Console' },
+                { label: 'Storage', value: 'Explorer · Volumes · Integrity Check' }
+            ],
+            hotspots: [
+                {
+                    id: 'm5-telemetry',
                     x: 30,
                     y: 35,
-                    title: 'PostGIS Spatial Tables & Schema',
-                    tag: 'Relational Engine',
-                    description: 'Inspect tables (panoramas, staging_panoramas, subgrids) with geometry(Point, 4326) columns and spatial bounds.',
-                    tip: 'Spatial tables support standard ST_DWithin and ST_Contains SQL queries.'
+                    title: 'Station Telemetry Grid',
+                    tag: 'PC Metrics',
+                    description: 'Per-workstation CPU, GPU, RAM and storage gauges reported by the station agent on each PC.',
+                    tip: 'Each station needs its agent running to report live figures.'
                 },
                 {
-                    id: 'm5-gist',
+                    id: 'm5-remote',
                     x: 70,
                     y: 35,
-                    title: 'GIST Spatial Index Optimization',
-                    tag: 'Spatial Indexing',
-                    description: 'R-Tree index structures on latitude/longitude geometry for sub-millisecond bounding box lookups.',
-                    tip: 'GIST indexes ensure smooth map panning even with over 500,000 surveyed points.'
+                    title: 'Remote Desktop Console',
+                    tag: 'Remote Access',
+                    description: 'Download a ready-made .rdp file for a station, or open its desktop in the browser through a secure tunnel — full screen for floor monitoring.',
+                    tip: 'HTTPS deployments need an HTTPS tunnel URL for the browser console.'
                 },
                 {
-                    id: 'm5-staging',
+                    id: 'm5-offline',
                     x: 50,
-                    y: 70,
-                    title: 'Staging Gate & Production Sync',
-                    tag: 'Publish Pipeline',
-                    description: 'Two-tier staging architecture ensuring unverified field points never reach client-facing WebGIS layers.',
-                    tip: 'Only QA-approved subgrids can be published to the deliverable layers.'
+                    y: 60,
+                    title: 'Offline Reason Diagnostics',
+                    tag: 'Health',
+                    description: 'Distinguishes a station with no address configured from one whose agent is alive but cannot see its NAS mount.',
+                    tip: 'Fix the reason shown — the card recovers on the next pulse.'
                 },
                 {
-                    id: 'm5-storage',
-                    x: 80,
-                    y: 80,
-                    title: 'Cloud Storage Bucket Sync',
-                    tag: 'Object Storage',
-                    description: 'Manages object storage buckets for high-resolution 8K panoramas with automatic signed URL generation.',
-                    tip: 'Pre-signed URLs protect raw unblurred imagery from unauthorized public access.'
+                    id: 'm5-explorer',
+                    x: 15,
+                    y: 17,
+                    title: 'NAS Directory Explorer',
+                    tag: 'Folders',
+                    description: 'Browse the NAS working folders for each stage and jump straight into the Production Hub for a subgrid.',
+                    tip: 'Open a folder to see exactly what each station has written.'
+                },
+                {
+                    id: 'm5-capacity',
+                    x: 50,
+                    y: 45,
+                    title: 'Capacity & Volumes',
+                    tag: 'Storage Telemetry',
+                    description: 'NAS volume health, worker daemon connectivity, directory quotas and the RAW / Processed / Deliverable dataset catalog.',
+                    tip: 'Use Check Connectivity to re-test the worker and NAS endpoints.'
+                },
+                {
+                    id: 'm5-integrity',
+                    x: 33,
+                    y: 17,
+                    title: 'Integrity Verification',
+                    tag: 'Validation',
+                    description: 'Cross-checks files on the NAS against the registered records to catch missing or orphaned images.',
+                    tip: 'Run verification before handing a subgrid to the stations.'
+                }
+            ]
+        },
+
+        // MODULE 6: ANALYTICS, REPORTS & ADMINISTRATION  → workspace `reports`
+        {
+            id: 'insights',
+            category: 'Insights & Governance',
+            title: 'Analytics, Reports & Administration',
+            subtitle: 'Measure progress and quality, export formal reports and control who can do what',
+            description: 'Survey Analytics turns the live records into overview, ledger, coverage and quality panels. Reports export Executive, Daily, Subgrid, QA and Lineage reports as print-ready PDFs. Administration manages users and role permissions, approves deletion requests, keeps the audit log and reports system health — so every change to project data is accounted for.',
+            metricLabel: 'Data Quality',
+            metricValue: `${slaPercent}% SLA`,
+            statusBadge: 'Governance',
+            images: MODULE_MEDIA.insights,
+            icon: Shield,
+            iconImage: '/icon module/security-audit.png',
+            tourVideoId: 'reports',
+            workflow: [
+                { step: '01. Analyse', action: 'Coverage, quality & ledger trends' },
+                { step: '02. Report', action: 'Export executive & QA PDFs' },
+                { step: '03. Govern', action: 'Users, approvals & audit trail' }
+            ],
+            specs: [
+                { label: 'Analytics', value: 'Overview · Ledger · Coverage · Quality' },
+                { label: 'Reports', value: 'Executive · Daily · Subgrid · QA · Lineage' },
+                { label: 'Administration', value: 'Users · Roles · Approvals · Audit · Health' }
+            ],
+            hotspots: [
+                {
+                    id: 'i6-overview',
+                    x: 30,
+                    y: 30,
+                    title: 'Analytics Overview',
+                    tag: 'Survey Analytics',
+                    description: 'Headline survey performance — distance, frames, runs and publication status — computed from the live records.',
+                    tip: 'Analytics never modify data; they only read the current records.'
+                },
+                {
+                    id: 'i6-coverage',
+                    x: 60,
+                    y: 30,
+                    title: 'Coverage & Quality Panels',
+                    tag: 'Data Quality',
+                    description: 'Road plan coverage against target and defect-rate quality metrics per subgrid, alongside the processing ledger.',
+                    tip: 'Quality figures track defect rates against the agreed threshold.'
+                },
+                {
+                    id: 'i6-reports',
+                    x: 45,
+                    y: 55,
+                    title: 'Report PDF Export',
+                    tag: 'Formal Export',
+                    description: 'Executive, Daily, Subgrid, QA and Lineage reports rendered as print-ready, client-facing PDF documents.',
+                    tip: 'Generate the executive report ahead of every progress meeting.'
+                },
+                {
+                    id: 'i6-users',
+                    x: 20,
+                    y: 20,
+                    title: 'User & Role Management',
+                    tag: 'Access Control',
+                    description: 'Invite users and assign roles; each role grants a precise set of capabilities across the workspaces.',
+                    tip: 'Guests browse read-only without any risk to survey data.'
+                },
+                {
+                    id: 'i6-approvals',
+                    x: 40,
+                    y: 20,
+                    title: 'Deletion Approvals',
+                    tag: 'Approvals',
+                    description: 'Deletion requests raised in Data Management wait here for an approver before anything is removed.',
+                    tip: 'Rejected requests leave the records untouched.'
+                },
+                {
+                    id: 'i6-audit',
+                    x: 60,
+                    y: 20,
+                    title: 'Audit Logs & System Health',
+                    tag: 'Accountability',
+                    description: 'Every upload, publish, edit and sign-in is logged, next to a live view of service and database health.',
+                    tip: 'Filter the audit log by user or action type when investigating changes.'
                 }
             ]
         }
@@ -1792,18 +1861,27 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     aria-label="System Modules"
                     className="hidden xl:flex items-center gap-3 2xl:gap-5 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto z-10"
                 >
-                    {SYSTEM_MODULES.map((mod, idx) => (
-                        <button
-                            key={mod.id}
-                            onClick={() => handleModuleChange(idx)}
-                            className={`text-[11px] 2xl:text-xs font-medium transition-colors cursor-pointer py-1 whitespace-nowrap ${activeIndex === idx && viewMode === 'modules'
-                                    ? 'text-white font-semibold'
-                                    : 'text-neutral-400 hover:text-white'
-                                }`}
-                        >
-                            {mod.title.split('&')[0].trim()}
-                        </button>
-                    ))}
+                    <LayoutGroup id="showcase-header-modules-nav">
+                        {SYSTEM_MODULES.map((mod, idx) => (
+                            <button
+                                key={mod.id}
+                                onClick={() => handleModuleChange(idx)}
+                                className={`relative text-[11px] 2xl:text-xs font-medium transition-colors cursor-pointer py-1 whitespace-nowrap ${activeIndex === idx && viewMode === 'modules'
+                                        ? 'text-white font-semibold'
+                                        : 'text-neutral-400 hover:text-white'
+                                    }`}
+                            >
+                                {mod.title.split('&')[0].trim()}
+                                {activeIndex === idx && viewMode === 'modules' && (
+                                    <motion.span
+                                        layoutId="showcase-module-nav-indicator"
+                                        className="absolute bottom-0 inset-x-0 h-0.5 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.6)] pointer-events-none"
+                                        transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                                    />
+                                )}
+                            </button>
+                        ))}
+                    </LayoutGroup>
                 </nav>
 
                 {/* Right: View Mode Switcher + Action Buttons */}
@@ -1812,29 +1890,45 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     <div className="h-4 w-px bg-white/10 hidden xl:block" />
 
                     {/* View Mode Switcher: Clean monochromatic text tabs with Google font icons, no box button */}
-                    <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs">
-                        <button
-                            onClick={() => setViewMode('globe')}
-                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'globe'
-                                    ? 'text-white font-semibold border-white'
-                                    : 'text-neutral-400 hover:text-white border-transparent'
-                                }`}
-                        >
-                            <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">public</span>
-                            <span className="hidden xs:inline">3D Earth</span>
-                            <span className="xs:hidden">Earth</span>
-                        </button>
-                        <button
-                            onClick={() => setViewMode('modules')}
-                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'modules'
-                                    ? 'text-white font-semibold border-white'
-                                    : 'text-neutral-400 hover:text-white border-transparent'
-                                }`}
-                        >
-                            <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">grid_view</span>
-                            <span>Modules</span>
-                        </button>
-                    </div>
+                    <LayoutGroup id="showcase-view-mode-tabs">
+                        <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs">
+                            <button
+                                onClick={() => setViewMode('globe')}
+                                className={`relative py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 ${viewMode === 'globe'
+                                        ? 'text-white font-semibold'
+                                        : 'text-neutral-400 hover:text-white'
+                                    }`}
+                            >
+                                <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">public</span>
+                                <span className="hidden xs:inline">3D Earth</span>
+                                <span className="xs:hidden">Earth</span>
+                                {viewMode === 'globe' && (
+                                    <motion.span
+                                        layoutId="showcase-view-mode-indicator"
+                                        className="absolute bottom-0 inset-x-0 h-0.5 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.7)] pointer-events-none"
+                                        transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                                    />
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setViewMode('modules')}
+                                className={`relative py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 ${viewMode === 'modules'
+                                        ? 'text-white font-semibold'
+                                        : 'text-neutral-400 hover:text-white'
+                                    }`}
+                            >
+                                <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">grid_view</span>
+                                <span>Modules</span>
+                                {viewMode === 'modules' && (
+                                    <motion.span
+                                        layoutId="showcase-view-mode-indicator"
+                                        className="absolute bottom-0 inset-x-0 h-0.5 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.7)] pointer-events-none"
+                                        transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                                    />
+                                )}
+                            </button>
+                        </div>
+                    </LayoutGroup>
 
                     <div className="h-4 w-px bg-white/10 hidden sm:block" />
 
@@ -2124,7 +2218,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             mod={mod}
                             index={i}
                             total={SYSTEM_MODULES.length}
-                            onEnter={handleLaunchModule}
+                            onEnter={(id) => handleLaunchModule(id, true)}
                         />
                     ))}
                 </div>

@@ -17,11 +17,13 @@ import {
   UserCheck,
   Save,
   RotateCcw,
-  Laptop,
-  Globe
+  Workflow,
+  Globe,
+  Layers,
+  Info
 } from 'lucide-react';
 import type { UserAccount, DeletionApprovalRequest, SystemHealthMetrics, UserRole, RolePermissionsMatrix } from '../types/admin';
-import { DEFAULT_ROLE_CAPABILITIES, DEFAULT_ROLE_PERMISSIONS } from '../types/admin';
+import { ROLE_CAPABILITIES, ROLE_ADMINISTRATOR, USER_ROLES, resolveMatrix, serializeMatrix, type AuthzCapability, type AuthzScope } from '../lib/authz';
 import {
   testDatabaseHealth,
   fetchDeletionRequestsFromSupabase,
@@ -31,9 +33,10 @@ import {
   saveUserAccountToSupabase,
   deleteUserAccountFromSupabase,
   deleteFromSupabase,
-  fetchProjectSettingsFromSupabase,
-  saveProjectSettingsToSupabase
+  fetchProjectSettingsFromSupabase
 } from '../services/supabase';
+import { saveRolePermissions } from '../services/api/permissions';
+import { usePermission } from '../hooks/usePermission';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 
 export interface AdministrationWorkspaceProps {
@@ -49,6 +52,105 @@ export interface AdministrationWorkspaceProps {
 
 type AdminWorkspaceTab = 'users' | 'roles' | 'approvals' | 'audit' | 'health';
 
+/** Role matrix presentation metadata, keyed by the Authz scope from lib/authz. */
+const CAPABILITY_SCOPES: { key: AuthzScope; label: string; icon: React.ElementType; accent: string }[] = [
+  { key: 'production', label: 'Production Workspace · Processing Pipeline', icon: Workflow, accent: 'text-sky-400' },
+  { key: 'published', label: 'Published View · Production WebGIS', icon: Globe, accent: 'text-emerald-400' },
+  { key: 'governance', label: 'Governance · Administration', icon: Layers, accent: 'text-amber-400' }
+];
+
+const ROLE_COLUMN_TONE: Record<UserRole, string> = {
+  Administrator: 'text-sky-400',
+  'Survey Operator': 'text-emerald-400',
+  'QA Inspector': 'text-amber-400',
+  Viewer: 'text-slate-400'
+};
+
+const ROLE_COLUMN_SUBTITLE: Record<UserRole, string> = {
+  Administrator: 'Superuser',
+  'Survey Operator': 'Data Pipeline',
+  'QA Inspector': 'Quality Control',
+  Viewer: 'Public / Read-only'
+};
+
+interface PermissionScopeGroupProps {
+  scope: { key: AuthzScope; label: string; icon: React.ElementType; accent: string };
+  isAdmin: boolean;
+  rolePermissions: RolePermissionsMatrix;
+  onToggle: (role: UserRole, capability: AuthzCapability) => void;
+}
+
+const PermissionScopeGroup: React.FC<PermissionScopeGroupProps> = ({ scope, isAdmin, rolePermissions, onToggle }) => {
+  const Icon = scope.icon;
+  return (
+    <>
+      <tr className="bg-inner/30">
+        <td colSpan={5} className="px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-text-base">
+          <span className={`inline-flex items-center gap-1.5 ${scope.accent}`}>
+            <Icon size={12} />
+            {scope.label}
+          </span>
+        </td>
+      </tr>
+      {ROLE_CAPABILITIES.filter((c) => c.scope === scope.key).map((cap) => (
+        <tr key={cap.id} className="hover:bg-inner/20 transition-colors">
+<td className="px-4 py-2.5">
+            <div className="font-semibold text-text-primary text-xs flex items-center gap-1.5">
+              {cap.label}
+              {cap.alwaysOn && <Lock size={10} className="shrink-0 text-text-muted" aria-label="Applies to every role" />}
+              {cap.locked && !cap.alwaysOn && (
+                <Lock size={10} className="shrink-0 text-text-muted" aria-label="Mandatory for Administrator" />
+              )}
+              {cap.enforced && (
+                <span className="font-mono text-[8px] px-1 py-0.5 rounded bg-inner border border-subtle text-text-muted">
+                  RLS
+                </span>
+              )}
+            </div>
+            <div className="text-[10px] text-text-muted mt-0.5">{cap.description}</div>
+            <div className="font-mono text-[9px] text-text-muted mt-1 opacity-70">id: {cap.id}</div>
+          </td>
+          {USER_ROLES.map((role) => {
+            const isEnabled = rolePermissions[role]?.[cap.id] === true;
+            // alwaysOn -> nobody can switch it; locked -> only Administrator is pinned.
+            const isLocked = cap.alwaysOn === true || (cap.locked === true && role === ROLE_ADMINISTRATOR);
+            const disabled = !isAdmin || isLocked;
+            return (
+              <td key={role} className="px-3 py-2.5 text-center">
+                <div className="flex items-center justify-center">
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    aria-label={`${cap.label} for ${role}`}
+                    onClick={() => onToggle(role, cap.id)}
+                    data-state={isEnabled ? 'checked' : 'unchecked'}
+                    className={`neu-toggle w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
+                      isEnabled ? 'bg-sky-500 neu-active' : 'bg-slate-700/60'
+                    } ${disabled ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+                    title={
+                      isLocked
+                        ? cap.alwaysOn
+                          ? 'Structural baseline — applies to every role'
+                          : 'Mandatory for Administrator'
+                        : `${role}: ${isEnabled ? 'Allowed' : 'Denied'}`
+                    }
+                  >
+                    <div
+                      className={`neu-toggle-thumb bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                        isEnabled ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </td>
+            );
+          })}
+        </tr>
+      ))}
+    </>
+  );
+};
+
 export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = ({
   authSession,
   isGuestUser = false,
@@ -59,6 +161,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   auditLogs = [],
   onRefreshData
 }) => {
+  const mayManageUsers = usePermission('manageUsers');
   const [activeTab, setActiveTab] = useState<AdminWorkspaceTab>(() => {
     const adminTabs = ['users', 'roles', 'approvals', 'audit', 'health'] as const;
     return restoreWorkspaceTab<typeof adminTabs[number]>('administration', adminTabs) ?? 'users';
@@ -97,7 +200,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   const [newUserRole, setNewUserRole] = useState<UserRole>('Survey Operator');
 
   // Role Permissions Matrix State
-  const [rolePermissions, setRolePermissions] = useState<RolePermissionsMatrix>(DEFAULT_ROLE_PERMISSIONS);
+  const [rolePermissions, setRolePermissions] = useState<RolePermissionsMatrix>(() => resolveMatrix(null));
   const [isPermissionsDirty, setIsPermissionsDirty] = useState(false);
   const [isSavingPermissions, setIsSavingPermissions] = useState(false);
 
@@ -135,10 +238,9 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     authSession?.user?.app_metadata?.role ||
     authSession?.role;
 
-  const isAdmin = !isGuestUser && (
-    activeUserRole === 'Administrator' ||
-    activeUserRole === 'admin'
-  );
+  // The roles tab itself is guarded by `manageUsers`, but the matrix edits are
+  // additionally gated so a future non-admin delegation cannot rewrite them.
+  const isAdmin = !isGuestUser && mayManageUsers;
   const currentAuthEmail = activeUserEmail;
 
   const showToast = (msg: string) => {
@@ -184,7 +286,9 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
         setDeletionRequests(fetchedRequests);
       }
       if (fetchedSettings?.role_permissions) {
-        setRolePermissions((prev) => ({ ...prev, ...fetchedSettings.role_permissions }));
+        // resolveMatrix migrates the legacy 11-id vocabulary and drops ids the
+        // current catalogue no longer knows, instead of merging blindly.
+        setRolePermissions(resolveMatrix(fetchedSettings.role_permissions));
       }
     } catch {
       // ignore
@@ -366,9 +470,14 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     </span>
   );
 
-  const handleTogglePermission = (roleKey: UserRole | 'guest', capabilityId: string) => {
-    if (roleKey === 'Administrator' && (capabilityId === 'manageUsers' || capabilityId === 'manageSettings')) {
-      showToast('Core Administrator governance capabilities cannot be disabled.');
+  const handleTogglePermission = (roleKey: UserRole, capabilityId: AuthzCapability) => {
+    const item = ROLE_CAPABILITIES.find((c) => c.id === capabilityId);
+    if (item?.alwaysOn) {
+      showToast(`"${item.label}" is a structural baseline and applies to every role.`);
+      return;
+    }
+    if (item?.locked && roleKey === ROLE_ADMINISTRATOR) {
+      showToast(`"${item.label}" cannot be revoked from the Administrator role.`);
       return;
     }
     setRolePermissions((prev) => {
@@ -386,16 +495,15 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     setIsSavingPermissions(true);
     try {
       const current = (await fetchProjectSettingsFromSupabase()) || {};
-      const updated = {
-        ...current,
-        role_permissions: rolePermissions,
-        role_permissions_updated_at: new Date().toISOString(),
-        role_permissions_updated_by: authSession?.user?.email || 'Administrator'
-      };
-      const ok = await saveProjectSettingsToSupabase(updated);
+      const ok = await saveRolePermissions(
+        current,
+        serializeMatrix(rolePermissions),
+        authSession?.user?.email || 'Administrator'
+      );
       if (ok) {
+        setRolePermissions((prev) => resolveMatrix(prev));
         setIsPermissionsDirty(false);
-        showToast('Role permissions matrix saved and synced to Production WebGIS.');
+        showToast('Role permissions matrix saved. Every permission gate now reflects these roles.');
         addAuditLog?.('SECURITY', 'Role Permissions Updated', 'Matrix settings saved to Supabase project_settings', 'success');
       } else {
         showToast('Failed to persist permissions to Supabase (check project_settings table permissions).');
@@ -408,7 +516,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   };
 
   const handleResetRolePermissions = () => {
-    setRolePermissions(DEFAULT_ROLE_PERMISSIONS);
+    setRolePermissions(resolveMatrix(null));
     setIsPermissionsDirty(true);
     showToast('Reset to default enterprise permissions. Click Save to apply.');
   };
@@ -685,13 +793,17 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
         {activeTab === 'roles' && (
           <div className="space-y-4 animate-in fade-in">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
-              <div>
+              <div className="min-w-0">
                 <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
                   <Shield size={16} className="text-sky-400" />
                   Role-Based Governance &amp; Capabilities Matrix
+                  <span className="font-mono text-[10px] font-normal text-text-muted border border-subtle bg-inner px-1.5 py-0.5 rounded">
+                    your role: {activeUserRole || 'Viewer'}
+                  </span>
                 </h3>
                 <p className="text-xs text-text-muted mt-0.5">
-                  Configure what each operational role can view, edit, or execute in the Processing Workspace and Production WebGIS.
+                  What each operational role may do across the Production Workspace (processing pipeline) and the
+                  Published View (WebGIS). Every toggle here gates a live control once saved.
                 </p>
               </div>
               {isAdmin ? (
@@ -736,141 +848,44 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
             {/* Capability Table */}
             <div className="bg-panel border border-subtle rounded-xl overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
+              <div className="overflow-auto md:overflow-auto max-h-[70vh]">
+                <table className="w-full min-w-[900px] text-left text-xs">
+                  <thead className="sticky top-0 z-10">
                     <tr className="bg-inner/60 border-b border-subtle text-text-muted text-[11px] font-semibold uppercase tracking-wider">
-                      <th className="px-4 py-3 min-w-[280px]">Capability / Action</th>
-                      <th className="px-3 py-3 text-center min-w-[120px]">
-                        <div className="flex flex-col items-center">
-                          <span className="text-text-primary font-bold">Administrator</span>
-                          <span className="text-[10px] text-sky-400 font-normal normal-case">Superuser</span>
-                        </div>
-                      </th>
-                      <th className="px-3 py-3 text-center min-w-[120px]">
-                        <div className="flex flex-col items-center">
-                          <span className="text-text-primary font-bold">Survey Operator</span>
-                          <span className="text-[10px] text-emerald-400 font-normal normal-case">Data Pipeline</span>
-                        </div>
-                      </th>
-                      <th className="px-3 py-3 text-center min-w-[120px]">
-                        <div className="flex flex-col items-center">
-                          <span className="text-text-primary font-bold">QA Inspector</span>
-                          <span className="text-[10px] text-amber-400 font-normal normal-case">Quality Control</span>
-                        </div>
-                      </th>
-                      <th className="px-3 py-3 text-center min-w-[120px]">
-                        <div className="flex flex-col items-center">
-                          <span className="text-text-primary font-bold">Viewer / Guest</span>
-                          <span className="text-[10px] text-slate-400 font-normal normal-case">Public / Read-only</span>
-                        </div>
-                      </th>
+                      <th className="px-4 py-3 min-w-[300px]">Capability / Action</th>
+                      {USER_ROLES.map((role) => (
+                        <th key={role} className="px-3 py-3 text-center min-w-[130px]">
+                          <div className="flex flex-col items-center whitespace-nowrap">
+                            <span className="text-text-primary font-bold">{role}</span>
+                            <span className={`text-[10px] font-normal normal-case ${ROLE_COLUMN_TONE[role]}`}>
+                              {ROLE_COLUMN_SUBTITLE[role]}
+                            </span>
+                          </div>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-subtle">
-                    {/* Section 1: Workspace */}
-                    <tr className="bg-inner/30">
-                      <td colSpan={5} className="px-4 py-2 font-mono text-[10px] font-bold text-sky-400 uppercase tracking-wider">
-                        <span className="inline-flex items-center gap-1.5">
-                          <Laptop size={12} />
-                          Production Workspace (Dashboard Operations)
-                        </span>
-                      </td>
-                    </tr>
-                    {DEFAULT_ROLE_CAPABILITIES.filter((c) => c.scope === 'workspace').map((cap) => {
-                      return (
-                        <tr key={cap.id} className="hover:bg-inner/20 transition-colors">
-                          <td className="px-4 py-2.5">
-                            <div className="font-semibold text-text-primary text-xs">{cap.label}</div>
-                            <div className="text-[10px] text-text-muted mt-0.5">{cap.description}</div>
-                            <div className="font-mono text-[9px] text-text-muted mt-1 opacity-70">id: {cap.id}</div>
-                          </td>
-                          {(['Administrator', 'Survey Operator', 'QA Inspector', 'Viewer'] as const).map((role) => {
-                            const isEnabled =
-                              role === 'Viewer'
-                                ? rolePermissions.Viewer?.[cap.id] || rolePermissions.guest?.[cap.id] || false
-                                : rolePermissions[role]?.[cap.id] ?? false;
-                            const isLockedAdmin =
-                              role === 'Administrator' && (cap.id === 'manageUsers' || cap.id === 'manageSettings');
-
-                            return (
-                              <td key={role} className="px-3 py-2.5 text-center">
-                                <div className="flex items-center justify-center">
-                                  <button
-                                    type="button"
-                                    disabled={!isAdmin || isLockedAdmin}
-                                    onClick={() => handleTogglePermission(role, cap.id)}
-                                    data-state={isEnabled ? 'checked' : 'unchecked'}
-                                    className={`neu-toggle neu-toggle-sky w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
-                                      isEnabled ? 'bg-sky-500 neu-active' : 'bg-slate-700/60'
-                                    } ${!isAdmin || isLockedAdmin ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
-                                    title={isLockedAdmin ? 'Mandatory for Administrator' : `${role}: ${isEnabled ? 'Allowed' : 'Denied'}`}
-                                  >
-                                    <div
-                                      className={`neu-toggle-thumb bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
-                                        isEnabled ? 'translate-x-4' : 'translate-x-0'
-                                      }`}
-                                    />
-                                  </button>
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-
-                    {/* Section 2: WebGIS */}
-                    <tr className="bg-inner/30">
-                      <td colSpan={5} className="px-4 py-2 font-mono text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                        <span className="inline-flex items-center gap-1.5">
-                          <Globe size={12} />
-                          Production WebGIS (Interactive Map &amp; 360 Viewer)
-                        </span>
-                      </td>
-                    </tr>
-                    {DEFAULT_ROLE_CAPABILITIES.filter((c) => c.scope === 'webgis').map((cap) => {
-                      return (
-                        <tr key={cap.id} className="hover:bg-inner/20 transition-colors">
-                          <td className="px-4 py-2.5">
-                            <div className="font-semibold text-text-primary text-xs">{cap.label}</div>
-                            <div className="text-[10px] text-text-muted mt-0.5">{cap.description}</div>
-                            <div className="font-mono text-[9px] text-text-muted mt-1 opacity-70">id: {cap.id}</div>
-                          </td>
-                          {(['Administrator', 'Survey Operator', 'QA Inspector', 'Viewer'] as const).map((role) => {
-                            const isEnabled =
-                              role === 'Viewer'
-                                ? rolePermissions.Viewer?.[cap.id] || rolePermissions.guest?.[cap.id] || false
-                                : rolePermissions[role]?.[cap.id] ?? false;
-
-                            return (
-                              <td key={role} className="px-3 py-2.5 text-center">
-                                <div className="flex items-center justify-center">
-                                  <button
-                                    type="button"
-                                    disabled={!isAdmin}
-                                    onClick={() => handleTogglePermission(role, cap.id)}
-                                    data-state={isEnabled ? 'checked' : 'unchecked'}
-                                    className={`neu-toggle neu-toggle-emerald w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
-                                      isEnabled ? 'bg-emerald-500 neu-active' : 'bg-slate-700/60'
-                                    } ${!isAdmin ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
-                                    title={`${role}: ${isEnabled ? 'Allowed' : 'Denied'}`}
-                                  >
-                                    <div
-                                      className={`neu-toggle-thumb bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
-                                        isEnabled ? 'translate-x-4' : 'translate-x-0'
-                                      }`}
-                                    />
-                                  </button>
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
+                    {CAPABILITY_SCOPES.map((scope) => (
+                      <PermissionScopeGroup
+                        key={scope.key}
+                        scope={scope}
+                        isAdmin={isAdmin}
+                        rolePermissions={rolePermissions}
+                        onToggle={handleTogglePermission}
+                      />
+                    ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="px-4 py-2.5 border-t border-subtle bg-inner/40 flex items-start gap-2">
+                <Info size={12} className="shrink-0 mt-0.5 text-text-muted" />
+                <p className="text-[10px] text-text-muted leading-relaxed">
+                  Capabilities marked <span className="font-mono">RLS</span> are additionally enforced in Postgres via{' '}
+                  <span className="font-mono">sec.can()</span>; the rest gate the UI only. Rows with a lock cannot be switched off
+                  (a filled lock applies to every role). Saving applies every permission gate across both tracks
+                  immediately.
+                </p>
               </div>
             </div>
           </div>
