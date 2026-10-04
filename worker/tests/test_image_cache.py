@@ -28,14 +28,13 @@ JPEG = b"\xff\xd8\xff\xe0" + b"payload" * 8
 
 @pytest.fixture()
 def image_client(tmp_path, monkeypatch):
-    """A client pinned to an isolated NAS base and job journal.
+    """A client pinned to an isolated NAS base.
 
-    Without this the startup handler would read the developer's real
-    worker/jobs_journal.sqlite and resolve image paths against the real NAS base.
+    NAS_BASE_PATH must be redirected or the test would resolve image paths
+    against the developer's real NAS mount and require NAS_WORKER_TOKEN to match.
     """
     (tmp_path / "shot.jpg").write_bytes(JPEG)
     (tmp_path / "other.jpg").write_bytes(JPEG)
-    monkeypatch.setenv("WORKER_JOB_DB", str(tmp_path / "jobs_journal.sqlite"))
     monkeypatch.setattr(worker_module, "API_TOKEN", "secret")
     monkeypatch.setattr(worker_module, "NAS_BASE_PATH", str(tmp_path))
     with TestClient(app) as client:

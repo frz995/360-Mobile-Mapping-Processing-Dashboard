@@ -50,7 +50,7 @@ const baseInput: ExecutivePdfReportInput = {
     'N91E71': { flags: { blurry: true, obstruction: false, badGps: false }, answer: 'yes', isLocked: true },
   },
   projectSettings: {
-    contractCode: 'MMS-2026-TNB-01',
+    contractCode: 'MMS-2026-GEO-01',
     targetKm: 100,
     targetImages: 1000,
     dbAutoSyncSec: 60,
@@ -73,7 +73,7 @@ describe('buildExecutivePdfHtml', () => {
     const html = buildExecutivePdfHtml(baseInput)
     expect(html).toContain('30.50 km')
     expect(html).toContain('Subgrids processed')
-    expect(html).toContain('MMS-2026-TNB-01')
+    expect(html).toContain('MMS-2026-GEO-01')
     expect(html).toContain('gis.engineer@x.com')
     expect(html).toContain('10.00')
     expect(html).toContain('20.50')

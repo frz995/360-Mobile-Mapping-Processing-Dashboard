@@ -13,8 +13,8 @@ import {
  * Pin the RLS-enforced slice of the UI vocabulary to the SERVER-side boundary.
  *
  * Postgres `sec.can()` (supabase/migrations/0009_security_functions.sql, applied
- * by 0010/0012/0015/0020/0022) and the Python BFF (`worker/bff/app.py`) are the
- * real enforcement boundary. They only know the eight capabilities below.
+ * by 0010/0012/0015/0020/0022) and Row-Level Security are the real enforcement
+ * boundary. They only know the eight capabilities below.
  *
  * `src/lib/authz.ts` is a superset: it also carries the Production-pipeline and
  * Published-view capabilities that gate the UI but have no SQL counterpart yet
@@ -22,7 +22,7 @@ import {
  * therefore pins only the enforced subset — it must NOT be widened to the whole
  * union, or it would assert enforcement that does not exist.
  *
- * If you rename one of these eight, you MUST update sec.can() and the BFF too.
+ * If you rename one of these eight, you MUST update sec.can() too.
  */
 const ENFORCED_CAPABILITIES = [
   'manageDatasets',

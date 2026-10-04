@@ -1,5 +1,5 @@
 {
-  "name": "tnb-gis-dashboard",
+  "name": "geosphere-360-dashboard",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,12 +12,11 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "clean-db": "node scripts/clear_all_survey_data.cjs",
-    "roads:topology": "python scripts/road_topology_clean.py"
+    "docs:pdf": "node scripts/build-setup-pdf.mjs"
   },
   "dependencies": {
     "@photo-sphere-viewer/core": "^5.15.1",
     "@photo-sphere-viewer/cubemap-tiles-adapter": "^5.15.1",
-    "@photo-sphere-viewer/equirectangular-tiles-adapter": "^5.15.1",
     "@sentry/react": "^7.120.4",
     "@supabase/supabase-js": "^2.111.0",
     "@tmcw/togeojson": "^7.1.2",
@@ -25,11 +24,8 @@
     "@tsparticles/react": "^4.4.0",
     "@tsparticles/slim": "^4.4.0",
     "d3-array": "^3.2.4",
-    "d3-ease": "^3.0.1",
-    "d3-interpolate": "^3.0.1",
     "d3-scale": "^4.0.2",
     "d3-shape": "^3.2.0",
-    "esri-leaflet": "^3.0.19",
     "fflate": "^0.8.3",
     "framer-motion": "^13.2.0",
     "leaflet": "^1.9.4",
@@ -45,13 +41,9 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.7",
     "@types/d3-array": "^3.2.2",
-    "@types/d3-ease": "^3.0.2",
-    "@types/d3-interpolate": "^3.0.4",
     "@types/d3-scale": "^4.0.9",
     "@types/d3-shape": "^3.2.0",
-    "@types/esri-leaflet": "^3.0.4",
     "@types/leaflet": "^1.9.21",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

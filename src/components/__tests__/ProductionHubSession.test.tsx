@@ -50,7 +50,7 @@ describe('ProductionHubWorkspace session restore (last activity)', () => {
     render(
       <ProductionHubWorkspace
         projectSettings={{}}
-        authSession={{ user: { email: 'qa@tnb.com.my' } }}
+        authSession={{ user: { email: 'qa@example.com' } }}
         addNotification={vi.fn()}
         addAuditLog={vi.fn()}
       />
@@ -76,7 +76,7 @@ describe('ProductionHubWorkspace session restore (last activity)', () => {
     render(
       <ProductionHubWorkspace
         projectSettings={{}}
-        authSession={{ user: { email: 'qa@tnb.com.my' } }}
+        authSession={{ user: { email: 'qa@example.com' } }}
         addNotification={vi.fn()}
         addAuditLog={vi.fn()}
       />
@@ -101,7 +101,7 @@ describe('ProductionHubWorkspace session restore (last activity)', () => {
     render(
       <ProductionHubWorkspace
         projectSettings={{}}
-        authSession={{ user: { email: 'qa@tnb.com.my' } }}
+        authSession={{ user: { email: 'qa@example.com' } }}
         addNotification={vi.fn()}
         addAuditLog={vi.fn()}
       />
@@ -126,7 +126,7 @@ describe('ProductionHubWorkspace session restore (last activity)', () => {
     render(
       <ProductionHubWorkspace
         projectSettings={{}}
-        authSession={{ user: { email: 'qa@tnb.com.my' } }}
+        authSession={{ user: { email: 'qa@example.com' } }}
         addNotification={vi.fn()}
         addAuditLog={vi.fn()}
       />

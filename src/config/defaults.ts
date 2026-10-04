@@ -46,7 +46,7 @@ export const REGION_DEFAULTS = {
 } as const;
 
 /** Default S3 bucket used for panorama objects. */
-export const S3_BUCKET_DEFAULT = 'tnb-mobilemapping-panoramas';
+export const S3_BUCKET_DEFAULT = 'geosphere-mobilemapping-panoramas';
 
 /** Default Azure Blob container name. */
 export const AZURE_CONTAINER_DEFAULT = 'panoramas';

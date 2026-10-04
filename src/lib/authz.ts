@@ -2,7 +2,10 @@
  * AuthZ — the single permission vocabulary for the whole platform.
  *
  * IMPORTANT: Postgres `sec.can()` (supabase/migrations/0009_security_functions.sql)
- * and the Python BFF (`worker/bff/app.py`) remain the real enforcement boundary.
+ * and Row-Level Security remain the real enforcement boundary. The NAS worker
+ * (`worker/app.py`) sits behind the Cloudflare Pages Functions, which gate every
+ * private route in `functions/_middleware.js` before proxying, and add the
+ * worker's own shared-secret token server-side.
  * This module decides which controls to SHOW or HIDE and mirrors the RLS matrix
  * for the subset the database actually gates — see
  * `ENFORCED_CAPABILITIES` below and src/lib/__tests__/authz_matches_rls.test.ts,

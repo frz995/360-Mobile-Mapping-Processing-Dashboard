@@ -129,6 +129,21 @@ export interface ExtendedProjectSettings {
     outputFolderTemplate: string;
     description?: string;
     enabled: boolean;
+    /** Per-site network facts. Optional and deliberately unset by default:
+     *  the boards poll these addresses, and inventing them makes the dashboard
+     *  dial hosts that do not exist. Set them in Admin Settings -> Workstations. */
+    ipAddress?: string;
+    /** Station-agent listen port (matches station-agent/.env.example). */
+    port?: number;
+    /** Shared secret for agent probes (station agent AGENT_TOKEN). */
+    agentToken?: string;
+    /** Microsoft RDP port for one-click mstsc launch. */
+    rdpPort?: number;
+    /** noVNC/websockify port for the in-browser live desktop pane. */
+    vncPort?: number;
+    /** HTTPS noVNC URL; supports `{ip}` and `{port}` placeholders. */
+    remoteUrl?: string;
+    remoteChannel?: 'rdp' | 'vnc';
   }>;
   productionProviders?: Array<{
     name: string;

@@ -328,7 +328,7 @@ function colorWithAlpha(hexOrRgb: string, alpha: number): string {
 // Default locations: Malaysia (Project Core) & Tokyo (Reference)
 const DEFAULT_PROJECT_MARKERS: GlobeMarker[] = [
   {
-    label: 'TNB Project Core • Malaysia',
+    label: 'GeoSphere Project Core • Malaysia',
     description: 'Active Mobile Mapping Fleet • 2.546° N, 102.087° E',
     latitude: 2.5458,
     longitude: 102.0873,

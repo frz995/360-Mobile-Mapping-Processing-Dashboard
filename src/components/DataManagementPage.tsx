@@ -3048,7 +3048,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                 <div className="flex flex-wrap items-center gap-2.5">
                   <button
                     onClick={async () => {
-                      setPublishMessage({ text: 'Syncing current records from Supabase mobilemapping database...', type: 'success' });
+                      setPublishMessage({ text: 'Syncing current records from Supabase...', type: 'success' });
                       const { dailyData: sDaily, batchLogs: sBatches, error } = await fetchSupabaseData();
                       if (error) {
                         setPublishMessage({ text: 'Error syncing with Supabase: ' + error, type: 'error' });
@@ -3061,7 +3061,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                       }
                     }}
                     className="flex items-center gap-2 bg-card hover:bg-inner border border-subtle text-text-base px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
-                    title="Sync latest records from Supabase mobilemapping database"
+                    title="Sync latest records from Supabase"
                   >
                     <RefreshCw size={13} className="text-sky-400" />
                     <span>Sync Now</span>

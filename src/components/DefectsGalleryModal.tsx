@@ -787,5 +787,4 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
   );
 };
 
-export const DefectsInspectorDrawer = DefectsGalleryModal;
 export default DefectsGalleryModal;

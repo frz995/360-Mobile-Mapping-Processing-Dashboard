@@ -25,9 +25,10 @@ import {
   ExternalLink,
   Lock,
   Trash2,
-  SlidersHorizontal,
-  Crosshair,
-  Search
+SlidersHorizontal,
+Crosshair,
+Search,
+Monitor
 } from 'lucide-react';
 import { ExtendedProjectSettings, DatabaseProviderType } from '../types/admin';
 import {
@@ -58,6 +59,7 @@ import {
   rehydrateDistrictBoundary
 } from './boundary/malaysiaDistricts';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
+import { WorkstationNetworkEditor } from './settings/WorkstationNetworkEditor';
 import { isGuestEmail } from '../lib/authz';
 import { usePermission } from '../hooks/usePermission';
 
@@ -1064,7 +1066,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                         type="text"
                         value={projectSettings.projectName || ''}
                         onChange={e => setProjectSettings(prev => ({ ...prev, projectName: e.target.value }))}
-                        placeholder="e.g. TNB Cable Route 360 Capture"
+                        placeholder="e.g. LV Cable Route 360 Capture"
                         className={`${inputClass}`}
                       />
                     </div>
@@ -1075,7 +1077,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                         type="text"
                         value={projectSettings.contractCode || ''}
                         onChange={e => setProjectSettings(prev => ({ ...prev, contractCode: e.target.value }))}
-                        placeholder="e.g. MMS-2026-TNB-01"
+                        placeholder="e.g. MMS-2026-GEO-01"
                         className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
                     </div>
@@ -1617,7 +1619,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               type="text"
                               value={projectSettings.s3Bucket || S3_BUCKET_DEFAULT}
                               onChange={e => setProjectSettings(prev => ({ ...prev, s3Bucket: e.target.value }))}
-                              placeholder="tnb-mobilemapping-panoramas"
+                              placeholder="geosphere-mobilemapping-panoramas"
                               className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                             />
                           </div>
@@ -1637,9 +1639,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           <label className={labelClass}>Google Cloud Storage (GCS) Bucket</label>
                           <input
                             type="text"
-                            value={projectSettings.gcsBucket || 'tnb-gis-360-panoramas'}
+                            value={projectSettings.gcsBucket || 'geosphere-gis-360-panoramas'}
                             onChange={e => setProjectSettings(prev => ({ ...prev, gcsBucket: e.target.value }))}
-                            placeholder="tnb-gis-360-panoramas"
+                            placeholder="geosphere-gis-360-panoramas"
                             className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                           />
                         </div>
@@ -1649,9 +1651,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             <label className={labelClass}>Azure Storage Account</label>
                             <input
                               type="text"
-                              value={projectSettings.azureAccount || 'tnbgisstorage'}
+                              value={projectSettings.azureAccount || 'geospheregisstorage'}
                               onChange={e => setProjectSettings(prev => ({ ...prev, azureAccount: e.target.value }))}
-                              placeholder="tnbgisstorage"
+                              placeholder="geospheregisstorage"
                               className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                             />
                           </div>
@@ -1672,9 +1674,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             <label className={labelClass}>Wasabi Bucket Name</label>
                             <input
                               type="text"
-                              value={projectSettings.wasabiBucket || 'tnb-wasabi-panoramas'}
+                              value={projectSettings.wasabiBucket || 'geosphere-wasabi-panoramas'}
                               onChange={e => setProjectSettings(prev => ({ ...prev, wasabiBucket: e.target.value }))}
-                              placeholder="tnb-wasabi-panoramas"
+                              placeholder="geosphere-wasabi-panoramas"
                               className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                             />
                           </div>
@@ -2194,13 +2196,31 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </div>
                 </div>
 
-                {/* SECTION 4: BASEMAP & SPATIAL LAYER MANAGEMENT WITH PREVIEW */}
+                {/* SECTION 4: PRODUCTION PIPELINE & WORKSTATION NETWORK */}
+                <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
+                  <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
+                    <div className="flex items-center gap-2">
+                      <Monitor size={17} className="text-sky-400" />
+                      <div>
+                        <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>4. Production Pipeline & Workstations</h3>
+                        <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Address the four processing PCs so the Flight Board, PC Monitoring and publication gate can reach their station agents. Save to apply.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <WorkstationNetworkEditor
+                    value={projectSettings.workstationsConfig}
+                    onChange={next => setProjectSettings(prev => ({ ...prev, workstationsConfig: next }))}
+                    themeMode={themeMode}
+                  />
+                </div>
+
+                {/* SECTION 5: BASEMAP & SPATIAL LAYER MANAGEMENT WITH PREVIEW */}
                 <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
                   <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
                     <div className="flex items-center gap-2">
                       <Map size={17} className="text-sky-400" />
                       <div>
-                        <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>4. Basemap & Spatial Layer Management</h3>
+                        <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>5. Basemap & Spatial Layer Management</h3>
                         <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Configure default GIS basemaps, trajectory theme colors, line widths, and inspect changes on the map preview before applying to the dashboard.</p>
                       </div>
                     </div>
@@ -2980,7 +3000,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       <Shield size={16} className={themeMode === 'light' ? 'text-slate-700' : 'text-text-base'} />
                       <div>
                         <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
-                          5. Security, Authentication & Access Control (RBAC)
+                             6. Security, Authentication & Access Control (RBAC)
                         </h3>
                         <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>
                           Configure enterprise authentication policies, session timeouts, authorized email restrictions, and role permissions.
@@ -3135,12 +3155,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </div>
                 </div>
 
-                {/* SECTION 6: CONTRACT SLA TARGETS & QA BENCHMARKS */}
+                {/* SECTION 7: CONTRACT SLA TARGETS & QA BENCHMARKS */}
                 <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
                   <div className="flex items-center justify-between pb-3 border-b border-subtle">
                     <div className="flex items-center gap-2">
                       <Activity size={16} className="text-sky-400" />
-                      <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">6. Contract SLA Targets & QA Benchmarks</h3>
+                      <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">7. Contract SLA Targets & QA Benchmarks</h3>
                     </div>
                     <span className="px-2 py-0.5 rounded text-[10px] font-sans bg-inner border border-subtle text-text-base">
                       Quality SLA Standard

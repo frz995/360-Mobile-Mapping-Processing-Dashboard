@@ -1,4 +1,10 @@
-# NAS GPU Worker — on-prem production processing service
+# NAS Worker — on-prem NAS survey filesystem + preview service.
+#
+# This service exposes the NAS tree to the dashboard: folder listings, storage
+# capacity, survey/CSV/image scans, and conditional-GET panorama previews.
+# Image analysis (QA/QC sharpness, blur, obstruction) runs in the browser via
+# WebGL — see src/utils/gpuAnalyzer.ts. There is no server-side batch image
+# pipeline and no GPU job queue here.
 from __future__ import annotations
 
 import os
@@ -6,7 +12,6 @@ import platform
 import shutil
 import threading
 import time
-import uuid
 import logging
 import hashlib
 import mimetypes
@@ -16,11 +21,7 @@ from typing import Optional
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
 
-from runner import JobRegistry
-from release import ReleaseError, prepare_release as prepare_release_files
-import sync as syncmod
 from nas_scan import scan_nas
 
 from dotenv import load_dotenv
@@ -48,21 +49,15 @@ if os.environ.get("NAS_LOG_JSON") == "1":
     root.setLevel(logging.INFO)
 else:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-logger = logging.getLogger("nas-worker")
 
 NAS_BASE_PATH = os.environ.get("NAS_BASE_PATH", "/nas/360_images").rstrip("/\\")
 API_TOKEN = os.environ.get("NAS_WORKER_TOKEN", "")  # optional shared secret
 
 # Stable worker identifier surfaced to the dashboard (hostname-based).
-_WORKER_ID = os.environ.get("NAS_WORKER_ID") or platform.node() or "nas-gpu-worker"
+_WORKER_ID = os.environ.get("NAS_WORKER_ID") or platform.node() or "nas-worker"
 
 
-def _now() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
-
-
-app = FastAPI(title="GeoSphere 360 NAS GPU Worker", version="1.0.0")
+app = FastAPI(title="GeoSphere 360 NAS Worker", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,58 +65,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-registry: Optional[JobRegistry] = None
-syncer: Optional[syncmod.SupabaseSyncer] = None
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    global registry, syncer
-    db_path = os.environ.get("WORKER_JOB_DB", "").strip()
-    if not db_path:
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs_journal.sqlite")
-    from store import SQLiteJobJournal
-    journal = SQLiteJobJournal(db_path)
-    logger.info("Durable job journal enabled at %s", journal.path)
-
-    concurrency = int(os.environ.get("CONCURRENCY", "1"))
-    max_active_jobs = int(os.environ.get("MAX_ACTIVE_JOBS", "1"))
-    max_queue_depth = int(os.environ.get("MAX_QUEUE_DEPTH", "20"))
-    registry = JobRegistry(
-        concurrency=concurrency,
-        max_active_jobs=max_active_jobs,
-        max_queue_depth=max_queue_depth,
-        journal=journal,
-    )
-    recovered = registry.recover()
-    if recovered:
-        logger.warning("Recovered %d persisted jobs after restart: %s", len(recovered), recovered)
-    syncer = syncmod.SupabaseSyncer.from_env()
-    if syncer is None:
-        logger.warning("Supabase sync disabled (SUPABASE_URL / service role missing). Dashboard will poll HTTP.")
-
-
-class JobSubmit(BaseModel):
-    job_id: Optional[str] = None
-    job_type: str = "ENHANCE"  # Only ENHANCE | MASK | BLUR executable by this worker
-    source_folder: str
-    output_folder: str
-    subgrid: Optional[str] = None
-    total_items: Optional[int] = 0
-    settings: dict = {}
-    project_id: Optional[str] = None
-
-
-class ReleasePrepare(BaseModel):
-    source_folder: str
-    release_folder: str
-    subgrid: str
-    run_code: str
-    project_id: str
-    run_id: str
-    attempt_id: str
-    capture_date: str
 
 
 # ---------------------------------------------------------------------------
@@ -164,103 +107,6 @@ def _is_not_modified(request: Request, etag: str, last_modified: str) -> bool:
         return False
     modified = parsedate_to_datetime(last_modified)
     return modified.tzinfo is not None and since.tzinfo is not None and modified <= since
-
-
-@app.post("/api/jobs")
-def submit_job(body: JobSubmit, authorization: Optional[str] = Header(default=None)) -> dict:
-    _guard(authorization)
-    if body.job_type not in ("ENHANCE", "MASK", "BLUR"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Job type '{body.job_type}' is not executable by this worker. Supported types: ENHANCE, MASK, BLUR. External tasks (STITCH, AI_DETECT, QAQC) are handled at workstations.",
-        )
-    if registry is None:
-        raise HTTPException(status_code=503, detail="Worker still initialising.")
-
-    src = resolve_fs(body.source_folder)
-    dst = resolve_fs(body.output_folder)
-    os.makedirs(dst, exist_ok=True)
-
-    from runner import QueueFullError
-    job_id = body.job_id or str(uuid.uuid4())
-    try:
-        duplicate_status = registry.start(
-            job_id=job_id,
-            job_type=body.job_type,
-            source_dir=src,
-            output_dir=dst,
-            source_rel=body.source_folder,
-            output_rel=body.output_folder,
-            subgrid=body.subgrid,
-            total_items=body.total_items or 0,
-            settings=body.settings or {},
-            syncer=syncer,
-            project_id=body.project_id,
-        )
-    except QueueFullError as qe:
-        raise HTTPException(status_code=429, detail=str(qe))
-
-    if duplicate_status is not None:
-        # A retry after a client-side timeout is not an error: the original
-        # submit is already running under this id. Re-admitting it would start a
-        # second worker thread over the same output folder.
-        return {"ok": True, "message": f"Job {job_id} is already {duplicate_status}; duplicate submit ignored."}
-
-    return {"ok": True, "message": f"Job {job_id} accepted into the batch queue."}
-
-
-@app.post("/api/releases/prepare")
-def prepare_release(body: ReleasePrepare, authorization: Optional[str] = Header(default=None)) -> dict:
-    _guard(authorization)
-    source = resolve_fs(body.source_folder)
-    release = resolve_fs(body.release_folder)
-    try:
-        return prepare_release_files(
-            source_dir=source,
-            release_dir=release,
-            subgrid=body.subgrid,
-            run_code=body.run_code,
-            project_id=body.project_id,
-            run_id=body.run_id,
-            attempt_id=body.attempt_id,
-            capture_date=body.capture_date,
-        )
-    except ReleaseError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@app.get("/api/jobs/{job_id}")
-def get_job(job_id: str, authorization: Optional[str] = Header(default=None)) -> dict:
-    _guard(authorization)
-    if registry is None:
-        raise HTTPException(status_code=503, detail="Worker still initialising.")
-    job = registry.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job id.")
-    return {
-        "job_id": job_id,
-        "status": job["status"],
-        "progress": job["progress"],
-        "completed_items": job["completed_items"],
-        "total_items": job["total_items"],
-        "current_item": job["current_item"],
-        "error_count": job["error_count"],
-        "failed_items": job.get("failed_items") or [],
-        "error_log": job.get("error_log") or [],
-        "last_heartbeat": job.get("last_heartbeat") or _now(),
-        "worker": _WORKER_ID,
-        "message": job["message"],
-        "finished": job["status"] in ("COMPLETED", "FAILED", "CANCELLED", "REVIEW_REQUIRED"),
-    }
-
-
-@app.post("/api/jobs/{job_id}/cancel")
-def cancel_job(job_id: str, authorization: Optional[str] = Header(default=None)) -> dict:
-    _guard(authorization)
-    if registry is None:
-        raise HTTPException(status_code=503, detail="Worker still initialising.")
-    registry.cancel(job_id)
-    return {"ok": True, "message": "Cancellation requested."}
 
 
 @app.get("/api/folders")
@@ -398,100 +244,10 @@ def storage_info(authorization: Optional[str] = Header(default=None)) -> dict:
     return data
 
 
-def _query_gpu_telemetry() -> dict:
-    """Attempts to query GPU telemetry via nvidia-smi. Returns honest metrics without fabrication."""
-    import subprocess
-    try:
-        res = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.total,memory.used,utilization.gpu", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-        if res.returncode == 0 and res.stdout.strip():
-            first_line = res.stdout.strip().splitlines()[0]
-            parts = [p.strip() for p in first_line.split(",")]
-            if len(parts) >= 3:
-                return {
-                    "available": True,
-                    "total_bytes": float(parts[0]) * 1024 * 1024,
-                    "used_bytes": float(parts[1]) * 1024 * 1024,
-                    "utilization_pct": float(parts[2]),
-                }
-    except Exception:
-        pass
-    return {"available": False}
-
-
 @app.get("/health")
 def health() -> dict:
-    running_count = len(registry.running) if registry else 0
-    queued_count = len(registry.queued) if registry else 0
-    max_active = registry.max_active_jobs if registry else 1
     return {
         "status": "ok",
-        "jobs_active": running_count,
-        "jobs_queued": queued_count,
-        "max_active_jobs": max_active,
         "nas_base": NAS_BASE_PATH,
+        "worker": _WORKER_ID,
     }
-
-
-# ---------------------------------------------------------------------------
-# Observability: dependency-free /metrics (Prometheus text format) + uptime.
-# ---------------------------------------------------------------------------
-import datetime as _dt
-
-_START_TIME = _dt.datetime.now(_dt.timezone.utc)
-
-
-def _uptime_seconds() -> float:
-    return (_dt.datetime.now(_dt.timezone.utc) - _START_TIME).total_seconds()
-
-
-def _gauge(name: str, help_: str, value: float) -> str:
-    return f"# HELP {name} {help_}\n# TYPE {name} gauge\n{name} {value}\n"
-
-
-def _counter(name: str, help_: str, value: float) -> str:
-    return f"# HELP {name} {help_}\n# TYPE {name} counter\n{name} {value}\n"
-
-
-@app.get("/metrics")
-def metrics() -> dict:
-    running = len(registry.running) if registry else 0
-    queued = len(registry.queued) if registry else 0
-    done = len(registry.completed) if registry else 0
-    failed = len(registry.failed) if registry else 0
-    max_active = registry.max_active_jobs if registry else 1
-    queue_cap = registry.max_queue_depth if registry else 20
-
-    lines: list[str] = []
-    lines.append(_gauge("nas_worker_info", "Worker identity", 1) + f'nas_worker_info{{worker="{_WORKER_ID}"}} 1\n')
-    lines.append(_gauge("nas_worker_uptime_seconds", "Worker process uptime in seconds", _uptime_seconds()))
-    lines.append(_counter("nas_jobs_active", "Currently executing jobs", running))
-    lines.append(_counter("nas_jobs_queued", "Queued waiting jobs", queued))
-    lines.append(_gauge("nas_jobs_max_active", "Max concurrent active jobs limit", float(max_active)))
-    lines.append(_gauge("nas_jobs_queue_capacity", "Max queue depth limit", float(queue_cap)))
-    lines.append(_counter("nas_jobs_completed", "Completed jobs this process", done))
-    lines.append(_counter("nas_jobs_failed", "Failed jobs this process", failed))
-    lines.append(_counter("nas_jobs_total", "All tracked jobs this process", (done + failed + running + queued)))
-
-    gpu = _query_gpu_telemetry()
-    if gpu.get("available"):
-        lines.append(_gauge("nas_gpu_available", "NVIDIA GPU presence", 1.0))
-        lines.append(_gauge("nas_gpu_memory_total_bytes", "GPU VRAM total bytes", gpu["total_bytes"]))
-        lines.append(_gauge("nas_gpu_memory_used_bytes", "GPU VRAM used bytes", gpu["used_bytes"]))
-        lines.append(_gauge("nas_gpu_utilization_percent", "GPU compute utilization percentage", gpu["utilization_pct"]))
-    else:
-        lines.append(_gauge("nas_gpu_available", "NVIDIA GPU presence", 0.0))
-
-    try:
-        du = shutil.disk_usage(resolve_fs(""))
-        lines.append(_gauge("nas_storage_total_bytes", "NAS storage total bytes", float(du.total)))
-        lines.append(_gauge("nas_storage_free_bytes", "NAS storage free bytes", float(du.free)))
-        lines.append(_gauge("nas_storage_used_bytes", "NAS storage used bytes", float(du.used)))
-    except HTTPException:
-        pass
-    return {"status": "ok", "metrics_text": "\n".join(lines)}

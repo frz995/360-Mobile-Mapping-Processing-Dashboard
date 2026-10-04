@@ -30,18 +30,18 @@ describe('RoadAnalysisWorkspace state persistence', () => {
     });
 
     it('returns user id when authenticated session has id', () => {
-      const session = { user: { id: 'user-abc-123', email: 'surveyor@tnb.com' } };
+      const session = { user: { id: 'user-abc-123', email: 'surveyor@example.com' } };
       expect(getAuthStorageUserKey(session, false)).toBe('user-abc-123');
     });
 
     it('returns normalized email when session has no id', () => {
-      const session = { user: { email: '  Admin.User@TNB.COM.MY  ' } };
-      expect(getAuthStorageUserKey(session, false)).toBe('admin.user@tnb.com.my');
+      const session = { user: { email: '  Admin.User@EXAMPLE.COM  ' } };
+      expect(getAuthStorageUserKey(session, false)).toBe('admin.user@example.com');
     });
 
     it('falls back to cached supabase session in localStorage if authSession prop is missing', () => {
       const mockSupabaseToken = {
-        user: { id: 'stored-sb-uuid-456', email: 'cached@tnb.com' }
+        user: { id: 'stored-sb-uuid-456', email: 'cached@example.com' }
       };
       localStorage.setItem('sb-abcdefgh-auth-token', JSON.stringify(mockSupabaseToken));
 
@@ -136,7 +136,7 @@ describe('RoadAnalysisWorkspace state persistence', () => {
 
       const res = await saveRoadAnalysisStateToSupabase(statePayload, {
         id: 'usr-prod-001',
-        email: 'engineer@tnb.com.my'
+        email: 'engineer@example.com'
       });
 
       expect(typeof res.success).toBe('boolean');

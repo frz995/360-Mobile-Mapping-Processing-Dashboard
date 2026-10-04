@@ -322,7 +322,7 @@ describe('functions/api/station-agent', () => {
 
 describe('functions/api/worker proxy', () => {
   it('returns 503 when the worker is not configured', async () => {
-    const res = await workerProxy(makeContext('https://app.pages.dev/api/worker/api/jobs', {}));
+    const res = await workerProxy(makeContext('https://app.pages.dev/api/worker/api/storage', {}));
     expect(res.status).toBe(503);
   });
 
@@ -340,26 +340,26 @@ describe('functions/api/worker proxy', () => {
 
   it('rejects unsupported methods', async () => {
     const res = await workerProxy(
-      makeContext('https://app.pages.dev/api/worker/api/jobs', BASE_ENV, { method: 'PATCH' })
+      makeContext('https://app.pages.dev/api/worker/api/storage', BASE_ENV, { method: 'PATCH' })
     );
     expect(res.status).toBe(405);
   });
 
   it('proxies POST bodies with the server-side token', async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response('{"job_id":"j1"}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } })
     );
     const res = await workerProxy(
-      makeContext('https://app.pages.dev/api/worker/api/jobs?dry=1', BASE_ENV, {
+      makeContext('https://app.pages.dev/api/worker/api/nas-scan?action=registry', BASE_ENV, {
         method: 'POST',
-        body: JSON.stringify({ job_id: 'j1' })
+        body: JSON.stringify({ subgrid: 'N93E70' })
       })
     );
     expect(res.status).toBe(200);
     const [target, init] = fetchMock.mock.calls[0];
-    expect(target.toString()).toBe('https://nas-api.example.com/api/jobs?dry=1');
+    expect(target.toString()).toBe('https://nas-api.example.com/api/nas-scan?action=registry');
     expect(init.headers.get('Authorization')).toBe(`Bearer ${SECRET}`);
-    expect(Buffer.from(init.body).toString()).toBe(JSON.stringify({ job_id: 'j1' }));
+    expect(Buffer.from(init.body).toString()).toBe(JSON.stringify({ subgrid: 'N93E70' }));
   });
 });
 

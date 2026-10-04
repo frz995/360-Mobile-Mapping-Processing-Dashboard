@@ -917,7 +917,7 @@ supabase storage cp "${deliverablePath}manifest.json" "ss://${bucketConfig.bucke
 
   const handleDownloadBatchScript = () => {
     const batScript = `@echo off
-REM TNB 360 Mobile Mapping - Bucket Sync Script
+REM GeoSphere 360 Mobile Mapping - Bucket Sync Script
 REM Subgrid: ${cleanSg}
 REM Bucket: ${bucketConfig.bucketName} (${bucketConfig.providerLabel})
 

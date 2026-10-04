@@ -2,6 +2,7 @@ import { supabase, scoped, getServiceProjectId } from './client';
 import { STORAGE_BUCKET_DEFAULT } from '../../config/defaults';
 import type { ExtendedProjectSettings } from '../../types/admin';
 import { getStorageInventoryCacheTotalFiles } from './storage';
+import { isUuid } from '../../utils/userAccountId';
 
 /**
  * Fetch persisted audit logs from Supabase database.
@@ -320,7 +321,7 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
       data.forEach(u => {
         if (u && (u.email || u.id)) {
           const key = (u.email || u.id).toLowerCase().trim();
-          userMap.set(key, u);
+          userMap.set(key, fromUserAccountRow(u));
         }
       });
     }
@@ -406,19 +407,69 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
   return results;
 }
 
+/** A directory entry in either the camelCase UI shape or the raw database shape. */
+type DirectoryEntry = Record<string, unknown> & {
+  id?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  status?: string;
+  avatar?: string;
+  permissions?: unknown;
+  lastLogin?: string;
+  createdAt?: string;
+  last_login?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+/**
+ * Map a directory entry (camelCase, as typed by UserAccount) to a database row.
+ * Only keys that exist as columns are sent, and `id` is dropped unless valid.
+ */
+function toUserAccountRow(user: DirectoryEntry): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    name: user?.name ?? null,
+    email: user?.email ?? null,
+    role: user?.role ?? null,
+    status: user?.status ?? null,
+  };
+  if (isUuid(user?.id)) row.id = user.id;
+  if (user?.avatar !== undefined) row.avatar = user.avatar;
+  if (user?.permissions !== undefined) row.permissions = user.permissions;
+  if (user?.lastLogin !== undefined) row.last_login = user.lastLogin;
+  if (user?.createdAt !== undefined) row.created_at = user.createdAt;
+  if (user?.updated_at !== undefined) row.updated_at = user.updated_at;
+  return row;
+}
+
+/** Inverse of {@link toUserAccountRow}: expose DB rows in the camelCase the UI types expect. */
+function fromUserAccountRow(row: DirectoryEntry): DirectoryEntry {
+  if (!row || typeof row !== 'object') return row;
+  return {
+    ...row,
+    lastLogin: row.lastLogin ?? row.last_login ?? undefined,
+    createdAt: row.createdAt ?? row.created_at ?? undefined,
+  };
+}
+
 /**
  * Save user directory list to database.
+ *
+ * Matching on the unique `email` keeps this idempotent: a row whose id is not a
+ * valid UUID (legacy cache entries, the guest placeholder) updates the existing
+ * email-matched row instead of failing or duplicating.
  */
 export async function saveUserAccountToSupabase(users: any[]): Promise<boolean> {
   try {
-    if (Array.isArray(users) && users.length > 0) {
-      try {
-        localStorage.setItem(CACHED_USER_ACCOUNTS_KEY, JSON.stringify(users));
-      } catch {
-        // ignore
-      }
+    if (!Array.isArray(users) || users.length === 0) return true;
+    try {
+      localStorage.setItem(CACHED_USER_ACCOUNTS_KEY, JSON.stringify(users));
+    } catch {
+      // ignore
     }
-    const { error } = await supabase.from('user_accounts').upsert(users);
+    const rows = users.map(toUserAccountRow);
+    const { error } = await supabase.from('user_accounts').upsert(rows, { onConflict: 'email' });
     if (error) {
       console.warn('User accounts upsert notice:', error.message);
       return false;
@@ -426,41 +477,6 @@ export async function saveUserAccountToSupabase(users: any[]): Promise<boolean> 
     return true;
   } catch (err) {
     console.warn('Exception saving user account:', err);
-    return false;
-  }
-}
-
-/**
- * Permanently delete a registered user account from Supabase database and local cache.
- */
-export async function deleteUserAccountFromSupabase(userId: string, email?: string): Promise<boolean> {
-  try {
-    // 1. Remove from local cache
-    try {
-      const cached = getCachedUserAccounts();
-      const filtered = cached.filter(
-        (u) => u.id !== userId && (!email || u.email?.toLowerCase().trim() !== email.toLowerCase().trim())
-      );
-      localStorage.setItem(CACHED_USER_ACCOUNTS_KEY, JSON.stringify(filtered));
-    } catch {
-      // ignore
-    }
-
-    // 2. Permanently delete from PostgreSQL user_accounts table
-    let query = supabase.from('user_accounts').delete();
-    if (email && email.trim()) {
-      query = query.or(`id.eq.${userId},email.eq.${email.trim()}`);
-    } else {
-      query = query.eq('id', userId);
-    }
-    const { error } = await query;
-    if (error) {
-      console.warn('User accounts delete notice:', error.message);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn('Exception deleting user account:', err);
     return false;
   }
 }

@@ -64,7 +64,7 @@ jobs:
         run: npm run lint
 
   python:
-    name: Python (worker + BFF)
+    name: Python (worker)
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -78,13 +78,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # python-dotenv is required by worker/app.py at import time. Without it the
+      # HAS_APP guards in the test suite evaluate False and every HTTP-route test
+      # skips silently — py_compile does not execute imports, so the compile gate
+      # below would still pass while the tests never ran.
       - name: Install test dependencies
-        run: pip install pytest fastapi httpx
+        run: pip install pytest fastapi httpx python-dotenv
 
-      - name: Compile check (worker + BFF)
-        run: python -m py_compile worker/runner.py worker/store.py worker/app.py worker/bff/app.py worker/tests/test_store.py worker/tests/test_worker_admission.py worker/tests/test_image_cache.py
+      - name: Compile check (worker)
+        run: python -m py_compile worker/app.py worker/nas_scan.py worker/tests/test_image_cache.py worker/tests/test_nas_scan.py
 
       - name: Run worker unit tests
         run: |
           cd worker
-          PYTHONPATH=. python -m pytest tests/test_store.py tests/test_worker_admission.py tests/test_image_cache.py -q
+          PYTHONPATH=. python -m pytest tests/test_image_cache.py tests/test_nas_scan.py -q

@@ -253,8 +253,6 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
               <td className="px-3.5 py-2.5 text-text-muted text-[11px]">
                 {health ? (
                   <span className="flex items-center gap-1.5">
-                    <span className="text-emerald-400 font-semibold">{health.jobs_active} active task(s)</span>
-                    <span>·</span>
                     <span>Mount: <span className="font-mono text-zinc-200">{health.nas_base || '—'}</span></span>
                   </span>
                 ) : (

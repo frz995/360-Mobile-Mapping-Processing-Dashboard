@@ -3,9 +3,9 @@
 // Dashboard stores metadata only; all image content lives on NAS folders.
 // =====================================================================
 
-export type DatasetType = 'RAW' | 'PROCESSED' | 'DELIVERABLE';
-export type PipelineStage = 'STITCH' | 'BLUR' | 'ENHANCE' | 'MASK' | 'QAQC';
-export type DatasetStatus =
+type DatasetType = 'RAW' | 'PROCESSED' | 'DELIVERABLE';
+type PipelineStage = 'STITCH' | 'BLUR' | 'ENHANCE' | 'MASK' | 'QAQC';
+type DatasetStatus =
   | 'REGISTERED'
   | 'READY'
   | 'IN_PROGRESS'
@@ -14,7 +14,7 @@ export type DatasetStatus =
   | 'IMPORTED'
   | 'ARCHIVED';
 
-export type ProcessingJobType =
+type ProcessingJobType =
   | 'ENHANCE'
   | 'MASK'
   | 'STITCH'
@@ -116,28 +116,10 @@ export interface ProcessingJobRecord {
   pipeline_stage_key?: PipelineStageKey;
 }
 
-export type ExternalJobStatus = 'none' | 'awaiting_submit' | 'running_external' | 'done';
+type ExternalJobStatus = 'none' | 'awaiting_submit' | 'running_external' | 'done';
 
-export type ProductionRunStatus = 'CAPTURED' | 'PROCESSING' | 'QA_PENDING' | 'RELEASED' | 'ARCHIVED';
-export type ProductionAttemptStatus = 'ACTIVE' | 'PROCESSING' | 'QA_PENDING' | 'APPROVED' | 'REJECTED' | 'SUPERSEDED';
+type ProductionAttemptStatus = 'ACTIVE' | 'PROCESSING' | 'QA_PENDING' | 'APPROVED' | 'REJECTED' | 'SUPERSEDED';
 export type ProductionReleaseStatus = 'PREPARING' | 'READY' | 'PUBLISHED' | 'FAILED' | 'ARCHIVED';
-
-export interface ProductionRunRecord {
-  id?: string;
-  project_id?: string;
-  subgrid: string;
-  capture_date: string;
-  run_code: string;
-  sequence: number;
-  status: ProductionRunStatus;
-  camera_model?: string | null;
-  source_folder: string;
-  active_release_id?: string | null;
-  metadata?: Record<string, unknown>;
-  created_by?: string;
-  created_at?: string;
-  updated_at?: string;
-}
 
 export interface ProductionAttemptRecord {
   id?: string;
@@ -176,26 +158,6 @@ export interface ProductionReleaseRecord {
   created_at?: string;
   updated_at?: string;
 }
-
-export interface ProductionReleaseFileRecord {
-  id?: string;
-  project_id?: string;
-  release_id: string;
-  source_path: string;
-  source_name: string;
-  release_name: string;
-  relative_path: string;
-  media_type: 'image' | 'metadata';
-  size_bytes: number;
-  sha256?: string | null;
-  sort_order: number;
-  metadata?: Record<string, unknown>;
-  created_at?: string;
-}
-
-export type ProcessingCenterTab = 'board' | 'handoff' | 'qa' | 'monitor' | 'lifecycle';
-
-export type LineageTab = 'graph' | 'trace' | 'survey' | 'registry';
 
 // ---------------------------------------------------------------------
 // Dynamic Processing Pipeline (Phase 1)
@@ -237,15 +199,6 @@ export interface EnhancementParams {
   denoise: number; //     0 .. 100
 }
 
-export const DEFAULT_ENHANCEMENT_PARAMS: EnhancementParams = {
-  brightness: 0,
-  contrast: 0,
-  exposure: 0,
-  sharpness: 0,
-  saturation: 0,
-  denoise: 0
-};
-
 export interface MaskFootprint {
   detected: boolean;
   // Detected footprint bounding band on an equirectangular source:
@@ -258,7 +211,7 @@ export interface MaskFootprint {
   annotationPolygon?: Array<[number, number]>; // optional manual polygon
 }
 
-export interface ProductionJobSettings {
+interface ProductionJobSettings {
   apiMode?: 'http';
   concurrency?: number;
   enhance?: EnhancementParams;
@@ -282,19 +235,9 @@ export interface ProductionJobSettings {
   jpegQuality?: number; // 0..100
 }
 
-export interface ProductionProviderSettings {
-  name: string;
-  software: string;
-  version: string;
-  workerUrl?: string; // optional per-provider NAS GPU Worker endpoint
-  enabled: boolean;
-}
-
-export type ProcessingEngineMode = 'gpu_worker' | 'multi_pc_workstations';
-
 export type WorkstationStationId = 'stitch' | 'blur' | 'lightroom' | 'photoshop';
 
-export type StationRemoteChannel = 'rdp' | 'vnc';
+type StationRemoteChannel = 'rdp' | 'vnc';
 
 export interface WorkstationStationConfig {
   id: WorkstationStationId;
@@ -393,21 +336,21 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
 // Station agent telemetry (4-PC Multi-Station Flight Board auto mode)
 // Matches the station-agent/app.py wire contract (station-agent/README.md).
 // ---------------------------------------------------------------------
-export interface StationAgentProcessInfo {
+interface StationAgentProcessInfo {
   name: string;
   pid?: number;
   /** psutil process create_time — the true task start moment. */
   started_at?: string | null;
 }
 
-export interface StationAgentOutputSubgrid {
+interface StationAgentOutputSubgrid {
   files: number;
   last_write_at?: string | null;
   /** A file landed within the agent's growing window (live activity). */
   growing?: boolean;
 }
 
-export interface StationAgentPointsSubgrid {
+interface StationAgentPointsSubgrid {
   points_total?: number;
   points_done?: number;
   tiles_done?: number;
@@ -490,7 +433,7 @@ export type StageLedgerEvent =
   | 'STARTED' | 'PROGRESS' | 'COMPLETED' | 'FLAGGED' | 'PUBLISHED'
   | 'AGENT_ONLINE' | 'AGENT_OFFLINE';
 
-export type StageLedgerVia = 'agent' | 'operator' | 'system';
+type StageLedgerVia = 'agent' | 'operator' | 'system';
 
 export interface StageEventLedgerRow {
   id?: string;
@@ -523,7 +466,7 @@ export interface NasFolderListing {
   error?: string;
 }
 
-export interface StorageTopLevelUsage {
+interface StorageTopLevelUsage {
   name: string;
   files: number;
   bytes: number;
@@ -542,9 +485,11 @@ export interface StorageInfo {
   error?: string;
 }
 
+/** Liveness probe for a worker (`GET /health`) or a station agent
+ *  (`GET /api/station`). The optional telemetry fields are only ever populated by
+ *  the station agent — the worker reports status and NAS mount only. */
 export interface WorkerHealthInfo {
   status: string;
-  jobs_active: number;
   nas_base: string;
   agent_version?: string;
   cpu_usage?: number;
@@ -587,15 +532,6 @@ export interface ProcessedOutputValidationResult {
   timestampIssues?: string[];
   metadataIssues?: string[];
 }
-
-export type ProductionTab =
-  | 'pipeline'
-  | 'datasets'
-  | 'providers'
-  | 'preview'
-  | 'enhance'
-  | 'masking'
-  | 'release';
 
 export type StorageTab =
   | 'overview'

@@ -79,7 +79,7 @@ export function QCAuditModal({ subgrid, poiCount, availableCount, availableFilen
 
   const exportQCReport = () => {
     const reportText = `=====================================================
-TNB 360 MOBILE MAPPING - QC AUDIT REPORT
+GEOSPHERE 360 MOBILE MAPPING - QC AUDIT REPORT
 =====================================================
 Subgrid: ${subgrid}
 Audit Date: ${new Date().toLocaleString()}

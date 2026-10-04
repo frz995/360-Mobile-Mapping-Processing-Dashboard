@@ -8,11 +8,10 @@ function json(body, status) {
 }
 
 /** Per-route ceilings, deliberately above the browser's own budgets
- *  (10s for normal calls, 120s for prepareRelease) so the client usually gives
- *  up first and the proxy timeout is the backstop, not the normal path. */
+ *  (10s for normal calls) so the client usually gives up first and the
+ *  proxy timeout is the backstop, not the normal path. */
 const DEFAULT_TIMEOUT_MS = 30_000;
 const ROUTE_TIMEOUTS = [
-  ['/api/releases/prepare', 150_000],
   ['/api/nas-scan', 60_000]
 ];
 

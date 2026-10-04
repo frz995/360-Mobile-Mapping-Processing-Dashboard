@@ -45,18 +45,18 @@ describe('storageInventory — provider base URLs', () => {
   });
 
   it('builds GCS base', () => {
-    const settings: StorageSettingsForManifest = { storageProvider: 'gcs', gcsBucket: 'tnb-gis-360-panoramas' };
-    expect(resolveProviderBaseUrl(settings)).toBe('https://storage.googleapis.com/tnb-gis-360-panoramas');
+    const settings: StorageSettingsForManifest = { storageProvider: 'gcs', gcsBucket: 'geosphere-gis-360-panoramas' };
+    expect(resolveProviderBaseUrl(settings)).toBe('https://storage.googleapis.com/geosphere-gis-360-panoramas');
   });
 
   it('builds Azure Blob base', () => {
-    const settings: StorageSettingsForManifest = { storageProvider: 'azure_blob', azureAccount: 'tnbgisstorage', azureContainer: 'panoramas' };
-    expect(resolveProviderBaseUrl(settings)).toBe('https://tnbgisstorage.blob.core.windows.net/panoramas');
+    const settings: StorageSettingsForManifest = { storageProvider: 'azure_blob', azureAccount: 'geospheregisstorage', azureContainer: 'panoramas' };
+    expect(resolveProviderBaseUrl(settings)).toBe('https://geospheregisstorage.blob.core.windows.net/panoramas');
   });
 
   it('builds Wasabi base', () => {
-    const settings: StorageSettingsForManifest = { storageProvider: 'wasabi', wasabiBucket: 'tnb-wasabi-panoramas', wasabiRegion: 'us-east-1' };
-    expect(resolveProviderBaseUrl(settings)).toBe('https://s3.us-east-1.wasabisys.com/tnb-wasabi-panoramas');
+    const settings: StorageSettingsForManifest = { storageProvider: 'wasabi', wasabiBucket: 'geosphere-wasabi-panoramas', wasabiRegion: 'us-east-1' };
+    expect(resolveProviderBaseUrl(settings)).toBe('https://s3.us-east-1.wasabisys.com/geosphere-wasabi-panoramas');
   });
 
   it('builds NAS base', () => {

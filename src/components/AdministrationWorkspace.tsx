@@ -8,8 +8,6 @@ import {
   Server,
   RefreshCw,
   Search,
-  Plus,
-  Trash2,
   Lock,
   CheckCircle,
   AlertTriangle,
@@ -31,7 +29,6 @@ import {
   fetchUserAccountsFromSupabase,
   getCachedUserAccounts,
   saveUserAccountToSupabase,
-  deleteUserAccountFromSupabase,
   deleteFromSupabase,
   fetchProjectSettingsFromSupabase
 } from '../services/supabase';
@@ -194,10 +191,6 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   const [isLoadingUsers, setIsLoadingUsers] = useState(() => users.length === 0);
   const [userSearch, setUserSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
-  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
-  const [newUserName, setNewUserName] = useState('');
-  const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserRole, setNewUserRole] = useState<UserRole>('Survey Operator');
 
   // Role Permissions Matrix State
   const [rolePermissions, setRolePermissions] = useState<RolePermissionsMatrix>(() => resolveMatrix(null));
@@ -319,23 +312,40 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   };
 
   // User Actions
-  const handleToggleUserStatus = (userId: string) => {
+  //
+  // This is the revocation control. Migration 0030 makes the directory row
+  // authoritative, so writing status='Disabled' here immediately reduces the
+  // user to read-only at the database level (sec.get_app_role() -> 'Viewer').
+  // It does not remove their Supabase sign-in account.
+  const handleToggleUserStatus = async (userId: string) => {
     const targetUser = users.find((u) => u.id === userId);
     if (targetUser && targetUser.email.toLowerCase().trim() === currentAuthEmail && currentAuthEmail !== '') {
       showToast('Cannot disable your own active administrator account.');
       return;
     }
-    const updated = users.map((u) => {
-      if (u.id === userId) {
-        const nextStatus = u.status === 'Active' ? ('Disabled' as const) : ('Active' as const);
-        return { ...u, status: nextStatus };
-      }
-      return u;
-    });
+    const nextStatus = targetUser?.status === 'Active' ? ('Disabled' as const) : ('Active' as const);
+    const updated = users.map((u) => (u.id === userId ? { ...u, status: nextStatus } : u));
+
+    // Awaited: this row is what the database enforces permissions from, so a
+    // failure must not be reported as success.
+    const saved = await saveUserAccountToSupabase(updated);
+    if (!saved) {
+      showToast('Could not update this user. Check the console and your database connection.');
+      return;
+    }
     setUsers(updated);
-    saveUserAccountToSupabase(updated);
-    addAuditLog?.('SECURITY', `User Account ${targetUser?.status === 'Active' ? 'Disabled' : 'Enabled'}`, `Updated status for ${targetUser?.name} (${targetUser?.email})`, 'info');
-    showToast(`User ${targetUser?.name} status updated.`);
+    const verb = nextStatus === 'Disabled' ? 'revoked' : 'restored';
+    addAuditLog?.(
+      'SECURITY',
+      `User Account ${nextStatus === 'Disabled' ? 'Disabled' : 'Enabled'}`,
+      `Permissions ${verb} for ${targetUser?.name} (${targetUser?.email})`,
+      'info'
+    );
+    showToast(
+      nextStatus === 'Disabled'
+        ? `Permissions revoked for ${targetUser?.name}. They can still sign in, but only read-only.`
+        : `Permissions restored for ${targetUser?.name}.`
+    );
   };
 
   const handlePromptChangeUserRole = (u: UserAccount, targetRole: UserRole) => {
@@ -360,50 +370,6 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     setRoleChangeModal(null);
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    const targetUser = users.find((u) => u.id === userId);
-    if (targetUser && targetUser.email.toLowerCase().trim() === currentAuthEmail && currentAuthEmail !== '') {
-      showToast('Cannot delete active administrator session.');
-      return;
-    }
-    if (!window.confirm(`Delete user account for "${targetUser?.name}" (${targetUser?.email})?`)) return;
-    const updated = users.filter((u) => u.id !== userId);
-    setUsers(updated);
-    saveUserAccountToSupabase(updated);
-    const cloudDeleted = await deleteUserAccountFromSupabase(userId, targetUser?.email);
-    if (!cloudDeleted) {
-      console.warn(`Cloud deletion notice: ${targetUser?.email} removed locally and from settings snapshot.`);
-    }
-    addAuditLog?.('DELETE', 'User Deleted', `Administrator removed user account ${targetUser?.name} (${targetUser?.email})`, 'info');
-    showToast(`User ${targetUser?.name} removed from directory.`);
-  };
-
-  const handleAddUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUserName.trim() || !newUserEmail.trim()) {
-      showToast('Please enter both name and email');
-      return;
-    }
-
-    const newUser: UserAccount = {
-      id: `usr-${Date.now()}`,
-      name: newUserName.trim(),
-      email: newUserEmail.trim(),
-      role: newUserRole,
-      status: 'Active',
-      lastLogin: 'Never',
-      createdAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    };
-
-    const updated = [newUser, ...users.filter((u) => u.email.toLowerCase().trim() !== newUser.email.toLowerCase().trim())];
-    setUsers(updated);
-    saveUserAccountToSupabase(updated);
-    addAuditLog?.('CREATE', 'New User Provisioned', `Added user ${newUser.name} with role ${newUser.role}`, 'success');
-    showToast(`User ${newUser.name} created successfully.`);
-    setIsAddUserModalOpen(false);
-    setNewUserName('');
-    setNewUserEmail('');
-  };
 
   // Approvals Actions
   const handleApproveDeletion = async (req: DeletionApprovalRequest) => {
@@ -609,7 +575,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                   Role-Based User Directory &amp; Permissions
                 </h3>
                 <p className="text-xs text-text-muted mt-0.5">
-                  Manage accounts, assign operational roles, and revoke platform access.
+                  Review who has access, assign operational roles, and revoke platform permissions.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -623,14 +589,6 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                   <RefreshCw size={12} className={isLoadingUsers || _refreshing ? 'animate-spin text-sky-400' : ''} />
                   <span>Refresh</span>
                 </button>
-                {isAdmin && (
-                  <button
-                    onClick={() => setIsAddUserModalOpen(true)}
-                    className="px-3.5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
-                  >
-                    <Plus size={13} /> Add User
-                  </button>
-                )}
               </div>
             </div>
 
@@ -758,6 +716,11 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => handleToggleUserStatus(u.id)}
+                                title={
+                                  u.status === 'Active'
+                                    ? 'Revoke all permissions beyond read-only. The sign-in account is kept.'
+                                    : 'Restore this user\'s assigned role.'
+                                }
                                 className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors cursor-pointer ${
                                   u.status === 'Active'
                                     ? 'bg-inner hover:bg-rose-900/30 text-rose-300 border-subtle'
@@ -765,13 +728,6 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                                 }`}
                               >
                                 {u.status === 'Active' ? 'Disable' : 'Grant'}
-                              </button>
-                              <button
-                                onClick={() => handleDeleteUser(u.id)}
-                                className="p-1 rounded text-text-muted hover:text-rose-400 hover:bg-rose-950/40 border border-transparent hover:border-rose-800/40 transition-colors cursor-pointer"
-                                title="Delete user account"
-                              >
-                                <Trash2 size={13} />
                               </button>
                             </div>
                           ) : (
@@ -1204,78 +1160,6 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
           </div>
         </div>
       </div>
-
-      {/* MODAL 1: ADD USER MODAL */}
-      {isAddUserModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-md p-5 rounded-2xl border border-subtle bg-card shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-subtle">
-              <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
-                <Users size={16} className="text-sky-400" />
-                Provision Operator / Admin Account
-              </h3>
-              <button
-                onClick={() => setIsAddUserModalOpen(false)}
-                className="text-text-muted hover:text-text-base cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <form onSubmit={handleAddUser} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-text-muted font-medium mb-1">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Fariz Farhan"
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-subtle bg-inner text-text-base focus:outline-none focus:border-sky-500/60"
-                />
-              </div>
-              <div>
-                <label className="block text-text-muted font-medium mb-1">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="e.g. fariz.farhan@tnb.com.my"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-subtle bg-inner text-text-base focus:outline-none focus:border-sky-500/60"
-                />
-              </div>
-              <div>
-                <label className="block text-text-muted font-medium mb-1">Assigned Role</label>
-                <select
-                  value={newUserRole}
-                  onChange={(e) => setNewUserRole(e.target.value as UserRole)}
-                  className="w-full px-3 py-2 rounded-lg border border-subtle bg-inner text-text-base focus:outline-none focus:border-sky-500/60"
-                >
-                  <option value="Administrator">Administrator (Full Access)</option>
-                  <option value="Survey Operator">Survey Operator (Processing &amp; Staging)</option>
-                  <option value="QA Inspector">QA Inspector (Acceptance QA &amp; Defect Tagging)</option>
-                  <option value="Viewer">Viewer (Read-Only Map Access)</option>
-                </select>
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
-                <button
-                  type="button"
-                  onClick={() => setIsAddUserModalOpen(false)}
-                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-text-base hover:text-text-base text-xs font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
-                >
-                  <Plus size={13} /> Create User Account
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* MODAL 2: CONFIRM REJECT DELETION MODAL */}
       {rejectModalReqId && (

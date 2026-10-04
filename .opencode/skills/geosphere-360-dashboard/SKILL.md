@@ -1,12 +1,12 @@
 ---
 name: geosphere-360-dashboard
-description: Use when working in the GeoSphere 360 / tnb-gis-dashboard repo (TNB 360 mobile-mapping WebGIS dashboard, React + TypeScript + Vite + Tailwind + Supabase). Covers repo layout, verification commands, the mobile/.mobile-compact responsive and panel-clipping rules, horizontal table-scroll patterns, theme tokens, Supabase persistence, git/CI hygiene, and known traps (mojibake from PowerShell rewrites, untracked junk, baseline lint warnings).
+description: Use when working in the GeoSphere 360 / geosphere-360-dashboard repo (360 mobile-mapping WebGIS dashboard, React + TypeScript + Vite + Tailwind + Supabase). Covers repo layout, verification commands, the mobile/.mobile-compact responsive and panel-clipping rules, horizontal table-scroll patterns, theme tokens, Supabase persistence, git/CI hygiene, and known traps (mojibake from PowerShell rewrites, untracked junk, baseline lint warnings).
 ---
 
 # GeoSphere 360 — Processing Dashboard
 
-Enterprise WebGIS + 360° mobile-mapping (MMS) processing dashboard for TNB low-voltage
-asset mapping. Package name is `tnb-gis-dashboard`. Stack: React 18 + TypeScript +
+Enterprise WebGIS + 360° mobile-mapping (MMS) processing dashboard for low-voltage
+utility asset mapping. Package name is `geosphere-360-dashboard`. Stack: React 18 + TypeScript +
 Vite + Tailwind v3 (semantic CSS-variable tokens) + Supabase (Postgres/PostGIS,
 Auth, Storage) + Leaflet / MapLibre GL / PhotoSphereViewer \+ a Python GPU worker.
 

@@ -31,7 +31,7 @@ describe('config defaults', () => {
 
   it('provides region, bucket, container, host and basemap defaults', () => {
     expect(REGION_DEFAULTS).toEqual({ s3Region: 'ap-southeast-1', wasabiRegion: 'us-east-1' });
-    expect(S3_BUCKET_DEFAULT).toBe('tnb-mobilemapping-panoramas');
+    expect(S3_BUCKET_DEFAULT).toBe('geosphere-mobilemapping-panoramas');
     expect(AZURE_CONTAINER_DEFAULT).toBe('panoramas');
     expect(DATABASE_HOST_DEFAULT).toBe('db.aws-0-ap-southeast-1.supabase.co');
     expect(DEFAULT_BASEMAP).toBe('ofm-positron');

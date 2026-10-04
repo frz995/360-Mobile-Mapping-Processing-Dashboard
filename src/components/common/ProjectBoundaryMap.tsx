@@ -342,7 +342,7 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
 
     const popup = new maplibregl.Popup({ offset: [0, -34], closeButton: false }).setHTML(`
       <div style="background: #0f1217; color: #fff; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); font-family: sans-serif;">
-        <div style="font-size: 11px; font-weight: bold; color: #f8fafc;">${projectLocation.name || 'TNB Project Core'}</div>
+        <div style="font-size: 11px; font-weight: bold; color: #f8fafc;">${projectLocation.name || 'GeoSphere Project Core'}</div>
         <div style="font-size: 10px; color: #94a3b8; font-family: monospace;">${projectLocation.latitude.toFixed(4)}° N, ${projectLocation.longitude.toFixed(4)}° E</div>
         <div style="font-size: 9px; color: #ef4444; margin-top: 3px; font-weight: 600;">Active Field Operations Base</div>
       </div>

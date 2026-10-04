@@ -1,15 +1,25 @@
 # GeoSphere 360 - Mobile Mapping System (MMS) Processing Dashboard
 
-An enterprise-grade WebGIS and spatial intelligence platform developed for Tenaga Nasional Berhad (TNB) Low Voltage Asset Mapping. Built for large-scale 360-degree StreetView panorama ingestion, spatial trajectory processing, automated photogrammetric image enhancement, quality assurance auditing, vector layer catalog management, and multi-tenant campaign governance.
+An enterprise-grade WebGIS and spatial intelligence platform for utility low-voltage asset mapping. Built for large-scale 360-degree StreetView panorama ingestion, spatial trajectory processing, operator-guided photogrammetric image enhancement on workstation PCs, quality assurance auditing, vector layer catalog management, and campaign governance.
+
+---
+
+## Setup & Installation
+
+**Client-facing installation documentation:** [`docs/Production Setup/README.md`](<docs/Production Setup/README.md>)
+
+📄 **[Production Setup Guide (PDF, 42 pages)](<docs/Production Setup/GeoSphere-360-Production-Setup-Guide.pdf>)** — the single complete deliverable: architecture diagrams, step-by-step installation, flowcharts and an acceptance sign-off sheet. Print it or issue it as the client installation manual.
+
+Markdown source and per-section detail live alongside it. Covers accounts and prerequisites, the database and storage buckets, the first-administrator bootstrap, Cloudflare Tunnel, the Cloudflare Pages deployment, the NAS layout and on-prem services, first-run configuration, and how to verify the install. Known limitations and troubleshooting are catalogued in [`03-Reference.md`](<docs/Production Setup/03-Reference.md>).
 
 ---
 
 ## System Overview and Operational Context
 
-* Organization: Tenaga Nasional Berhad (TNB)
+* Organization: Electric distribution utility asset mapping operations
 * Primary Domain: Electric Utility Asset Mapping, Low Voltage Network Inventory, and Digital Twin Reality Modeling
-* Survey Scope: 315.2 km target trajectory (~50,000 Equirectangular Panoramas)
-* Operational Subgrids: N93E70, N94E70, N94E71, N90E67 (Peninsular Malaysia)
+* Survey Scope: configured per project (target trajectory length and panorama count are project settings, not fixed here)
+* Operational Subgrids: named per project (UTM 100 km grid squares, e.g. `N93E70`), configured during project setup
 * Data Acquisition Systems: MMS Vehicle Survey Rig (rooftop multi-lens array) and Backpack Mobile Survey Unit (pedestrian and narrow alley surveys)
 * Database Engine: PostgreSQL 15 with PostGIS 3.3 geospatial extension hosted on Supabase Cloud
 * Storage Infrastructure: Network Attached Storage (NAS) on-premises cluster combined with Supabase Cloud Object Storage (`/MMS_PIC/` imagery bucket and `/vector_layers/` spatial catalog)
@@ -30,12 +40,11 @@ The GeoSphere 360 ecosystem operates as an end-to-end processing pipeline, trans
                                            |
                                            v
 +------------------------------------------+----------------------------------------+
-|                      2. ON-PREMISES GPU PROCESSING WORKER                         |
-|  - FastAPI Daemon + PyTorch / YOLO / OpenCV                                       |
-|  - Privacy Protection: Automated Face & License Plate Detection and Blurring      |
-|  - Nadir Masking: Survey vehicle roof / backpack tripod elimination               |
-|  - Photogrammetric Enhancement: Contrast (CLAHE), exposure balancing, sharpening  |
-|  - Multi-resolution cubemap tiling for low-latency WebGL streaming                |
+|                      2. ON-PREMISES NAS WORKER SERVICE                             |
+|  - FastAPI Daemon exposing the NAS survey tree to the dashboard                      |
+|  - Survey scans: subgrids, capture folders, CSV telemetry, image inventories           |
+|  - Storage telemetry: volume usage and per-folder image counts                         |
+|  - Panorama previews: conditional-GET image streaming through the tunnel              |
 +------------------------------------------+----------------------------------------+
                                            |
                                            v
@@ -52,7 +61,7 @@ The GeoSphere 360 ecosystem operates as an end-to-end processing pipeline, trans
 |                   4. QUALITY ASSURANCE & AUDITING (QA/QC)                         |
 |  - PhotoSphereViewer v5 WebGL Panoramic Inspector                                 |
 |  - Frame-by-frame visual audit: Blurry Frame, Obstruction, Camera Tilt, Bad GPS   |
-|  - Approval Gate: Promotion from `staging_panoramas` to `panoramas`               |
+|  - Approval Gate: Release writes approved frames into `panoramas`          |
 +------------------------------------------+----------------------------------------+
                                            |
                                            v
@@ -61,7 +70,7 @@ The GeoSphere 360 ecosystem operates as an end-to-end processing pipeline, trans
 |  - Public & Executive WebGIS Workspace (Leaflet, MapLibre GL, PostGIS)            |
 |  - Spatial Trajectory Visualization, Heading Alignment, Subgrid Coverage          |
 |  - Vector Layer Catalog (Shapefile, GeoJSON, KML, GPX overlay ingestion)          |
-|  - Road Analysis, Pavement Distress Inventory, and BBOX GIS Exports               |
+|  - Road Analysis, Coverage & Analytics, and BBOX GIS Exports                   |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -73,9 +82,9 @@ The platform separates production ingestion from public GIS analysis:
 
 | Track | Target Audience | Primary Responsibility | Associated Workspaces |
 | :--- | :--- | :--- | :--- |
-| Production Pipeline | Survey Operators and Photogrammetry Engineers | RAW ingestion, automated privacy blurring, contrast enhancement, nadir masking, staging review, and approval gates. | Production Workspace, Processing Center, Data Lineage, NAS Storage Manager |
-| WebGIS Published View | TNB Project Managers, Asset Engineers, and GIS Analysts | Read-mostly visualization of verified trajectories, subgrid progress monitoring, defect reporting, and layer queries. | Main Dashboard, Data Management, Survey Analytics, Reports, Road Analysis |
-| System Governance | System Administrators | Multi-tenant campaign scoping, regional BBOX boundaries, CRS transformations, storage endpoints, and RLS policies. | Administration, Project Onboarding, Theme Selector |
+| Production Pipeline | Survey Operators and Photogrammetry Engineers | RAW ingestion, station-guided privacy blurring, contrast enhancement and nadir masking performed in workstation software, staging review, and approval gates. | Production Hub, NAS & Daemon |
+| WebGIS Published View | Project Managers, Asset Engineers, and GIS Analysts | Read-mostly visualization of verified trajectories, subgrid progress monitoring, defect reporting, and layer queries. | Main Dashboard, Data Management, Survey Analytics, Reports, Road Analysis |
+| System Governance | System Administrators | Per-project campaign scoping (data isolated by `project_id`), regional BBOX boundaries, CRS transformations, storage endpoints, and RLS policies. | Administration, Project Onboarding, Theme Selector |
 
 ---
 
@@ -89,7 +98,7 @@ The frontend application is built on React 18, TypeScript, and Vite, packaged wi
 * `src/components/ProjectOnboarding.tsx`: Campaign initialization gateway supporting regional presets across Malaysia, coordinate system configuration, and fast project resume.
 * `src/components/PhotoSphereViewerComponent.tsx`: High-performance WebGL 360-degree panorama viewer supporting equirectangular projections and multi-resolution tiled cubemaps.
 * `src/components/MapComponent.tsx`: Interactive WebGIS map wrapper utilizing an asynchronous postMessage handshake bridge (`VIEWER_READY` / `VIEWER_ACK`) with exponential backoff retries to guarantee synchronization without race conditions.
-* `src/components/QAQCWorkbench.tsx`: Comprehensive defect management studio allowing auditors to flag, categorize, and resolve imaging issues frame by frame.
+* `src/components/QAQCWorkbench.tsx`: Comprehensive defect management studio allowing auditors to flag and categorize imaging issues frame by frame, and export the audit.
 * `src/components/DataManagementPage.tsx`: Data grid controller managing subgrid clusters, batch logs, and publishing states.
 * `src/components/common/GeoSphereLogo.tsx`: Custom scalable vector mark with dynamic theme color inheritance (`fill="currentColor"`).
 
@@ -100,28 +109,26 @@ The frontend application is built on React 18, TypeScript, and Vite, packaged wi
 
 ---
 
-## Backend GPU Worker Pipeline
+## On-Premises NAS Worker
 
-The on-premises worker (`worker/app.py`) is a FastAPI microservice designed for execution on GPU-accelerated survey workstations and local NAS environments.
+The on-premises worker (`worker/app.py`) is a FastAPI microservice that exposes the local NAS to the dashboard. It runs on the survey workstation and serves the survey filesystem over a Cloudflare Tunnel.
 
-### Core Processing Modules
+It does **not** perform image processing. Panorama QA/QC (sharpness, blur, obstruction, glare) runs entirely in the browser on a WebGL/CPU path — see `src/utils/gpuAnalyzer.ts` and `src/workers/qaqc.worker.ts`. There is no server-side batch image pipeline and no GPU job queue.
 
-* `worker/blur.py`: Machine learning pipeline detecting human faces and vehicle license plates using YOLOv8 models with OpenCV elliptical Gaussian blur fallback.
-* `worker/masking.py`: Dynamic nadir and vehicle hood masking using polygon projection matrices to cleanly eliminate camera mountings and survey vehicle surfaces.
-* `worker/enhancement.py`: Photogrammetric image enhancement pipeline applying Contrast Limited Adaptive Histogram Equalization (CLAHE), dynamic shadow lifting, white-balance calibration, and unsharp masking.
-* `worker/runner.py`: Asynchronous job execution daemon managing worker threads, progress tracking, journal persistence (`jobs_journal.sqlite`), and failure recovery.
-* `worker/sync.py`: Bidirectional storage synchronizer orchestrating file transfers between local NVMe cache, on-premises NAS storage, and Supabase S3-compatible cloud buckets.
+### Modules
+
+* `worker/app.py`: HTTP surface, path-safety resolution under `NAS_BASE_PATH`, token guard, and RFC 9110 conditional-GET handling for image previews.
+* `worker/nas_scan.py`: Survey metadata scans — subgrids, capture folders, CSV telemetry reads, image inventories and the processing registry. Standard library only.
 
 ### Worker API Endpoints
 
 | Method | Route | Description |
 | :--- | :--- | :--- |
-| `GET` | `/health` | Worker operational status, GPU utilization, and memory telemetry |
-| `POST` | `/jobs` | Submit a batch processing job (blur, enhance, or mask) |
-| `GET` | `/jobs/{job_id}` | Query execution progress, completed item count, and error logs |
-| `POST` | `/jobs/{job_id}/cancel` | Abort a running job and release GPU allocation |
-| `GET` | `/storage/info` | Storage volume usage and available disk capacity |
-| `GET` | `/storage/list` | Live filesystem folder enumeration for survey campaigns |
+| `GET` | `/health` | Worker liveness and the configured NAS mount |
+| `GET` | `/api/folders` | Filesystem folder enumeration with per-folder image counts |
+| `GET` | `/api/storage` | Storage volume usage and per-top-level folder breakdown |
+| `GET` | `/api/nas-scan` | Survey scans; `action` is one of `subgrids`, `survey-folders`, `read-csv`, `folder-images`, `final-images`, `registry` |
+| `GET` | `/api/images/{path}` | Panorama preview bytes with `ETag`/`Last-Modified` and `304` revalidation |
 
 ---
 
@@ -309,27 +316,20 @@ GROUP BY subgrid
 ORDER BY subgrid ASC;
 ```
 
-### 3. Promoting Staged Panoramas to Published Layer
-Atomically promotes verified staging frames into the live WebGIS production table.
+### 3. Publishing Verified Panoramas to the WebGIS Layer
+The WebGIS release gate (`src/components/production/hub/WebGISPublishGate.tsx`)
+writes the approved frames straight into `panoramas` with a chunked upsert. It
+does **not** read `staging_panoramas`; that table is populated by the CSV import
+in Data Management and is used for operator review, not as a promotion queue.
+Each record must carry a target filename and finite coordinates before it is
+publishable. The effective write is:
 
 ```sql
-WITH moved_rows AS (
-    DELETE FROM public.staging_panoramas
-    WHERE project_id = :active_project_id
-      AND subgrid = :subgrid_code
-      AND stage_status = 'approved'
-    RETURNING 
-        project_id, subgrid, filename, image_url, latitude, 
-        longitude, heading, pitch, roll, is_fallback_coord, geom, captured_at
-)
 INSERT INTO public.panoramas (
-    project_id, subgrid, filename, image_url, latitude, 
-    longitude, heading, pitch, roll, is_fallback_coord, geom, captured_at, qa_status
+    project_id, subgrid, filename, image_url, latitude,
+    longitude, heading, qa_status, geom
 )
-SELECT 
-    project_id, subgrid, filename, image_url, latitude, 
-    longitude, heading, pitch, roll, is_fallback_coord, geom, captured_at, 'published'
-FROM moved_rows
+VALUES (..., 'published', ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography::geometry)
 ON CONFLICT (project_id, filename) DO UPDATE SET
     latitude = EXCLUDED.latitude,
     longitude = EXCLUDED.longitude,
@@ -337,6 +337,8 @@ ON CONFLICT (project_id, filename) DO UPDATE SET
     geom = EXCLUDED.geom,
     updated_at = NOW();
 ```
+
+Apply the `panoramas` policies below before enabling the release gate.
 
 ---
 
@@ -417,7 +419,7 @@ npm run build
 ```
 
 Key test suites:
-* `src/utils/__tests__/hashRouter.test.ts`: Hash-based workspace navigation and parameter parsing.
+* `src/utils/__tests__/urlRouter.test.ts`: Path-based workspace navigation and parameter parsing.
 * `src/components/__tests__/ProjectOnboarding.test.tsx`: Campaign wizard, boundary selection, and resume workflows.
 * `src/components/__tests__/SystemShowcase.test.tsx`: Landing showcase rendering and module navigation guards.
 * `src/services/__tests__/projects.test.ts`: Multi-project CRUD operations and local storage fallbacks.
@@ -428,11 +430,20 @@ Key test suites:
 
 ## Operational Runbook and Deployment
 
+> **This section is an abbreviated convenience summary.** For a complete,
+> current, client-facing installation guide — including the database migration
+> sequence, storage buckets, the first-administrator bootstrap, Cloudflare Tunnel
+> setup and the Pages deployment — see
+> **[`docs/Production Setup/README.md`](<docs/Production Setup/README.md>)**.
+
 ### 1. Prerequisites
 * Node.js version 18.18 or higher (LTS recommended)
 * npm version 9.0 or higher
-* Python 3.10+ (for background GPU worker service)
+* Python 3.10+ (for the NAS worker and station agents)
 * Supabase Cloud account or self-hosted Supabase instance with PostGIS enabled
+* A Cloudflare account and a domain — the platform requires **five** HTTPS
+  tunnel hostnames (one NAS worker, four station agents) and deploys to
+  Cloudflare Pages
 
 ### 2. Environment Configuration
 
@@ -443,12 +454,24 @@ Create a `.env` file in the project root:
 VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
 
-# WebGIS Embedded Map URL
+# WebGIS Embedded Map URL (no code fallback — required)
 VITE_MAP_URL=https://webgis.domain.com
 
-# On-Premises GPU Worker Endpoint (Optional)
-VITE_PRODUCTION_API_URL=http://localhost:8000
-VITE_PRODUCTION_API_KEY=your-worker-secret-token
+# Transport profiles (optional; these are the defaults)
+# VITE_WORKER_API_MODE=proxy       # proxy | direct
+# VITE_STATION_AGENT_MODE=proxy    # proxy | direct
+
+# Direct-mode worker endpoint. ONLY honoured when VITE_WORKER_API_MODE=direct —
+# the recommended setup proxies through Cloudflare Pages instead, which keeps the
+# worker token server-side and off the client.
+# VITE_PRODUCTION_API_URL=http://localhost:8000
+# VITE_PRODUCTION_API_KEY=your-worker-secret-token
+
+# Local dev proxy to the on-prem worker (NOT VITE_-prefixed: read by the Vite
+# dev server, which injects the bearer token so the browser never sees it).
+# Required only for `npm run dev` against a real NAS.
+# NAS_API_URL=https://your-tunnel-host
+# NAS_WORKER_TOKEN=the-worker-token
 
 # Database Table Overrides (Optional)
 VITE_DB_PANORAMAS_TABLE=panoramas
@@ -456,6 +479,10 @@ VITE_DB_STAGING_TABLE=staging_panoramas
 VITE_DB_BATCH_LOGS_TABLE=batch_logs
 VITE_DB_QA_DEFECTS_TABLE=qa_defects
 ```
+
+A full, current variable reference — including the Cloudflare Pages runtime
+secrets and the worker/agent variables — is in
+[`docs/Production Setup/03-Reference.md`](<docs/Production Setup/03-Reference.md>) §3.
 
 ### 3. Running the Frontend
 
@@ -470,7 +497,7 @@ npm run dev
 npm run build
 ```
 
-### 4. Running the GPU Processing Worker
+### 4. Running the NAS Worker
 
 ```bash
 # Navigate to worker directory
@@ -479,12 +506,25 @@ cd worker
 # Install Python requirements
 pip install -r requirements.txt
 
-# Start FastAPI worker daemon with Uvicorn
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+# Start the FastAPI worker. Bind loopback only — a Cloudflare Tunnel on the same
+# machine is the sole public entry point.
+uvicorn app:app --host 127.0.0.1 --port 8000
 ```
+
+Verify it serves the survey tree:
+
+```bash
+curl -H "Authorization: Bearer $NAS_WORKER_TOKEN" \
+  "http://127.0.0.1:8000/api/nas-scan?action=subgrids"
+```
+
+### 5. Running the Station Agents
+
+One per workstation PC. See [`docs/Production Setup/02-Operations.md`](<docs/Production Setup/02-Operations.md>) §3
+for the `STATION_ID` map, environment variables and autostart setup.
 
 ---
 
 ## License and Governance
 
-Proprietary software developed for Tenaga Nasional Berhad (TNB) Low Voltage Asset Mapping Operations. All rights reserved. Unauthorized duplication, distribution, or commercial deployment without express authorization is strictly prohibited.
+Proprietary software, licensed per the commercial terms accompanying your deployment. Redistribution or resale outside the licensed organisation requires a separate written agreement with the licensor.

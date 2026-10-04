@@ -663,7 +663,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                         {projectSettings?.projectName || 'GeoSphere 360 Operations Hub'}
                                     </span>
                                     <span className="text-[10px] block" style={{ color: stagedObj.textMuted }}>
-                                        Contract: {projectSettings?.contractCode || 'MMS-2026-TNB-01'}
+                                        Contract: {projectSettings?.contractCode || 'MMS-2026-GEO-01'}
                                     </span>
                                 </div>
                             </div>

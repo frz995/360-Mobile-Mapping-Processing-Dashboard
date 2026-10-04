@@ -59,7 +59,7 @@ export function buildExecutivePdfHtml(input: ExecutivePdfReportInput): string {
   const targetKmVal = Number(projectSettings?.targetKm) || (totalKmVal > 0 ? totalKmVal : 0);
   const targetImagesVal = Number(projectSettings?.targetImages) || (totalPanoramasCount > 0 ? totalPanoramasCount : 0);
   const targetProgressPct = targetKmVal > 0 ? Math.min(100, (totalKmVal / targetKmVal) * 100).toFixed(1) : '0.0';
-  const contractCode = projectSettings?.contractCode || 'MMS-2026-TNB-01';
+  const contractCode = projectSettings?.contractCode || 'MMS-2026-GEO-01';
 
   const now = new Date();
   const reportDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) + ' — ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });

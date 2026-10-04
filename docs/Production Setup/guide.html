@@ -1,0 +1,2245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GeoSphere 360 — Production Setup Guide</title>
+<style>
+:root{
+  --ink:#0b1220; --ink2:#1e293b; --body:#334155; --muted:#64748b; --faint:#94a3b8;
+  --accent:#0369a1; --accent2:#0ea5e9; --accentbg:#f0f9ff; --accentline:#bae6fd;
+  --line:#cbd5e1; --line2:#e2e8f0; --surface:#f8fafc; --surface2:#f1f5f9;
+  --ok:#047857; --okbg:#ecfdf5; --okline:#a7f3d0;
+  --warn:#b45309; --warnbg:#fffbeb; --warnline:#fde68a;
+  --dang:#b91c1c; --dangbg:#fef2f2; --dangline:#fecaca;
+  --mono:"Cascadia Mono","Consolas","SF Mono",ui-monospace,monospace;
+}
+@page{ size:A4; margin:0; }
+html,body{ margin:0; padding:0; }
+body{
+  font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-size:9.5pt; line-height:1.52; color:var(--body);
+  padding:20mm 15mm 16mm;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+.run-head,.run-foot{ position:fixed; left:0; right:0; z-index:2; }
+.run-head{ top:0; height:13mm; padding:0 15mm; display:flex; align-items:center;
+  justify-content:space-between; border-bottom:.5pt solid var(--line2); background:#fff; }
+.run-head .rh-l{ font-size:7.6pt; font-weight:700; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--accent); }
+.run-head .rh-r{ font-size:7.6pt; color:var(--faint); }
+.run-foot{ bottom:0; height:11mm; padding:0 15mm; display:flex; align-items:center;
+  justify-content:space-between; border-top:.5pt solid var(--line2);
+  font-size:7.4pt; color:var(--faint); background:#fff; }
+.run-foot strong{ color:var(--muted); font-weight:600; }
+
+.cover{ position:relative; z-index:5; background:#fff; margin:-20mm -15mm 0;
+  padding:26mm 18mm 14mm; min-height:257mm; page-break-after:always; }
+.cover-rule{ height:5px; background:linear-gradient(90deg,var(--accent) 0%,var(--accent2) 55%,#7dd3fc 100%); margin:0 -18mm 14mm; }
+.cover-kicker{ font-size:8.4pt; font-weight:700; letter-spacing:.22em;
+  text-transform:uppercase; color:var(--accent2); margin-bottom:5mm; }
+.cover h1{ font-size:30pt; line-height:1.1; color:var(--ink); margin:0 0 4mm;
+  font-weight:700; letter-spacing:-.015em; }
+.cover h2{ font-size:13pt; font-weight:400; color:var(--muted); margin:0 0 11mm; line-height:1.35; }
+.cover-meta{ display:grid; grid-template-columns:auto 1fr; gap:2.2mm 6mm;
+  font-size:8.6pt; margin-bottom:8mm; }
+.cover-meta dt{ color:var(--faint); text-transform:uppercase; letter-spacing:.07em;
+  font-size:7.2pt; font-weight:700; padding-top:.4mm; }
+.cover-meta dd{ margin:0; color:var(--ink2); font-weight:500; }
+.cover-note{ border:1px solid var(--accentline); background:var(--accentbg);
+  border-radius:7px; padding:5mm 6mm; font-size:8.6pt; color:var(--ink2); }
+.cover-note b{ color:var(--accent); }
+.cover-glance{ margin-top:9mm; border-top:.5pt solid var(--line2); padding-top:5mm; }
+.cg-title{ font-size:7.4pt; font-weight:700; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--faint); margin-bottom:3.5mm; }
+.cg-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:3mm 5mm; }
+.cg{ border:1px solid var(--line2); border-radius:5px; padding:2.6mm 3mm; background:var(--surface); }
+.cg-k{ display:block; font-size:7.2pt; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--faint); font-weight:700; margin-bottom:1mm; }
+.cg-v{ display:block; font-size:11pt; font-weight:700; color:var(--ink); line-height:1.1; }
+.cg-v.no{ color:var(--ok); }
+.cg-note{ margin-top:4mm; font-size:8pt; color:var(--muted); }
+.cg-note b{ color:var(--ink2); }
+.cover-foot{ position:absolute; left:18mm; right:18mm; bottom:12mm;
+  border-top:.5pt solid var(--line2); padding-top:3mm;
+  display:flex; justify-content:space-between; font-size:7.4pt; color:var(--faint); }
+
+h1.sec{ font-size:16pt; color:var(--ink); margin:0 0 4mm; font-weight:700;
+  letter-spacing:-.01em; page-break-after:avoid; }
+h1.sec .num{ color:var(--accent2); font-weight:700; margin-right:3mm; }
+.sec-lede{ font-size:10pt; color:var(--muted); margin:0 0 6mm; }
+h2{ font-size:11.4pt; color:var(--ink); margin:8mm 0 3mm; font-weight:700;
+  page-break-after:avoid; border-bottom:.5pt solid var(--line2); padding-bottom:1.5mm; }
+h3{ font-size:9.8pt; color:var(--accent); margin:6mm 0 2mm; font-weight:700; page-break-after:avoid; }
+h4{ font-size:9.2pt; color:var(--ink2); margin:4.5mm 0 1.5mm; font-weight:700; page-break-after:avoid; }
+p{ margin:0 0 2.6mm; }
+ul,ol{ margin:0 0 3mm; padding-left:5.5mm; }
+li{ margin-bottom:1.4mm; }
+strong{ color:var(--ink2); font-weight:650; }
+
+.page-break{ page-break-before:always; }
+.avoid{ page-break-inside:avoid; }
+
+.step{ display:flex; gap:4mm; margin:0 0 4mm; page-break-inside:avoid; }
+.step-n{ flex:0 0 7mm; height:7mm; border-radius:50%; background:var(--accent);
+  color:#fff; font-size:8.6pt; font-weight:700; display:flex; align-items:center;
+  justify-content:center; margin-top:.6mm; }
+.step-b{ flex:1; }
+.step-b > :first-child{ margin-top:0; }
+.step-t{ font-weight:700; color:var(--ink); font-size:9.8pt; margin-bottom:1.2mm; }
+
+.callout{ border-radius:6px; padding:3.4mm 4mm; margin:3.5mm 0;
+  font-size:8.9pt; page-break-inside:avoid; border:1px solid; position:relative; padding-left:12mm; }
+.callout .ic{ position:absolute; left:3.6mm; top:3.4mm; width:5.2mm; height:5.2mm; }
+.callout p:last-child{ margin-bottom:0; }
+.callout ul{ margin-bottom:0; }
+.callout .ct{ font-weight:700; display:block; margin-bottom:1.2mm; }
+.c-info{ background:var(--accentbg); border-color:var(--accentline); color:var(--ink2); }
+.c-info .ct,.c-info .ic{ color:var(--accent); }
+.c-warn{ background:var(--warnbg); border-color:var(--warnline); color:#78350f; }
+.c-warn .ct,.c-warn .ic{ color:var(--warn); }
+.c-dang{ background:var(--dangbg); border-color:var(--dangline); color:#7f1d1d; }
+.c-dang .ct,.c-dang .ic{ color:var(--dang); }
+.c-ok{ background:var(--okbg); border-color:var(--okline); color:#064e3b; }
+.c-ok .ct,.c-ok .ic{ color:var(--ok); }
+
+.tag-fixed{ display:inline-block; font-size:6.6pt; font-weight:700; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--ok); background:var(--okbg);
+  border:1px solid var(--okline); border-radius:999px; padding:.4mm 1.6mm; margin-left:2mm;
+  vertical-align:middle; }
+
+table{ width:100%; border-collapse:collapse; margin:3mm 0 4mm; font-size:8.4pt; }
+thead{ display:table-header-group; }
+th{ background:var(--surface2); color:var(--ink2); font-weight:700; text-align:left;
+  padding:2.1mm 2.4mm; border-bottom:1.2pt solid var(--line); font-size:7.7pt;
+  text-transform:uppercase; letter-spacing:.05em; }
+td{ padding:1.9mm 2.4mm; border-bottom:.5pt solid var(--line2); vertical-align:top; }
+tbody tr:nth-child(even){ background:#fcfdfe; }
+.yes{ color:var(--ok); font-weight:700; }
+.opt{ color:var(--faint); font-weight:600; }
+.no{ color:var(--dang); font-weight:700; }
+
+code{ font-family:var(--mono); font-size:8.2pt; background:var(--surface2);
+  padding:.5mm 1.2mm; border-radius:3px; color:var(--ink2); }
+pre{ background:#0f1b2d; color:#dbe7f5; border-radius:6px; padding:3.4mm 4mm;
+  margin:3mm 0; font-family:var(--mono); font-size:7.9pt; line-height:1.5;
+  page-break-inside:avoid; white-space:pre-wrap; word-break:break-word; }
+pre code{ background:none; padding:0; color:inherit; font-size:inherit; }
+pre .c{ color:#7d94b3; font-style:italic; }
+pre .k{ color:#7dd3fc; }
+pre .s{ color:#a5e8b0; }
+
+figure{ margin:4mm 0 5mm; page-break-inside:avoid; text-align:center; }
+figure svg{ width:100%; height:auto; }
+figcaption{ font-size:7.9pt; color:var(--muted); margin-top:2mm; padding-top:1.6mm;
+  border-top:.5pt solid var(--line2); text-align:left; }
+figcaption b{ color:var(--ink2); }
+
+.toc{ font-size:9pt; }
+.toc ol{ list-style:none; padding:0; margin:0; counter-reset:t; }
+.toc > ol > li{ counter-increment:t; margin-bottom:1.7mm; padding-left:9mm; position:relative; }
+.toc > ol > li::before{ content:counter(t); position:absolute; left:0; top:.3mm;
+  width:5.6mm; height:5.6mm; border-radius:50%; background:var(--accentbg);
+  color:var(--accent); font-size:7.4pt; font-weight:700; display:flex;
+  align-items:center; justify-content:center; border:1px solid var(--accentline); }
+.toc .tt{ font-weight:650; color:var(--ink); }
+.toc .td{ display:block; color:var(--faint); font-size:7.9pt; margin-left:9mm; }
+.legend{ display:flex; gap:5mm; flex-wrap:wrap; font-size:7.7pt; color:var(--muted);
+  margin-top:2mm; justify-content:center; }
+.box{ display:inline-block; width:3.4mm; height:3.4mm; border:1px solid var(--line);
+  border-radius:2px; vertical-align:middle; }
+.sig td{ height:11mm; }
+</style>
+</head>
+<body>
+
+<div class="run-head">
+  <span class="rh-l">GeoSphere 360 &nbsp;·&nbsp; Production Setup Guide</span>
+  <span class="rh-r">Client Deployment &amp; Installation</span>
+</div>
+<div class="run-foot">
+  <span><strong>Geosphere 360</strong> · Mobile Mapping Processing Platform</span>
+  <span>Confidential — issued to the licensed client</span>
+</div>
+
+<!-- ============================ COVER ============================ -->
+<section class="cover" id="cover">
+  <div class="cover-rule"></div>
+  <div class="cover-kicker">Mobile Mapping System · Processing Platform</div>
+  <h1>Production Setup<br>Guide</h1>
+  <h2>End-to-end installation, configuration and verification<br>for the GeoSphere 360 WebGIS dashboard and on-premises survey pipeline</h2>
+
+  <dl class="cover-meta">
+    <dt>Document</dt><dd>GeoSphere 360 — Production Setup Guide</dd>
+    <dt>Revision</dt><dd>1.0</dd>
+    <dt>Applies to</dt><dd>geosphere-360-dashboard</dd>
+    <dt>Audience</dt><dd>Client IT / infrastructure team, and client survey operations leads</dd>
+    <dt>Scope</dt><dd>Cloud deployment, database, on-premises services, configuration, verification</dd>
+    <dt>Status</dt><dd>For implementation</dd>
+  </dl>
+
+  <div class="cover-note">
+    <b>Read this first.</b> This platform performs <b>no server-side image processing</b> and
+    requires <b>no GPU</b>. Panorama quality analysis runs in the operator's browser on a WebGL
+    shader path; image editing is performed by operators in desktop software on four workstation
+    PCs, which this platform observes. Do not procure GPU hardware or CUDA toolchains for this
+    system. See <b>Section 1.2</b>.
+  </div>
+
+  <div class="cover-glance">
+    <div class="cg-title">At a glance</div>
+    <div class="cg-grid">
+      <div class="cg"><span class="cg-k">GPU required</span><span class="cg-v no">No</span></div>
+      <div class="cg"><span class="cg-k">Tunnel hostnames</span><span class="cg-v">5</span></div>
+      <div class="cg"><span class="cg-k">Database migrations</span><span class="cg-v">28 files</span></div>
+      <div class="cg"><span class="cg-k">On-prem services</span><span class="cg-v">5</span></div>
+      <div class="cg"><span class="cg-k">Verification tiers</span><span class="cg-v">2</span></div>
+      <div class="cg"><span class="cg-k">Hosting target</span><span class="cg-v">Cloudflare Pages</span></div>
+    </div>
+<div class="cg-note">Known limitations are catalogued in <b>Section 14</b>. Two require
+a client decision before go-live: panorama bucket privacy (4.1) and database-enforced deletion
+approval (6.3).</div>
+  </div>
+
+  <div class="cover-foot">
+    <span>Proprietary &amp; confidential. Unauthorised distribution is prohibited.</span>
+    <span>Generated from the repository setup documentation</span>
+  </div>
+</section>
+
+<!-- ============================ DOCUMENT CONTROL ============================ -->
+<section id="doc-control">
+  <h1 class="sec"><span class="num">§</span>Document control</h1>
+  <p class="sec-lede">How to read this guide, and what it assumes.</p>
+
+  <h2>Purpose</h2>
+  <p>This guide takes a client from an empty account to a verified, running GeoSphere 360
+  installation. It is written to be followed in order, by someone who has not seen the system
+  before. Every step states what to run, the expected result, and what to do when it differs.</p>
+
+  <h2>How the guide is organised</h2>
+  <p>The work divides into four phases. Each phase can be handed to a different engineer, and
+  later phases depend on earlier ones.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 176" role="img" aria-label="Four install phases">
+      <defs>
+        <marker id="ah" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/>
+        </marker>
+      </defs>
+      <rect x="4" y="30" width="196" height="106" rx="8" fill="#f0f9ff" stroke="#bae6fd"/>
+      <circle cx="26" cy="52" r="11" fill="#0369a1"/>
+      <text x="26" y="56" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+      <text x="45" y="56" font-size="12.5" font-weight="700" fill="#0b1220">Cloud &amp; edge</text>
+      <text x="20" y="76" font-size="10" fill="#334155">Accounts and domain</text>
+      <text x="20" y="91" font-size="10" fill="#334155">Database and buckets</text>
+      <text x="20" y="106" font-size="10" fill="#334155">First administrator</text>
+      <text x="20" y="121" font-size="10" fill="#334155">Tunnel and Pages deploy</text>
+
+      <line x1="200" y1="83" x2="238" y2="83" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah)"/>
+
+      <rect x="240" y="30" width="196" height="106" rx="8" fill="#f0f9ff" stroke="#bae6fd"/>
+      <circle cx="262" cy="52" r="11" fill="#0369a1"/>
+      <text x="262" y="56" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">2</text>
+      <text x="281" y="56" font-size="12.5" font-weight="700" fill="#0b1220">On-premises</text>
+      <text x="256" y="76" font-size="10" fill="#334155">NAS folder layout</text>
+      <text x="256" y="91" font-size="10" fill="#334155">NAS worker service</text>
+      <text x="256" y="106" font-size="10" fill="#334155">Station agents x4</text>
+      <text x="256" y="121" font-size="10" fill="#334155">Tunnels on each PC</text>
+
+      <line x1="436" y1="83" x2="474" y2="83" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah)"/>
+
+      <rect x="476" y="30" width="196" height="106" rx="8" fill="#f0f9ff" stroke="#bae6fd"/>
+      <circle cx="498" cy="52" r="11" fill="#0369a1"/>
+      <text x="498" y="56" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">3</text>
+      <text x="517" y="56" font-size="12.5" font-weight="700" fill="#0b1220">Configure</text>
+      <text x="492" y="76" font-size="10" fill="#334155">Project and settings</text>
+      <text x="492" y="91" font-size="10" fill="#334155">Storage configuration</text>
+      <text x="492" y="106" font-size="10" fill="#334155">Station address setup</text>
+      <text x="492" y="121" font-size="10" fill="#334155">User roles</text>
+
+      <line x1="672" y1="83" x2="710" y2="83" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah)"/>
+
+      <rect x="712" y="30" width="184" height="106" rx="8" fill="#ecfdf5" stroke="#a7f3d0"/>
+      <circle cx="734" cy="52" r="11" fill="#047857"/>
+      <text x="734" y="56" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">4</text>
+      <text x="753" y="56" font-size="12.5" font-weight="700" fill="#0b1220">Verify</text>
+      <text x="728" y="76" font-size="10" fill="#334155">Tier A — dashboard</text>
+      <text x="728" y="91" font-size="10" fill="#334155">Tier B — pipeline</text>
+      <text x="728" y="106" font-size="10" fill="#334155">Smoke test</text>
+      <text x="728" y="121" font-size="10" fill="#334155">Sign-off sheet</text>
+
+      <text x="450" y="163" font-size="9.5" fill="#64748b" text-anchor="middle">Phases 1 and 2 may run in parallel. Phase 3 requires phase 1. Phase 4 requires all of them.</text>
+    </svg>
+    <figcaption><b>Figure 1.</b> The four install phases and their dependencies.</figcaption>
+  </figure>
+
+  <h2>Conventions</h2>
+  <table>
+    <thead><tr><th style="width:26%">Convention</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;ANGLE_BRACKETS&gt;</code></td><td>A placeholder. Replace the text <em>and</em> the brackets.</td></tr>
+      <tr><td><code>VITE_SOMETHING</code></td><td>An environment variable name. Names are case-sensitive.</td></tr>
+      <tr><td><b>Windows</b> / <b>Linux</b></td><td>PowerShell versus bash. Commands are otherwise identical.</td></tr>
+      <tr><td>Section <i>n</i></td><td>A numbered section of this guide.</td></tr>
+      <tr><td>Blue callout</td><td>Information you will need.</td></tr>
+      <tr><td>Amber callout</td><td>A common mistake. Check here when something does not match.</td></tr>
+      <tr><td>Red callout</td><td>A known limitation or blocker. Read before go-live.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-info">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">Build-time versus runtime configuration</span>
+    <p>Variables prefixed <code>VITE_</code> are compiled into the browser bundle at build
+    time. Adding or changing one requires a <b>rebuild</b> — editing the variable and
+    restarting the application does nothing. Variables without that prefix are read server-side by
+    Cloudflare and never reach the browser. Sections 8.3 and 8.4 list which is which.</p>
+  </div>
+</section>
+
+<!-- ============================ CONTENTS ============================ -->
+<section class="page-break" id="contents">
+  <h1 class="sec"><span class="num">§</span>Contents</h1>
+  <nav class="toc">
+    <ol>
+      <li><span class="tt">About this system</span><span class="td">What it is, what it is not, architecture, components</span></li>
+      <li><span class="tt">Prerequisites</span><span class="td">Accounts, domain and hostnames, hardware, software versions</span></li>
+      <li><span class="tt">Database</span><span class="td">Project creation, PostGIS, the migration sequence, verification</span></li>
+      <li><span class="tt">Storage buckets</span><span class="td">Panorama bucket, geometry bucket, privacy implications</span></li>
+      <li><span class="tt">First administrator</span><span class="td">Manual bootstrap, role resolution, adding further users</span></li>
+      <li><span class="tt">Roles and row-level security</span><span class="td">The four roles, what the database actually enforces</span></li>
+      <li><span class="tt">Cloudflare Tunnel</span><span class="td">Named tunnels, configuration, DNS routing, running as a service</span></li>
+      <li><span class="tt">Cloudflare Pages deployment</span><span class="td">Build settings, build-time and runtime variables, hosting constraint</span></li>
+      <li><span class="tt">NAS layout</span><span class="dd">Required folder tree, depth rules, subgrid naming</span></li>
+      <li><span class="tt">NAS worker</span><span class="td">Install, configure, run, verify</span></li>
+      <li><span class="tt">Station agents</span><span class="td">One per workstation, configuration, firewall, autostart</span></li>
+      <li><span class="tt">First-run configuration</span><span class="td">Project, settings, station address setup, roles</span></li>
+      <li><span class="tt">Verification</span><span class="td">Tier A and Tier B acceptance, smoke test, sign-off sheet</span></li>
+      <li><span class="tt">Known limitations</span><span class="td">Product defects that affect a client installation</span></li>
+      <li><span class="tt">Troubleshooting</span><span class="td">Symptom to cause, including silent failures</span></li>
+      <li><span class="tt">Reference</span><span class="td">Environment variables, migrations, HTTP surfaces, roles</span></li>
+    </ol>
+  </nav>
+</section>
+
+<!-- ============================ 1. ABOUT ============================ -->
+<section class="page-break" id="sec-1">
+  <h1 class="sec"><span class="num">1</span>About this system</h1>
+  <p class="sec-lede">What GeoSphere 360 is, how it is put together, and what it does not do.</p>
+
+  <h2>1.1 What it is</h2>
+  <p>GeoSphere 360 is a browser-based WebGIS dashboard for 360 degree mobile-mapping survey data,
+  together with a small set of on-premises services that connect it to a survey NAS and to four
+  photogrammetry workstations.</p>
+  <p>A surveyor captures 360 imagery and GNSS/IMU telemetry on a vehicle rig. Operator PCs run
+  desktop photogrammetry software to blur, stitch, enhance and retouch the imagery. The
+  dashboard coordinates that work: it shows which subgrid has been captured, what stage each
+  workstation has reached, which frames failed quality inspection, and what has been published to
+  the WebGIS layer.</p>
+
+  <h2>1.2 What it is not</h2>
+  <p>This distinction drives hardware purchasing, so it is stated plainly and early.</p>
+
+  <div class="callout c-info">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <span class="ct">No server-side image processing</span>
+    <p>The platform does <b>not</b> run a server-side image pipeline. There is no GPU worker, no
+    batch enhancement queue, and no image-processing job store.</p>
+    <ul>
+      <li><b>Panorama quality analysis</b> — sharpness, privacy-blur verification, obstruction and glare detection — runs
+      <b>in the operator's browser</b> on a WebGL shader path, with a CPU fallback.</li>
+      <li><b>Image editing</b> — blurring, stitching, enhancement, nadir removal — is performed by
+      operators in desktop software on the four workstations. The dashboard observes their
+      progress; it does not drive them.</li>
+    </ul>
+    <p><b>You do not need:</b> an NVIDIA GPU, CUDA, PyTorch, OpenCV, a GPU workstation, or a GPU
+    queue service. Standard office hardware is sufficient. Section 2.3 gives the actual list.</p>
+  </div>
+
+  <h2>1.3 Architecture</h2>
+  <p>The system splits into a cloud half, which the client's users reach over HTTPS, and an
+  on-premises half that never touches the public internet. A Cloudflare Tunnel bridges them.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 430" role="img" aria-label="System architecture: cloud and on-premises halves">
+      <defs>
+        <marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#0369a1"/>
+        </marker>
+        <marker id="arg" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#64748b"/>
+        </marker>
+      </defs>
+
+      <rect x="330" y="8" width="240" height="42" rx="21" fill="#0b1220"/>
+      <text x="450" y="26" font-size="11.5" font-weight="700" fill="#fff" text-anchor="middle">Survey operator / QA inspector</text>
+      <text x="450" y="41" font-size="9" fill="#7dd3fc" text-anchor="middle">browser &#183; desktop PC</text>
+
+      <line x1="450" y1="50" x2="450" y2="72" stroke="#0369a1" stroke-width="1.8" marker-end="url(#ar)"/>
+      <text x="458" y="66" font-size="8" fill="#64748b">HTTPS</text>
+
+      <rect x="18" y="74" width="864" height="176" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="5 3"/>
+      <text x="32" y="92" font-size="9" font-weight="700" letter-spacing="1.6" fill="#0369a1">CLOUD &#8212; PUBLIC EDGE</text>
+
+      <rect x="40" y="102" width="248" height="130" rx="8" fill="#fff" stroke="#bae6fd"/>
+      <text x="56" y="122" font-size="10.5" font-weight="700" fill="#0b1220">Cloudflare Pages</text>
+      <text x="56" y="138" font-size="9" fill="#334155">Web application (static)</text>
+      <rect x="56" y="148" width="216" height="68" rx="6" fill="#f0f9ff" stroke="#bae6fd"/>
+      <text x="68" y="165" font-size="9" font-weight="700" fill="#0369a1">Pages Functions</text>
+      <text x="68" y="180" font-size="8.4" fill="#334155">7 route handlers</text>
+      <text x="68" y="192" font-size="8.4" fill="#334155">validates session</text>
+      <text x="68" y="204" font-size="8.4" fill="#334155">injects server secrets</text>
+
+      <rect x="308" y="102" width="270" height="130" rx="8" fill="#fff" stroke="#bae6fd"/>
+      <text x="324" y="122" font-size="10.5" font-weight="700" fill="#0b1220">Supabase</text>
+      <rect x="324" y="132" width="238" height="26" rx="5" fill="#f1f5f9"/>
+      <text x="334" y="149" font-size="8.6" fill="#334155">PostgreSQL 15 + PostGIS</text>
+      <rect x="324" y="164" width="238" height="26" rx="5" fill="#f1f5f9"/>
+      <text x="334" y="181" font-size="8.6" fill="#334155">Authentication &#183; roles &#183; RLS</text>
+      <rect x="324" y="196" width="238" height="26" rx="5" fill="#f1f5f9"/>
+      <text x="334" y="213" font-size="8.6" fill="#334155">Object storage (MMS_PIC)</text>
+
+      <rect x="598" y="102" width="264" height="130" rx="8" fill="#fff" stroke="#bae6fd"/>
+      <text x="614" y="122" font-size="10.5" font-weight="700" fill="#0b1220">Browser-side analysis</text>
+      <rect x="614" y="132" width="232" height="44" rx="5" fill="#ecfdf5" stroke="#a7f3d0"/>
+      <text x="624" y="149" font-size="8.6" font-weight="700" fill="#047857">WebGL quality analysis</text>
+      <text x="624" y="165" font-size="8.2" fill="#334155">sharpness &#183; blur &#183; obstruction &#183; glare</text>
+      <rect x="614" y="182" width="232" height="40" rx="5" fill="#f1f5f9"/>
+      <text x="624" y="198" font-size="8.6" font-weight="700" fill="#334155">Web Workers</text>
+      <text x="624" y="213" font-size="8.2" fill="#334155">GIS import &#183; coverage &#183; QA/QC offload</text>
+
+      <rect x="18" y="266" width="864" height="52" rx="8" fill="#fefce8" stroke="#fde68a"/>
+      <text x="32" y="288" font-size="9" font-weight="700" letter-spacing="1.4" fill="#b45309">CLOUDFLARE TUNNEL &#8212; 5 NAMED HTTPS HOSTNAMES &#8212; OUTBOUND ONLY</text>
+      <text x="32" y="306" font-size="8.6" fill="#78350f">cloudflared on each machine. No inbound firewall rule required. One hostname for the worker, one per station agent.</text>
+      <line x1="450" y1="250" x2="450" y2="264" stroke="#b45309" stroke-width="1.8" marker-end="url(#arg)"/>
+
+      <rect x="18" y="334" width="864" height="84" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="5 3"/>
+      <text x="870" y="352" font-size="9" font-weight="700" letter-spacing="1.6" fill="#334155" text-anchor="end">ON-PREMISES &#8212; CLIENT NETWORK &#8212; NEVER EXPOSED TO THE INTERNET</text>
+
+      <rect x="40" y="360" width="196" height="48" rx="7" fill="#fff" stroke="#cbd5e1"/>
+      <text x="54" y="378" font-size="10" font-weight="700" fill="#0b1220">NAS worker</text>
+      <text x="54" y="392" font-size="8.4" fill="#334155">read-only filesystem views</text>
+      <text x="54" y="404" font-size="8" fill="#64748b">FastAPI &#183; port 8000</text>
+
+      <rect x="252" y="360" width="286" height="48" rx="7" fill="#fff" stroke="#cbd5e1"/>
+      <text x="266" y="378" font-size="10" font-weight="700" fill="#0b1220">Station agents x4</text>
+      <text x="266" y="392" font-size="8.4" fill="#334155">progress &#183; NAS rename &#183; bucket upload</text>
+      <text x="266" y="404" font-size="8" fill="#64748b">one per workstation PC</text>
+
+      <rect x="554" y="360" width="308" height="48" rx="7" fill="#fff" stroke="#cbd5e1"/>
+      <text x="568" y="378" font-size="10" font-weight="700" fill="#0b1220">Survey NAS filesystem</text>
+      <text x="568" y="392" font-size="8.4" fill="#334155">raw &#183; stitched &#183; final &#183; deliverables</text>
+      <text x="568" y="404" font-size="8" fill="#64748b">mounted on the worker PC and each agent PC</text>
+
+      <line x1="138" y1="318" x2="138" y2="358" stroke="#0369a1" stroke-width="1.8" marker-end="url(#ar)"/>
+      <line x1="395" y1="318" x2="395" y2="358" stroke="#0369a1" stroke-width="1.8" marker-end="url(#ar)"/>
+      <line x1="236" y1="384" x2="250" y2="384" stroke="#94a3b8" stroke-width="1.4"/>
+      <line x1="538" y1="384" x2="552" y2="384" stroke="#94a3b8" stroke-width="1.4"/>
+    </svg>
+    <figcaption><b>Figure 2.</b> System architecture. The browser never receives an on-premises
+    credential &#8212; Pages Functions validate the session and inject server-side secrets before
+    proxying. The NAS is reachable only by the worker and the agents.</figcaption>
+  </figure>
+
+  <h2>1.4 What each component is responsible for</h2>
+  <table>
+    <thead><tr><th style="width:22%">Component</th><th style="width:44%">Responsibility</th><th>Authoritative for</th></tr></thead>
+    <tbody>
+      <tr><td><b>Cloudflare Pages</b></td><td>Serves the web application; hosts the private-API proxy</td><td>&#8212;</td></tr>
+      <tr><td><b>Pages Functions</b></td><td>Validate the signed-in session, then proxy to on-premises services using server-side credentials</td><td>Never exposes an on-premises credential to the browser</td></tr>
+      <tr><td><b>Supabase</b></td><td>Spatial database, authentication, object storage</td><td>All persistent state</td></tr>
+      <tr><td><b>NAS worker</b></td><td>Read-only view of the survey filesystem and storage telemetry</td><td>What is on disk</td></tr>
+      <tr><td><b>Station agents x4</b></td><td>Report workstation progress; perform NAS rename and bucket upload</td><td>Per-workstation work state</td></tr>
+      <tr><td><b>Operator browser</b></td><td>Panorama quality analysis on a WebGL path</td><td>Quality verdicts</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-info">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <span class="ct">Design principle</span>
+    <p>The database is the single source of truth. The NAS is treated as read-only by the
+    dashboard: the worker rejects any path that resolves outside its configured base, so a
+    malformed request cannot reach unrelated files on the client network.</p>
+  </div>
+</section>
+
+<!-- ============================ 2. PREREQUISITES ============================ -->
+<section class="page-break" id="sec-2">
+  <h1 class="sec"><span class="num">2</span>Prerequisites</h1>
+  <p class="sec-lede">Accounts, domain, hostnames, hardware and software &#8212; everything to acquire before starting.</p>
+
+  <h2>2.1 Install order at a glance</h2>
+  <p>Perform these in sequence. Steps 6 to 9 are the on-premises half and may be carried out in
+  parallel with steps 1 to 5 by a different engineer.</p>
+  <table>
+    <thead><tr><th style="width:6%">#</th><th style="width:44%">Action</th><th style="width:36%">Section</th><th style="width:14%">Estimate</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Create Cloudflare and Supabase accounts; attach a domain</td><td>2.2, 2.4</td><td>1 day</td></tr>
+      <tr><td>2</td><td>Create the Supabase project; <b>enable PostGIS first</b></td><td>3.1, 3.2</td><td>30 min</td></tr>
+      <tr><td>3</td><td>Apply migrations <code>0001</code>&#8211;<code>0010</code> then <code>0012</code>&#8211;<code>0029</code></td><td>3.3</td><td>45 min</td></tr>
+      <tr><td>4</td><td>Create the <code>MMS_PIC</code> storage bucket (public)</td><td>4.1</td><td>5 min</td></tr>
+      <tr><td>5</td><td>Create the first administrator</td><td>5</td><td>15 min</td></tr>
+      <tr><td>6</td><td>Build the NAS folder tree</td><td>9</td><td>1 day</td></tr>
+      <tr><td>7</td><td>Install and run the NAS worker</td><td>10</td><td>30 min</td></tr>
+      <tr><td>8</td><td>Install and run four station agents</td><td>11</td><td>2 hours</td></tr>
+      <tr><td>9</td><td>Create five Cloudflare Tunnels</td><td>7</td><td>1 hour</td></tr>
+      <tr><td>10</td><td>Deploy to Cloudflare Pages</td><td>8</td><td>30 min</td></tr>
+      <tr><td>11</td><td>Configure the application</td><td>12</td><td>45 min</td></tr>
+      <tr><td>12</td><td>Verify the installation</td><td>13</td><td>30 min</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2.2 Accounts and services</h2>
+  <table>
+    <thead><tr><th style="width:24%">Need</th><th style="width:34%">Why</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><b>Cloudflare account</b></td><td>Hosts the web deployment, the tunnels and optional access policies</td><td>A free account is sufficient to start</td></tr>
+      <tr><td><b>A domain on Cloudflare DNS</b></td><td>The tunnel hostnames must be real, resolvable HTTPS names</td><td>Section 2.4 &#8212; you need five of them</td></tr>
+      <tr><td><b>Supabase project</b></td><td>PostgreSQL and PostGIS, authentication, object storage</td><td>Supabase Cloud, or self-hosted Docker</td></tr>
+      <tr><td><b>Photogrammetry software licences</b></td><td>Runs on the four workstations</td><td>Not part of this platform</td></tr>
+      <tr><td><b>A WebGIS application URL</b></td><td>The embedded interactive map</td><td>Required at build time; there is no fallback</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2.3 Hardware</h2>
+  <p>No GPU is required for any component of this platform (Section 1.2).</p>
+  <table>
+    <thead><tr><th style="width:26%">Role</th><th style="width:34%">Minimum</th><th>Recommended</th></tr></thead>
+    <tbody>
+      <tr><td>NAS / worker PC</td><td>4 cores, 8 GB RAM, 100 GB free disk</td><td>8 cores, 16 GB RAM, SSD</td></tr>
+      <tr><td>Each station PC (x4)</td><td>4 cores, 8 GB RAM, SSD</td><td>8 cores, 16 GB RAM, SSD</td></tr>
+      <tr><td>Network</td><td>1 GbE between the PCs and the NAS</td><td>10 GbE for large surveys</td></tr>
+      <tr><td>NAS capacity</td><td>Raw + stitched + final + deliverables</td><td>Plan roughly three times the raw survey volume</td></tr>
+      <tr><td>Cloud</td><td>Managed Supabase, free Cloudflare tier</td><td>Scale the database for archive volumes</td></tr>
+    </tbody>
+  </table>
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">Size the workstations for the photogrammetry software</span>
+    <p>The station PCs also run stitching and image-editing software, which is far more demanding
+    than this platform. Choose their specification for that workload, not for the dashboard.</p>
+  </div>
+
+  <h2>2.4 Hostnames &#8212; plan for five</h2>
+  <p>The dashboard reaches the on-premises services through five separate tunnels. This is the
+  single most commonly under-provisioned item, so plan for it before ordering certificates or DNS.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 196" role="img" aria-label="Five tunnel hostnames">
+      <rect x="6" y="10" width="888" height="176" rx="9" fill="#fefce8" stroke="#fde68a"/>
+      <text x="24" y="30" font-size="9" font-weight="700" letter-spacing="1.4" fill="#b45309">ONE DNS ZONE, FIVE TUNNEL HOSTNAMES</text>
+
+      <rect x="24" y="42" width="250" height="52" rx="7" fill="#fff" stroke="#fcd34d"/>
+      <text x="38" y="62" font-size="9.6" font-weight="700" fill="#0b1220" font-family="Consolas,monospace">nas-api.example.com</text>
+      <text x="38" y="78" font-size="8.4" fill="#475569">NAS worker &#183; required for NAS features</text>
+
+      <rect x="290" y="42" width="142" height="52" rx="7" fill="#fff" stroke="#fcd34d"/>
+      <text x="304" y="62" font-size="9.6" font-weight="700" fill="#0b1220" font-family="Consolas,monospace">pc1-agent</text>
+      <text x="304" y="78" font-size="8.4" fill="#475569">station &#183; blur</text>
+
+      <rect x="448" y="42" width="142" height="52" rx="7" fill="#fff" stroke="#fcd34d"/>
+      <text x="462" y="62" font-size="9.6" font-weight="700" fill="#0b1220" font-family="Consolas,monospace">pc2-agent</text>
+      <text x="462" y="78" font-size="8.4" fill="#475569">station &#183; stitch</text>
+
+      <rect x="606" y="42" width="142" height="52" rx="7" fill="#fff" stroke="#fcd34d"/>
+      <text x="620" y="62" font-size="9.6" font-weight="700" fill="#0b1220" font-family="Consolas,monospace">pc3-agent</text>
+      <text x="620" y="78" font-size="8.4" fill="#475569">station &#183; lightroom</text>
+
+      <rect x="764" y="42" width="112" height="52" rx="7" fill="#fff" stroke="#fcd34d"/>
+      <text x="778" y="62" font-size="9.6" font-weight="700" fill="#0b1220" font-family="Consolas,monospace">pc4-agent</text>
+      <text x="778" y="78" font-size="8.4" fill="#475569">station &#183; photoshop</text>
+
+      <text x="24" y="118" font-size="8.8" fill="#78350f">All five must be <tspan font-weight="700">HTTPS</tspan>. The station-agent proxy rejects any plain-http origin outright.</text>
+      <text x="24" y="134" font-size="8.8" fill="#78350f">Free <tspan font-family="Consolas,monospace">*.trycloudflare.com</tspan> hostnames are <tspan font-weight="700">not usable</tspan> &#8212; they change on every restart, so agents would drop constantly.</text>
+      <text x="24" y="150" font-size="8.8" fill="#78350f">The web application itself may first be deployed on the free <tspan font-family="Consolas,monospace">*.pages.dev</tspan> hostname before a domain is attached.</text>
+      <text x="24" y="168" font-size="8.8" fill="#78350f">Optional sixth hostname: <tspan font-family="Consolas,monospace">pc2-remote</tspan> for an embedded remote desktop (Section 8.7).</text>
+    </svg>
+    <figcaption><b>Figure 3.</b> Required hostname allocation.</figcaption>
+  </figure>
+
+  <h2>2.5 Software versions</h2>
+  <table>
+    <thead><tr><th style="width:28%">Component</th><th style="width:22%">Version</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Node.js</td><td>18.x or 20.x LTS</td><td>Only needed on the machine that builds the application</td></tr>
+      <tr><td>npm</td><td>9.0 or higher</td><td>Ships with Node 18 and 20</td></tr>
+      <tr><td>Python</td><td>3.10 or higher</td><td>Runs the NAS worker and the station agents</td></tr>
+      <tr><td>cloudflared</td><td>current</td><td>Runs on the worker PC and each station PC</td></tr>
+      <tr><td>PostgreSQL</td><td>15 with PostGIS 3.3</td><td>Provided by Supabase</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 3. DATABASE ============================ -->
+<section class="page-break" id="sec-3">
+  <h1 class="sec"><span class="num">3</span>Database</h1>
+  <p class="sec-lede">Project creation, PostGIS, the migration sequence and verification.</p>
+
+  <h2>3.1 Create the project</h2>
+  <p><b>Supabase Cloud</b> &#8212; create a project in your organisation. <b>Self-hosted</b> &#8212; run the
+  Supabase Docker stack. Record the project URL and the anon / publishable key; you will enter
+  them in both the browser-facing and the server-facing configuration.</p>
+
+  <h2>3.2 Enable PostGIS before the first migration</h2>
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">Ordering trap &#8212; enable PostGIS first</span>
+    <p>The first migration creates a summary view <b>only if PostGIS already exists</b>. If it is
+    absent at that moment the view is silently skipped, and PostGIS is only installed later by
+    migration <code>0012</code>.</p>
+    <p><b>Do this first:</b> Supabase &#8594; <b>Database &#8594; Extensions</b> &#8594;
+    <code>postgis</code> &#8594; <b>Enable</b>. Then apply the migrations.</p>
+  </div>
+
+  <h2>3.3 Apply the migrations</h2>
+  <p>This project is not wired to a migration runner: there is no Supabase configuration file and
+  no seed script, so <code>supabase db push</code> will not work. The migrations are applied as a
+  hand-run, ordered sequence &#8212; 29 of the 30 files.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 132" role="img" aria-label="Migration order">
+      <defs>
+        <marker id="am" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 z" fill="#0369a1"/>
+        </marker>
+      </defs>
+      <rect x="6" y="8" width="888" height="116" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+      <text x="24" y="28" font-size="9" font-weight="700" letter-spacing="1.4" fill="#0369a1">APPLY IN ASCENDING ORDER</text>
+
+      <rect x="24" y="40" width="330" height="40" rx="6" fill="#ecfdf5" stroke="#a7f3d0"/>
+      <text x="40" y="58" font-size="10" font-weight="700" fill="#065f46">0001 &#8211; 0010</text>
+      <text x="40" y="73" font-size="8.4" fill="#065f46">schema &#183; RLS &#183; sec.can()</text>
+
+      <line x1="356" y1="60" x2="386" y2="60" stroke="#0369a1" stroke-width="1.6" marker-end="url(#am)"/>
+
+      <rect x="390" y="40" width="96" height="40" rx="6" fill="#fef2f2" stroke="#fecaca"/>
+      <text x="438" y="57" font-size="10" font-weight="700" fill="#991b1b" text-anchor="middle">0011</text>
+      <text x="438" y="72" font-size="8" fill="#991b1b" text-anchor="middle">SKIP</text>
+      <line x1="438" y1="34" x2="438" y2="86" stroke="#dc2626" stroke-width="1.6"/>
+      <circle cx="438" cy="60" r="13" fill="none" stroke="#dc2626" stroke-width="1.6"/>
+      <line x1="429" y1="51" x2="447" y2="69" stroke="#dc2626" stroke-width="1.8"/>
+      <line x1="447" y1="51" x2="429" y2="69" stroke="#dc2626" stroke-width="1.8"/>
+
+      <line x1="488" y1="60" x2="518" y2="60" stroke="#0369a1" stroke-width="1.6" marker-end="url(#am)"/>
+
+      <rect x="522" y="40" width="354" height="40" rx="6" fill="#ecfdf5" stroke="#a7f3d0"/>
+      <text x="538" y="58" font-size="10" font-weight="700" fill="#065f46">0012 &#8211; 0030</text>
+      <text x="538" y="73" font-size="8.4" fill="#065f46">PostGIS &#183; projects &#183; shares &#183; production &#183; station board</text>
+
+      <text x="24" y="106" font-size="8.6" fill="#64748b"><tspan font-weight="700" fill="#b91c1c">0011 is a test script, not a schema change.</tspan> Run it separately as a verification step (Section 6.2). A shell loop over <tspan font-family="Consolas,monospace">00*.sql</tspan> will wrongly include it.</text>
+    </svg>
+    <figcaption><b>Figure 4.</b> Migration order. Twenty-eight files apply; <code>0011</code> is excluded.</figcaption>
+  </figure>
+
+  <h4>Files to apply</h4>
+  <table>
+    <thead><tr><th style="width:11%">Order</th><th style="width:40%">File</th><th>Creates</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>0001_schema_migrations.sql</code></td><td><code>subgrids</code>, <code>audit_logs</code>, <code>notifications</code>, <code>qa_defects</code>, <code>qaqc_audit_runs</code>, <code>project_settings</code></td></tr>
+      <tr><td>2</td><td><code>0002_foundation_production_migration.sql</code></td><td><code>datasets</code>, <code>processing_jobs</code></td></tr>
+      <tr><td>3</td><td><code>0003_foundation_processing_migration.sql</code></td><td>Handoff and quality columns on <code>processing_jobs</code></td></tr>
+      <tr><td>4</td><td><code>0004_rls_application_tables.sql</code></td><td><code>user_accounts</code>, <code>deletion_requests</code>, <code>recycle_bin</code></td></tr>
+      <tr><td>5</td><td><code>0005_realtime_qaqc.sql</code></td><td>Realtime quality publication, <code>security_invoker</code> views</td></tr>
+      <tr><td>6</td><td><code>0006_file_inventory.sql</code></td><td><code>file_inventory</code></td></tr>
+      <tr><td>7</td><td><code>0007_hardening.sql</code></td><td>Constraints, indexes, <code>survey_recycle_bin</code></td></tr>
+      <tr><td>8</td><td><code>0008_fix_security_advisor.sql</code></td><td>Security Advisor remediations</td></tr>
+      <tr><td>9</td><td><code>0009_security_functions.sql</code></td><td><b>The <code>sec</code> schema</b> &#8212; <code>can</code>, <code>get_app_role</code>, <code>is_role</code>, <code>normalize_role</code></td></tr>
+      <tr><td>10</td><td><code>0010_security_rls_apply.sql</code></td><td>Row-level security on the five privileged tables</td></tr>
+      <tr><td>&#8212;</td><td class="no">0011_security_tests.sql</td><td class="no">Not a migration &#8212; verification only (Section 6.2)</td></tr>
+      <tr><td>11</td><td><code>0012_core_tables_and_rls.sql</code></td><td>PostGIS, <code>panoramas</code>, <code>staging_panoramas</code>, <code>panoramas_view</code></td></tr>
+      <tr><td>12</td><td><code>0013_prune_blobloated_metadata.sql</code></td><td>Strips oversized road-analysis state from user metadata</td></tr>
+      <tr><td>13</td><td><code>0014_road_analysis_state_rpc.sql</code></td><td><code>sec.save_road_analysis_state()</code></td></tr>
+      <tr><td>14</td><td><code>0015_projects.sql</code></td><td><code>projects</code> registry</td></tr>
+      <tr><td>15</td><td><code>0016_per_project_isolation.sql</code></td><td><code>project_id</code> across 12 tables, <code>projects_adopt_legacy_rows</code></td></tr>
+      <tr><td>16</td><td><code>0017_project_delete_cascade.sql</code></td><td><code>projects_delete_cascade()</code></td></tr>
+      <tr><td>17</td><td><code>0018_map_shares.sql</code></td><td><code>map_shares</code>, <code>map_share_touch()</code></td></tr>
+      <tr><td>18</td><td><code>0019_map_shares_public_access.sql</code></td><td>Public read policy for shares</td></tr>
+      <tr><td>19</td><td><code>0020_datasets_operator_delete.sql</code></td><td>Operator delete rights on <code>datasets</code></td></tr>
+      <tr><td>20</td><td><code>0021_road_analysis_geometry_storage.sql</code></td><td><b>Creates the private <code>road-analysis-geometry</code> bucket</b></td></tr>
+      <tr><td>21</td><td><code>0022_production_runs.sql</code></td><td><code>production_runs</code>, attempts, releases, release files</td></tr>
+      <tr><td>22</td><td><code>0023_station_board_items.sql</code></td><td><code>station_board_items</code></td></tr>
+      <tr><td>23</td><td><code>0024_stage_event_ledger.sql</code></td><td><code>stage_event_ledger</code></td></tr>
+      <tr><td>24</td><td><code>0025_station_board_metric_unit.sql</code></td><td>Capture-point units on the station board</td></tr>
+      <tr><td>25</td><td><code>0026_hub_session_state.sql</code></td><td><code>hub_session_state</code></td></tr>
+      <tr><td>26</td><td><code>0027_reconcile_panorama_columns.sql</code></td><td>Latitude, longitude and heading columns, with backfill</td></tr>
+      <tr><td>27</td><td><code>0028_sync_file_inventory.sql</code></td><td>Storage-to-inventory triggers and backfill</td></tr>
+      <tr><td>28</td><td><code>0029_csv_file_name.sql</code></td><td>CSV filename column and backfill</td></tr>
+      <tr><td>29</td><td><code>0030_role_precedence.sql</code></td><td><b>Directory row becomes authoritative for role and status</b> &mdash; makes <b>Disable</b> revoke access. Back-fills first, so it cannot lock anyone out</td></tr>
+      <tr><td>30</td><td><code>0031_rls_completeness_backstop.sql</code></td><td>Closes the two RLS gaps a fresh install leaves: <code>survey_recycle_bin</code> never had RLS enabled, and <code>batch_logs</code> had RLS but <b>no policies</b> (deny-all)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">File name check</span>
+    <p>The file at position 18 is <code>0019_map_shares_public_access.sql</code> &#8212; it grants
+    <b>public</b> read access to share rows. Older notes refer to
+    <code>0019_map_shares_auth_only.sql</code>, which does not exist.</p>
+  </div>
+
+  <h3>Ordering dependencies</h3>
+  <p>The listed order already satisfies these, but they explain the failures you will see if the
+  order is broken. <b>One of them is a known defect in this set</b>, covered in the warning
+  immediately below the table.</p>
+  <table>
+    <thead><tr><th style="width:36%">Constraint</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr><td><code>0009</code> before <code>0010</code>, <code>0012</code>, <code>0014</code></td><td>Later files call <code>sec.can()</code>, which <code>0009</code> defines</td></tr>
+      <tr><td><code>0015</code> before <code>0016</code></td><td><code>0016</code> adds <code>project_id</code> columns and a helper function</td></tr>
+      <tr><td><code>0018</code> before <code>0019</code></td><td><code>0019</code> re-grants and re-creates the policy</td></tr>
+      <tr><td><code>0023</code> before <code>0025</code></td><td><code>0025</code> warns and exits if the station board table is absent</td></tr>
+      <tr><td><code>0007</code> and <code>0016</code> before <code>0031</code></td><td><code>0031</code> backstops <code>survey_recycle_bin</code> and <code>batch_logs</code>, which those two create</td></tr>
+      <tr><td><b>Known defect:</b> <code>0012</code> before <code>0004</code></td><td><code>0004</code> opens with <code>ALTER TABLE public.panoramas</code>, but <code>panoramas</code> is created by <code>0012</code> &#8212; eight files later, so on an <b>empty</b> database <code>0004</code> fails on its first statement</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-dang">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">On a fresh install, do not stop at the first error</span>
+    <p>Because <code>0004</code> needs a table that <code>0012</code> creates, a fresh database
+    fails at <code>0004</code> and the failure cascades: <code>0007</code> needs
+    <code>deletion_requests</code>, and <code>0010</code> and <code>0030</code> need
+    <code>user_accounts</code>.</p>
+    <p><b>If you stop there, <code>0030</code> never runs and Disable does not actually revoke
+    access</b> &#8212; accounts look revoked while their token claim still grants everything.</p>
+    <p>The Supabase SQL editor is safe: it runs statements independently, so <code>0012</code> can
+    still create the tables <code>0004</code> wanted. With <code>psql</code>, omit
+    <code>ON_ERROR_STOP=1</code>. <code>0031</code> then repairs the two RLS gaps this ordering
+    leaves behind.</p>
+  </div>
+
+  <h3>How to run them</h3>
+  <p><b>Supabase SQL editor</b> &#8212; paste and run each file in order, one at a time. Safe on a
+  fresh install.</p>
+  <p><b>psql</b> &#8212; note this deliberately does <b>not</b> fail fast, for the reason above:</p>
+  <pre><code><span class="c"># bash</span>
+export PGHOST=&lt;db-host&gt; PGDATABASE=postgres PGUSER=postgres PGPASSWORD=&lt;password&gt;
+<span class="k">for</span> f <span class="k">in</span> supabase/migrations/00*.sql; <span class="k">do</span>
+  <span class="k">case</span> <span class="s">"$f"</span> <span class="k">in</span> *0011_security_tests.sql) <span class="k">continue</span> ;; <span class="k">esac</span>
+  <span class="c"># deliberately NOT ON_ERROR_STOP: 0004 needs a table 0012 creates, so it fails on a fresh db</span>
+  psql -q -f <span class="s">"$f"</span> || <span class="k">echo</span> <span class="s">"   (continued past an error in $f"</span>
+<span class="k">done</span></code></pre>
+  <p>The migrations are written to be idempotent, so re-running a file that partially applied is
+  safe. After the full sequence, run the verification in <b>3.4</b>.</p>
+
+  <h2>3.4 Verify the schema landed</h2>
+  <pre><code><span class="c">-- security functions present (expect: can, get_app_role, is_role, normalize_role)</span>
+<span class="k">select</span> proname <span class="k">from</span> pg_proc p <span class="k">join</span> pg_namespace n <span class="k">on</span> n.oid = p.pronamespace
+ <span class="k">where</span> n.nspname = <span class="s">'sec'</span> <span class="k">order by</span> 1;
+
+<span class="c">-- PostGIS enabled</span>
+<span class="k">select</span> extname <span class="k">from</span> pg_extension <span class="k">where</span> extname = <span class="s">'postgis'</span>;
+
+<span class="c">-- row-level security actually enabled on the privileged tables (expect several rows)</span>
+<span class="k">select</span> relname, relrowsecurity <span class="k">from</span> pg_class
+ <span class="k">where</span> relnamespace = <span class="s">'public'</span>::regnamespace <span class="k">and</span> relrowsecurity
+ <span class="k">order by</span> 1;
+
+<span class="c">-- the views the application reads</span>
+  <span class="k">select</span> table_name <span class="k">from</span> information_schema.views
+   <span class="k">where</span> table_schema = <span class="s">'public'</span>
+     <span class="k">and</span> table_name <span class="k">in</span> (<span class="s">'panoramas_view'</span>, <span class="s">'panoramas_subgrid_summary'</span>);
+
+  <span class="c">-- GATE: directory-authoritative role resolver in place (expect NEW)</span>
+  <span class="c">-- OLD means 0030 did not apply, and Disable does not revoke access</span>
+  <span class="k">select</span> <span class="k">case when</span> prosrc <span class="k">like</span> <span class="s">'%not Active%'</span>
+           <span class="k">then</span> <span class="s">'NEW'</span> <span class="k">else</span> <span class="s">'OLD'</span> <span class="k">end as</span> resolver
+    <span class="k">from</span> pg_proc <span class="k">where</span> proname = <span class="s">'get_app_role'</span>;
+
+  <span class="c">-- RLS gaps: expect ZERO rows in both (spatial_ref_sys is PostGIS's own)</span>
+  <span class="k">select</span> c.relname <span class="k">as</span> rls_missing
+    <span class="k">from</span> pg_class c <span class="k">join</span> pg_namespace n <span class="k">on</span> n.oid = c.relnamespace
+   <span class="k">where</span> n.nspname = <span class="s">'public'</span> <span class="k">and</span> c.relkind = <span class="s">'r'</span>
+     <span class="k">and not</span> c.relrowsecurity <span class="k">and</span> c.relname &lt;&gt; <span class="s">'spatial_ref_sys'</span>;
+
+  <span class="c">-- RLS on but ZERO policies = deny-all. Expect ZERO rows.</span>
+  <span class="k">select</span> c.relname <span class="k">as</span> no_policies
+    <span class="k">from</span> pg_class c <span class="k">join</span> pg_namespace n <span class="k">on</span> n.oid = c.relnamespace
+   <span class="k">where</span> n.nspname = <span class="s">'public'</span> <span class="k">and</span> c.relkind = <span class="s">'r'</span> <span class="k">and</span> c.relrowsecurity
+     <span class="k">and not exists</span> (<span class="k">select</span> 1 <span class="k">from</span> pg_policies p
+       <span class="k">where</span> p.schemaname = <span class="s">'public'</span> <span class="k">and</span> p.tablename = c.relname);</code></pre>
+    <p>If <code>panoramas_subgrid_summary</code> is missing, PostGIS was not installed when
+    migration <code>0001</code> ran. Enable PostGIS and re-run the view block from
+    <code>0001</code> (Section 3.2).</p>
+    <p>If the resolver reads <b>OLD</b>, the sequence stopped before <code>0030</code> &#8212; most
+    often because <code>psql</code> was run with <code>ON_ERROR_STOP=1</code> and stopped at
+    <code>0004</code>. Re-run the sequence tolerantly, then <code>0030</code>. If either RLS query
+    returns rows, apply <code>0031</code>.</p>
+</section>
+
+<!-- ============================ 4. BUCKETS ============================ -->
+<section class="page-break" id="sec-4">
+  <h1 class="sec"><span class="num">4</span>Storage buckets</h1>
+  <p class="sec-lede">Which buckets to create, and the privacy decision you must make consciously.</p>
+
+  <h2>4.1 Panorama bucket &#8212; create it manually, and make it public</h2>
+  <p>No migration creates the panorama bucket. Create it yourself: Supabase &#8594;
+  <b>Storage &#8594; New bucket</b>.</p>
+  <table style="width:62%">
+    <thead><tr><th style="width:34%">Setting</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Name</td><td><code>MMS_PIC</code></td></tr>
+      <tr><td>Public bucket</td><td class="yes">ON</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-info">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+    <span class="ct">Why it must be public</span>
+    <p>The dashboard builds panorama URLs of the form
+    <code>https://&lt;project&gt;.supabase.co/storage/v1/object/public/MMS_PIC/&lt;file&gt;</code>
+    and hands them directly to image and tile loaders. There is no signed-URL code path for
+    panoramas. With a private bucket, every panorama renders broken.</p>
+  </div>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">Conflicting internal documentation</span>
+    <p>Some internal notes describe this bucket as private. Making it private is only viable if
+    you <em>also</em> add a storage read policy <b>and</b> have the application switched to signed
+    URLs. The second half is <b>not implemented</b>. Treat "public" as the only supported
+    configuration today.</p>
+  </div>
+
+  <div class="callout c-dang">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4M12 16h.01"/></svg>
+    <span class="ct">Privacy decision &#8212; make it consciously</span>
+    <p>With a public bucket, the object path is the only protection on an image, and survey
+    filenames typically encode the subgrid and frame index. If your imagery is confidential,
+    agree an alternative with your integrator <b>before go-live</b>: either keep raw imagery off
+    this bucket and serve previews through the NAS worker, or request the signed-URL capability
+    as a development item.</p>
+  </div>
+
+  <h2>4.2 Road-analysis geometry bucket &#8212; automatic</h2>
+  <p>Migration <code>0021</code> creates a bucket named <code>road-analysis-geometry</code> with
+  private access and authenticated-only storage policies. <b>No action is required.</b> If it is
+  missing, Road Analysis geometry saves fall back to browser-local storage, so nothing breaks
+  visibly &#8212; check for it if layer saves appear not to persist.</p>
+
+  <h2>4.3 A bucket you do not need</h2>
+  <p>Some older documentation instructs you to create a <code>vector_layers</code> bucket. The
+  current code never reads or writes it. Skip it.</p>
+
+  <h2>4.4 Bucket summary</h2>
+  <table>
+    <thead><tr><th style="width:32%">Bucket</th><th style="width:34%">How it is created</th><th>Privacy</th></tr></thead>
+    <tbody>
+      <tr><td><code>MMS_PIC</code></td><td>Manually, in the dashboard</td><td class="yes">Public</td></tr>
+      <tr><td><code>road-analysis-geometry</code></td><td>Migration <code>0021</code></td><td>Private</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 5. FIRST ADMIN ============================ -->
+<section class="page-break" id="sec-5">
+  <h1 class="sec"><span class="num">5</span>First administrator</h1>
+  <p class="sec-lede">Bootstrapping the first account, which cannot be done from inside the application.</p>
+
+  <h2>5.1 Why this must be done by hand</h2>
+  <p>There is no seed script, no migration-runner configuration and no sign-up path in the
+  application. Meanwhile the user-management screen requires the
+  <code>manageUsers</code> capability, which only an Administrator holds. The first Administrator
+  therefore <b>cannot</b> be created from within the product &#8212; you must seed them.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 176" role="img" aria-label="First administrator bootstrap flow">
+      <defs>
+        <marker id="aa" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 z" fill="#0369a1"/>
+        </marker>
+      </defs>
+      <rect x="10" y="16" width="212" height="92" rx="8" fill="#fef2f2" stroke="#fecaca"/>
+      <text x="26" y="36" font-size="9" font-weight="700" letter-spacing="1.2" fill="#b91c1c">DEADLOCK</text>
+      <text x="26" y="56" font-size="9.4" fill="#7f1d1d">User management screen</text>
+      <text x="26" y="70" font-size="9.4" fill="#7f1d1d">needs manageUsers</text>
+      <text x="26" y="88" font-size="9.4" font-weight="700" fill="#7f1d1d">&#8230;but only an admin has it</text>
+      <text x="26" y="102" font-size="8.4" fill="#991b1b">no signup &#183; no seed script</text>
+
+      <line x1="224" y1="62" x2="266" y2="62" stroke="#0369a1" stroke-width="1.6" marker-end="url(#aa)"/>
+
+      <rect x="270" y="16" width="196" height="92" rx="8" fill="#f0f9ff" stroke="#bae6fd"/>
+      <text x="286" y="34" font-size="9" font-weight="700" letter-spacing="1.2" fill="#0369a1">STEP 1 &#183; DASHBOARD</text>
+      <text x="286" y="54" font-size="9.4" fill="#0b1220" font-weight="700">Create auth user</text>
+      <text x="286" y="70" font-size="8.4" fill="#334155">Authentication &#8594; Users</text>
+      <text x="286" y="84" font-size="8.4" fill="#334155">&#8594; Add user</text>
+      <text x="286" y="98" font-size="8.4" fill="#334155">email + password</text>
+
+      <line x1="468" y1="62" x2="510" y2="62" stroke="#0369a1" stroke-width="1.6" marker-end="url(#aa)"/>
+
+      <rect x="514" y="16" width="200" height="92" rx="8" fill="#f0f9ff" stroke="#bae6fd"/>
+      <text x="530" y="34" font-size="9" font-weight="700" letter-spacing="1.2" fill="#0369a1">STEP 2 &#183; DASHBOARD</text>
+      <text x="530" y="54" font-size="9.4" fill="#0b1220" font-weight="700">Set role metadata</text>
+      <text x="530" y="70" font-size="8.4" fill="#334155">App Metadata (JWT claim)</text>
+      <text x="530" y="84" font-size="8.4" fill="#334155">User Metadata (UI read)</text>
+      <text x="530" y="98" font-size="8.4" fill="#334155">role = Administrator</text>
+
+      <line x1="716" y1="62" x2="758" y2="62" stroke="#0369a1" stroke-width="1.6" marker-end="url(#aa)"/>
+
+      <rect x="762" y="16" width="128" height="92" rx="8" fill="#ecfdf5" stroke="#a7f3d0"/>
+      <text x="778" y="34" font-size="9" font-weight="700" letter-spacing="1.2" fill="#047857">STEP 3 &#183; SQL</text>
+      <text x="778" y="54" font-size="9.4" fill="#065f46" font-weight="700">Insert the</text>
+      <text x="778" y="68" font-size="9.4" fill="#065f46" font-weight="700">directory row</text>
+      <text x="778" y="86" font-size="8.4" fill="#047857">user_accounts</text>
+      <text x="778" y="100" font-size="8.4" fill="#047857">role &#183; Active</text>
+
+      <line x1="826" y1="108" x2="826" y2="128" stroke="#047857" stroke-width="1.6" marker-end="url(#aa)"/>
+      <rect x="640" y="132" width="250" height="34" rx="7" fill="#ecfdf5" stroke="#a7f3d0"/>
+      <text x="765" y="147" font-size="9.4" font-weight="700" fill="#065f46" text-anchor="middle">STEP 4 &#183; VERIFY</text>
+      <text x="765" y="160" font-size="8.2" fill="#047857" text-anchor="middle" font-family="Consolas,monospace">select sec.get_app_role();</text>
+    </svg>
+    <figcaption><b>Figure 5.</b> First-administrator bootstrap. All four steps are required, and
+    step 3 must complete <b>before</b> the account's first sign-in.</figcaption>
+  </figure>
+
+  <h2>5.2 The four steps</h2>
+
+  <div class="step">
+    <div class="step-n">1</div>
+    <div class="step-b">
+      <div class="step-t">Create the authentication user</div>
+      <p>In the Supabase dashboard go to <b>Authentication &#8594; Users &#8594; Add user</b>.
+      Enter an email address and password, or send an invitation. Note the address &#8212; it is
+      used in step 3.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-n">2</div>
+    <div class="step-b">
+      <div class="step-t">Set the role metadata</div>
+      <p>Open the new user and edit their metadata. Set <b>App Metadata</b> first, because that is
+      what lands in the JSON Web Token and is the fastest path to a working administrator.</p>
+      <pre><code>{ "role": <span class="s">"Administrator"</span> }</code></pre>
+      <p>Set <b>User Metadata</b> to the same value, because the dashboard reads User Metadata
+      before App Metadata.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-n">3</div>
+    <div class="step-b">
+      <div class="step-t">Insert the directory row</div>
+      <pre><code><span class="k">insert into</span> public.user_accounts (name, email, role, status)
+<span class="k">values</span> (<span class="s">'&lt;Full Name&gt;'</span>, <span class="s">'&lt;email&gt;'</span>, <span class="s">'Administrator'</span>, <span class="s">'Active'</span>)
+<span class="k">on conflict</span> (email) <span class="k">do update</span>
+  <span class="k">set</span> role = <span class="s">'Administrator'</span>, status = <span class="s">'Active'</span>;</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-n">4</div>
+    <div class="step-b">
+      <div class="step-t">Verify before signing in</div>
+      <pre><code><span class="k">select</span> sec.get_app_role();   <span class="c">-- must return: Administrator</span></code></pre>
+      <p>If it returns <code>Viewer</code>, one of steps 2 or 3 is missing or incomplete.</p>
+    </div>
+  </div>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">Complete step 3 before the first sign-in</span>
+    <p>On first sign-in the application writes its own <code>user_accounts</code> row using the
+    role it resolved from metadata, <b>defaulting to Viewer</b>. Running step 3 afterwards corrects
+    it, but setting only the metadata afterwards does not, because the cached Viewer row already
+    exists.</p>
+  </div>
+
+  <h2>5.3 How the role is resolved, and why it can silently be Viewer</h2>
+  <p>Two independent systems must agree, and neither reads the other:</p>
+  <table>
+    <thead><tr><th style="width:24%">System</th><th style="width:38%">Reads from</th><th>Consequence</th></tr></thead>
+    <tbody>
+      <tr><td><b>Dashboard interface</b></td><td>Authentication metadata on the signed-in user</td><td>Decides which controls are shown</td></tr>
+      <tr><td><b>Database</b></td><td>The token's role claim, then the <code>user_accounts</code> row</td><td>Decides which rows are visible</td></tr>
+    </tbody>
+  </table>
+  <p>The dashboard tries, in order: <code>user_metadata.role</code>,
+  <code>raw_user_meta_data.role</code>, <code>user.role</code>,
+  <code>app_metadata.role</code>, <code>raw_app_meta_data.role</code>. For a real account,
+  <code>user.role</code> holds the string <code>"authenticated"</code>, which is not an
+  application role and normalises to <b>Viewer</b>. If no metadata key is set, the result is
+  Viewer with no warning shown.</p>
+
+  <h2>5.4 Adding the remaining users</h2>
+  <p>Authentication lives entirely in Supabase. <b>Administration &#8594; Users does not create</b>
+  accounts &mdash; it manages the role and access of people who already exist in Supabase.</p>
+
+  <div class="step">
+    <div class="step-n">1</div>
+    <div class="step-b"><div class="step-t">Create the account in Supabase</div>
+    <p>In the Supabase dashboard go to <b>Authentication &#8594; Users &#8594; Add user</b>, with their
+    email address, a password, and <b>Auto Confirm User</b> enabled.</p></div>
+  </div>
+
+  <div class="step">
+    <div class="step-n">2</div>
+    <div class="step-b"><div class="step-t">Set the role as App Metadata</div>
+    <p>On that user, set <b>App Metadata</b> to the role they need:</p>
+    <pre><code>{ "role": <span class="s">"Survey Operator"</span> }</code></pre>
+    <p>Valid values are <code>Administrator</code>, <code>Survey Operator</code>,
+    <code>QA Inspector</code> and <code>Viewer</code>. Optionally set <b>User Metadata</b> to the
+    same value, because the interface reads User Metadata first.</p></div>
+  </div>
+
+  <div class="step">
+    <div class="step-n">3</div>
+    <div class="step-b"><div class="step-t">They appear on first sign-in</div>
+    <p>The user shows up in <b>Administration &#8594; Users</b> automatically the first time they
+    sign in &mdash; that is when their directory row is written. Before then there is no row for
+    them. From that point the dashboard manages their role and access.</p></div>
+  </div>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">Two things that catch people out</span>
+    <ul>
+      <li><b>Set App Metadata, not only User Metadata.</b> The database resolves the role from the
+      token's role claim, which Supabase sources from App Metadata. User Metadata alone makes the
+      interface look correct while the database still sees <code>Viewer</code> &mdash; the user sees
+      controls they cannot actually use.</li>
+      <li><b>Disable revokes permissions, not the account.</b> It sets the directory row to
+      <code>Disabled</code>, which migration <code>0030</code> resolves to read-only. The Supabase
+      sign-in account still exists. To stop someone signing in at all, remove or disable the user
+      in Supabase.</li>
+    </ul>
+  </div>
+
+  <p>Grant individual capabilities in <b>Administration &#8594; Roles</b>.</p>
+</section>
+
+<!-- ============================ 6. ROLES AND RLS ============================ -->
+<section class="page-break" id="sec-6">
+  <h1 class="sec"><span class="num">6</span>Roles and row-level security</h1>
+  <p class="sec-lede">The four roles, and &#8212; importantly &#8212; which controls the database actually enforces.</p>
+
+  <h2>6.1 The four roles</h2>
+  <table>
+    <thead><tr><th style="width:24%">Role</th><th>Intended for</th></tr></thead>
+    <tbody>
+      <tr><td><b>Administrator</b></td><td>System owners. Full access, including user management and system settings.</td></tr>
+      <tr><td><b>Survey Operator</b></td><td>Field and production staff. Intake, pipeline operations, dataset management.</td></tr>
+      <tr><td><b>QA Inspector</b></td><td>Quality staff. Quality inspection and sign-off.</td></tr>
+      <tr><td><b>Viewer</b></td><td>Stakeholders. Read-only, plus report export.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6.2 Verifying the security boundary</h2>
+
+  <h3>Tier 1 &#8212; always runnable</h3>
+  <p>Run the Section 3.4 queries, then paste and run all of
+  <code>supabase/migrations/0011_security_tests.sql</code>. Its first, second and final sections
+  must complete <b>without raising an exception</b>.</p>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">The SQL editor cannot prove the boundary</span>
+    <p>The Supabase SQL editor runs as the <code>postgres</code> superuser, which
+    <b>bypasses row-level security entirely</b>. Tier 1 proves the migrations applied and that
+    role resolution is wired. It cannot prove that a Viewer is denied.</p>
+  </div>
+
+  <h3>Tier 2 &#8212; a real boundary test</h3>
+  <p>Requires a Viewer test account and a direct database connection:</p>
+  <pre><code>psql <span class="s">"$SUPABASE_DB_URL"</span> -v ON_ERROR_STOP=1 &lt;&lt;<span class="s">'SQL'</span>
+<span class="k">BEGIN</span>;
+  <span class="k">SET LOCAL ROLE</span> authenticated;
+  <span class="k">SET LOCAL</span> request.jwt.claims = <span class="s">'{"role":"authenticated","email":"viewer@test.local"}'</span>;
+  <span class="k">select</span> sec.get_app_role();   <span class="c">-- must print: Viewer</span>
+  <span class="k">insert into</span> public.project_settings (id, settings)
+    <span class="k">values</span> (<span class="s">'rls_probe'</span>, <span class="s">'{}'</span>::jsonb);
+  <span class="c">-- EXPECT: ERROR  new row violates row-level security policy     =&gt; PASS</span>
+<span class="k">ROLLBACK</span>;
+SQL</code></pre>
+  <p>The insert <b>must fail</b> with a row-level-security error. If it succeeds, the boundary is
+  broken &#8212; stop and resolve before go-live. Then repeat with an Administrator token and the
+  same statement: that one <b>must succeed</b>.</p>
+
+  <h2>6.3 What is actually enforced</h2>
+  <div class="callout c-dang">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <span class="ct">Eight of twenty-one capabilities are enforced by the database</span>
+    <p>The remaining controls gate the <b>interface only</b> &#8212; the button is hidden or
+    disabled, but a direct API call is not blocked. If your compliance requirements depend on
+    server-side enforcement, treat the other thirteen as advisory and restrict roles
+    accordingly.</p>
+  </div>
+  <table>
+    <thead><tr><th style="width:34%">Enforced by row-level security</th><th style="width:22%">Administrator</th><th style="width:22%">Survey Operator</th><th>QA / Viewer</th></tr></thead>
+    <tbody>
+      <tr><td><code>viewAll</code></td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      <tr><td><code>runQaqc</code></td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      <tr><td><code>deleteData</code></td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+      <tr><td><code>manageUsers</code></td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td><code>manageSettings</code></td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td><code>manageDatasets</code></td><td class="yes">Yes</td><td class="opt">Interface only</td><td class="opt">Interface only</td></tr>
+      <tr><td><code>reviewQaqc</code></td><td class="yes">Yes</td><td class="opt">Interface only</td><td class="opt">Interface only</td></tr>
+      <tr><td><code>approveDeletions</code></td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">Deletion approval is an interface guard</span>
+    <p>The <code>deleteData</code> capability is granted at the database level to <b>both</b>
+    Administrator and Survey Operator. The "require administrator approval for delete" setting only
+    gates the user interface. To enforce approval, do not grant the Survey Operator role where your
+    process requires it.</p>
+  </div>
+</section>
+
+<!-- ============================ 7. TUNNEL ============================ -->
+<section class="page-break" id="sec-7">
+  <h1 class="sec"><span class="num">7</span>Cloudflare Tunnel</h1>
+  <p class="sec-lede">Exposing the on-premises services to the dashboard without opening any port to the internet.</p>
+
+  <p>The dashboard is served over HTTPS from Cloudflare's edge. Your on-premises services sit on a
+  private network. <b>Cloudflare Tunnel</b> bridges the two: <code>cloudflared</code> runs on each
+  machine and makes <b>outbound-only</b> connections to Cloudflare.</p>
+
+  <div class="callout c-ok">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+    <span class="ct">No inbound firewall rule needed for the tunnel</span>
+    <p>Because <code>cloudflared</code> dials outward, nothing needs to accept an inbound
+    connection. You may still restrict port 8000 at the firewall so that the services remain
+    reachable only from the local network (Section 11.5).</p>
+  </div>
+
+  <h2>7.1 Install cloudflared</h2>
+  <pre><code><span class="c"># Windows</span>
+winget install --id Cloudflare.cloudflared
+
+<span class="c"># Linux / macOS &#8212; see the Cloudflare downloads page for the current package</span>
+<span class="c"># https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/</span>
+
+cloudflared --version</code></pre>
+
+  <h2>7.2 Create one tunnel per machine</h2>
+  <p>Create a tunnel <b>on each machine that hosts a service</b>: one on the worker PC, and one on
+  each of the four station PCs. Five in total.</p>
+  <pre><code><span class="c"># on the worker PC</span>
+cloudflared tunnel login
+cloudflared tunnel create nas-worker
+
+<span class="c"># on each station PC, using a distinct name</span>
+cloudflared tunnel create pc1-agent
+cloudflared tunnel create pc2-agent
+cloudflared tunnel create pc3-agent
+cloudflared tunnel create pc4-agent</code></pre>
+  <p><code>login</code> opens a browser to authorise your Cloudflare account. <code>create</code>
+  prints a <b>tunnel identifier</b> and writes a credentials file under
+  <code>~/.cloudflared/&lt;TUNNEL-ID&gt;.json</code>. <b>Keep that file</b> &#8212; it is the
+  tunnel's identity, and the next step references it.</p>
+
+  <h2>7.3 Write the ingress configuration</h2>
+  <p>Each tunnel needs a configuration file mapping public hostnames to local services. Create
+  <code>%USERPROFILE%\.cloudflared\config.yml</code> on Windows, or
+  <code>~/.cloudflared/config.yml</code> elsewhere.</p>
+
+  <h4>Worker PC</h4>
+  <pre><code>tunnel: &lt;TUNNEL-ID&gt;
+credentials-file: C:\Users\&lt;USER&gt;\.cloudflared\&lt;TUNNEL-ID&gt;.json
+
+ingress:
+  - hostname: nas-api.example.com
+    service: http://localhost:8000
+  - service: http_status:404</code></pre>
+
+  <h4>Station PC &#8212; repeat on each, one hostname per machine</h4>
+  <pre><code>tunnel: &lt;TUNNEL-ID&gt;
+credentials-file: C:\Users\&lt;USER&gt;\.cloudflared\&lt;TUNNEL-ID&gt;.json
+
+ingress:
+  - hostname: pc1-agent.example.com
+    service: http://localhost:8000
+  - service: http_status:404</code></pre>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">The trailing catch-all rule is required</span>
+    <p><code>cloudflared</code> refuses to start unless the final ingress rule is a catch-all. Keep
+    the <code>- service: http_status:404</code> line exactly as shown.</p>
+  </div>
+
+  <p>If you also want an embedded remote desktop for a station, add a second hostname pointing at
+  your remote-desktop service (commonly <code>http://localhost:5901</code>) &#8212; see
+  Section 8.7.</p>
+
+  <h2>7.4 Point DNS at the tunnel</h2>
+  <pre><code>cloudflared tunnel route dns nas-worker  nas-api.example.com
+cloudflared tunnel route dns pc1-agent  pc1-agent.example.com
+cloudflared tunnel route dns pc2-agent  pc2-agent.example.com
+cloudflared tunnel route dns pc3-agent  pc3-agent.example.com
+cloudflared tunnel route dns pc4-agent  pc4-agent.example.com</code></pre>
+  <p>This creates the DNS records automatically.</p>
+
+  <h2>7.5 Run it as a service</h2>
+  <p>Both options start the tunnel with the machine.</p>
+  <pre><code><span class="c"># Windows &#8212; registers a service that starts at boot</span>
+cloudflared service install
+
+<span class="c"># then set the service to start automatically in services.msc</span></code></pre>
+  <pre><code><span class="c"># Linux &#8212; systemd unit at /etc/systemd/system/cloudflared.service</span>
+[Unit]
+Description=cloudflared
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate run --token &lt;TUNNEL-TOKEN&gt;
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+  <pre><code>sudo systemctl enable --now cloudflared</code></pre>
+  <p>The single-line <b>token</b> form is the simplest: in the Cloudflare Zero Trust dashboard,
+  open the tunnel, copy the install command, and run it.</p>
+
+  <h2>7.6 Verify</h2>
+  <pre><code>curl https://nas-api.example.com/health</code></pre>
+  <p>An <b>HTTP 401 is the correct answer</b> when no token is supplied &#8212; it proves the tunnel
+  is routing and the worker is enforcing its guard:</p>
+  <pre><code>{ "detail": <span class="s">"Unauthorized."</span> }</code></pre>
+  <p>Now with the token, which should return the live response:</p>
+  <pre><code>curl -H <span class="s">"Authorization: Bearer &lt;NAS_WORKER_TOKEN&gt;"</span> https://nas-api.example.com/health
+
+{ "status": <span class="s">"ok"</span>, "nas_base": <span class="s">"X:\\nas\\360_images"</span>, "worker": <span class="s">"NAS-PC-01"</span> }</code></pre>
+
+  <h2>7.7 Optional &#8212; Cloudflare Access</h2>
+  <p>For an additional gate at the origin, create a Cloudflare Access service token and set
+  <code>CF_ACCESS_CLIENT_ID</code> and <code>CF_ACCESS_CLIENT_SECRET</code> (Section 8.4). The
+  Pages Functions forward them automatically. This is defence in depth <em>on top of</em> the
+  session check, not a replacement for it.</p>
+</section>
+
+<!-- ============================ 8. PAGES ============================ -->
+<section class="page-break" id="sec-8">
+  <h1 class="sec"><span class="num">8</span>Cloudflare Pages deployment</h1>
+  <p class="sec-lede">Build settings, the hosting constraint, and every variable to set.</p>
+
+  <h2>8.1 Hosting constraint &#8212; read this first</h2>
+  <div class="callout c-dang">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <span class="ct">Static-only hosting does not work with this platform</span>
+    <p>The private API &#8212; NAS scans, image previews, station probes, rename and upload &#8212; is
+    implemented using the <b>Cloudflare Pages Functions</b> runtime: each handler exports an
+    <code>onRequest</code> function and reads secrets from <code>context.env</code>.</p>
+    <p>Serving the built folder from nginx, Caddy or plain object storage <b>does not execute
+    those handlers</b>. Under a static-only host:</p>
+    <ul>
+      <li>every private API route returns the application's HTML instead of JSON,</li>
+      <li>the interface degrades <b>silently</b>, reporting "unavailable" rather than raising an error,</li>
+      <li>and the session check that guards those routes does not run at all.</li>
+    </ul>
+    <p><b>Deploy to Cloudflare Pages.</b> A Pages-compatible edge runtime also works. If you must
+    self-host, you need to build and maintain your own Pages-compatible server; that component
+    does not ship with this product.</p>
+  </div>
+
+  <h2>8.2 Create the project</h2>
+  <p>Connect the repository in the Cloudflare dashboard:</p>
+  <table style="width:76%">
+    <thead><tr><th style="width:34%">Setting</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Project name</td><td>Your choice</td></tr>
+      <tr><td><b>Root directory</b></td><td class="yes">Repository root</td></tr>
+      <tr><td>Build command</td><td><code>npm run build</code></td></tr>
+      <tr><td>Build output directory</td><td><code>dist</code></td></tr>
+      <tr><td>Production branch</td><td><code>main</code> (or your deploy branch)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-dang">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">Root directory must be the repository root</span>
+    <p>Cloudflare detects the <code>functions/</code> directory there and deploys it automatically.
+    If the root is set to <code>dist</code>, all seven function handlers are <b>silently
+    omitted</b> and you get a dashboard with no private API and no error message. This is the
+    single most damaging misconfiguration in this section.</p>
+  </div>
+  <p>A redirect rule in the project's public assets handles single-page route fallback for you. No
+  server rewrite configuration is needed.</p>
+
+  <h2>8.3 Build-time variables</h2>
+  <p>These are <b>compiled into the browser bundle</b>. Set them under <b>Settings &#8594;
+  Environment variables</b>. Only three are required.</p>
+  <table>
+    <thead><tr><th style="width:36%">Variable</th><th style="width:12%">Required</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>VITE_SUPABASE_URL</code></td><td class="yes">Yes</td><td>Project base URL. No fallback; the application warns if absent</td></tr>
+      <tr><td><code>VITE_SUPABASE_ANON_KEY</code></td><td class="yes">Yes</td><td>Public anon / publishable key &#8212; the only credential the browser needs</td></tr>
+      <tr><td><code>VITE_MAP_URL</code></td><td class="yes">Yes</td><td>WebGIS application URL. <b>No code fallback</b> &#8212; unset means every embedded map is a blank frame</td></tr>
+      <tr><td><code>VITE_WORKER_API_MODE</code></td><td class="opt">No</td><td><code>proxy</code> (default) or <code>direct</code></td></tr>
+      <tr><td><code>VITE_STATION_AGENT_MODE</code></td><td class="opt">No</td><td><code>proxy</code> in production, <code>direct</code> in development</td></tr>
+      <tr><td><code>VITE_SUPABASE_BUCKET</code></td><td class="opt">No</td><td>Defaults to <code>MMS_PIC</code></td></tr>
+      <tr><td><code>VITE_SENTRY_DSN</code></td><td class="opt">No</td><td>Error reporting. Omit to disable entirely</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-dang">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <span class="ct">Never put a secret in a build-time variable</span>
+    <p>Anything prefixed <code>VITE_</code> is inlined into the shipped bundle and is readable by
+    anyone who views the page source. A service-role key, the NAS worker token or a station-agent
+    token placed here would be <b>public</b>. Server secrets belong in Section 8.4.</p>
+  </div>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">Changing a build-time variable requires a rebuild</span>
+    <p>If you add a variable <b>after</b> a deployment, the running site is unchanged. Trigger a
+    new build &#8212; push a commit, or use retry in the Pages dashboard.</p>
+  </div>
+
+  <div class="callout c-info">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">A retired name that does nothing</span>
+    <p><code>VITE_NAS_API_ENABLED</code> appears in some older notes but is <b>not read by any
+    code</b>. Setting it has no effect. Proxy behaviour is derived from
+    <code>VITE_WORKER_API_MODE</code> and the presence of the runtime secrets in Section 8.4.</p>
+  </div>
+
+  <h2>8.4 Runtime variables and secrets</h2>
+  <p>Read <b>server-side</b> by the Pages Functions; never sent to the browser. Mark them
+  <b>Secret</b>.</p>
+  <table>
+    <thead><tr><th style="width:32%">Variable</th><th style="width:16%">Required</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>SUPABASE_URL</code></td><td class="yes">Yes</td><td>Session validation target</td></tr>
+      <tr><td><code>SUPABASE_ANON_KEY</code></td><td class="yes">Yes</td><td>Session validation key</td></tr>
+      <tr><td><code>NAS_API_URL</code></td><td class="yes">Yes</td><td>Worker tunnel origin, <b>no trailing slash</b></td></tr>
+      <tr><td><code>NAS_WORKER_TOKEN</code></td><td class="yes">Yes</td><td>Must match the worker's token exactly</td></tr>
+      <tr><td><code>NAS_IMAGE_TOKEN_SECRET</code></td><td class="opt">No</td><td>Signing key for short-lived preview URLs; falls back to the worker token</td></tr>
+      <tr><td><code>STATION_AGENT_URLS</code></td><td class="opt">For the board</td><td>JSON map of station id to HTTPS agent origin</td></tr>
+      <tr><td><code>STATION_AGENT_TOKENS</code></td><td class="opt">No</td><td>JSON map of station id to that agent's token</td></tr>
+      <tr><td><code>STATION_AGENT_TOKEN</code></td><td class="opt">No</td><td>Single fallback token</td></tr>
+      <tr><td><code>CF_ACCESS_CLIENT_ID</code><br><code>CF_ACCESS_CLIENT_SECRET</code></td><td class="opt">No</td><td>Cloudflare Access service token, forwarded upstream</td></tr>
+    </tbody>
+  </table>
+  <p><code>STATION_AGENT_URLS</code> example &#8212; valid station ids are exactly
+  <code>blur</code>, <code>stitch</code>, <code>lightroom</code> and <code>photoshop</code>:</p>
+  <pre><code>{ "blur":      <span class="s">"https://pc1-agent.example.com"</span>,
+  "stitch":    <span class="s">"https://pc2-agent.example.com"</span>,
+  "lightroom": <span class="s">"https://pc3-agent.example.com"</span>,
+  "photoshop": <span class="s">"https://pc4-agent.example.com"</span> }</code></pre>
+
+  <h2>8.5 Deploy</h2>
+  <p>Push to the connected branch. Cloudflare Pages builds automatically &#8212; there is <b>no
+  deploy automation in this repository</b>, so the Git integration is the entire mechanism.</p>
+
+  <h2>8.6 Local development</h2>
+  <pre><code>npm install
+cp .env.example .env          <span class="c"># Windows PowerShell: copy .env.example .env</span></code></pre>
+  <p>Set these so the development server proxies the on-premises API exactly as production does:</p>
+  <pre><code>VITE_SUPABASE_URL=https://&lt;project&gt;.supabase.co
+VITE_SUPABASE_ANON_KEY=&lt;anon key&gt;
+VITE_MAP_URL=&lt;your WebGIS URL&gt;
+
+NAS_API_URL=https://nas-api.example.com
+NAS_WORKER_TOKEN=&lt;same token as the worker&gt;</code></pre>
+  <p>The last two are deliberately <b>not</b> prefixed with <code>VITE_</code>. The development
+  server reads them and injects the authorisation header, so the browser never receives the token.
+  If both are absent, no proxy is registered and the interface reports "worker proxy is not
+  configured" rather than silently guessing a NAS address.</p>
+  <pre><code>npm run dev</code></pre>
+
+  <h2>8.7 Remote desktop (optional)</h2>
+  <p>To embed a station's live desktop, run a browser-based remote desktop service on that PC,
+  expose it through a tunnel hostname (for example <code>pc2-remote.example.com</code>), and set
+  the station's remote desktop URL in the application's provider settings.</p>
+  <p>A private <code>http://192.168.x.x</code> address will not work &#8212; the dashboard is served
+  over HTTPS and browsers block mixed content. Native remote-desktop file downloads for operators
+  on the local network continue to work.</p>
+
+  <h2>8.8 Request path</h2>
+  <figure>
+    <svg viewBox="0 0 900 190" role="img" aria-label="Request path from browser to NAS worker">
+      <defs>
+        <marker id="ar2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#0369a1"/>
+        </marker>
+      </defs>
+      <rect x="10" y="20" width="150" height="48" rx="7" fill="#0b1220"/>
+      <text x="85" y="41" font-size="10" font-weight="700" fill="#fff" text-anchor="middle">Browser</text>
+      <text x="85" y="57" font-size="8.4" fill="#7dd3fc" text-anchor="middle">same-origin request</text>
+
+      <line x1="160" y1="44" x2="204" y2="44" stroke="#0369a1" stroke-width="1.7" marker-end="url(#ar2)"/>
+      <text x="182" y="36" font-size="7.8" fill="#64748b" text-anchor="middle">1 session</text>
+
+      <rect x="208" y="20" width="168" height="48" rx="7" fill="#f0f9ff" stroke="#bae6fd"/>
+      <text x="292" y="41" font-size="10" font-weight="700" fill="#0369a1" text-anchor="middle">Pages Function</text>
+      <text x="292" y="57" font-size="8.4" fill="#334155" text-anchor="middle">validates the session</text>
+
+      <line x1="376" y1="44" x2="420" y2="44" stroke="#0369a1" stroke-width="1.7" marker-end="url(#ar2)"/>
+      <text x="398" y="36" font-size="7.8" fill="#64748b" text-anchor="middle">2 secret</text>
+
+      <rect x="424" y="20" width="168" height="48" rx="7" fill="#fefce8" stroke="#fde68a"/>
+      <text x="508" y="41" font-size="10" font-weight="700" fill="#b45309" text-anchor="middle">Cloudflare Tunnel</text>
+      <text x="508" y="57" font-size="8.4" fill="#78350f" text-anchor="middle">outbound TLS</text>
+
+      <line x1="592" y1="44" x2="636" y2="44" stroke="#0369a1" stroke-width="1.7" marker-end="url(#ar2)"/>
+      <text x="614" y="36" font-size="7.8" fill="#64748b" text-anchor="middle">3 bearer</text>
+
+      <rect x="640" y="20" width="130" height="48" rx="7" fill="#fff" stroke="#cbd5e1"/>
+      <text x="705" y="41" font-size="10" font-weight="700" fill="#0b1220" text-anchor="middle">NAS worker</text>
+      <text x="705" y="57" font-size="8.4" fill="#334155" text-anchor="middle">token guard</text>
+
+      <line x1="770" y1="44" x2="814" y2="44" stroke="#0369a1" stroke-width="1.7" marker-end="url(#ar2)"/>
+      <text x="792" y="36" font-size="7.8" fill="#64748b" text-anchor="middle">4 read</text>
+
+      <rect x="818" y="20" width="72" height="48" rx="7" fill="#fff" stroke="#cbd5e1"/>
+      <text x="854" y="41" font-size="9.4" font-weight="700" fill="#0b1220" text-anchor="middle">NAS</text>
+      <text x="854" y="57" font-size="8.4" fill="#334155" text-anchor="middle">filesystem</text>
+
+      <text x="24" y="100" font-size="8.6" fill="#334155">1 The browser attaches the signed-in session token. It holds <tspan font-weight="700">no</tspan> on-premises credential.</text>
+      <text x="24" y="116" font-size="8.6" fill="#334155">2 The function validates the session against Supabase and reads its secrets from the server environment.</text>
+      <text x="24" y="132" font-size="8.6" fill="#334155">3 The function attaches the worker token and forwards the request through the tunnel.</text>
+      <text x="24" y="148" font-size="8.6" fill="#334155">4 The worker checks its token, resolves the path, and rejects anything outside the configured base.</text>
+      <text x="24" y="172" font-size="8.6" fill="#b91c1c" font-weight="700">If the function cannot reach the worker &#8212; typically a missing NAS_API_URL &#8212; the interface reports "unavailable" rather than erroring.</text>
+    </svg>
+    <figcaption><b>Figure 6.</b> How a private request reaches the NAS, and where each credential is applied.</figcaption>
+  </figure>
+</section>
+<!-- ============================ 9. NAS LAYOUT ============================ -->
+<section class="page-break" id="sec-9">
+  <h1 class="sec"><span class="num">9</span>NAS layout</h1>
+  <p class="sec-lede">The folder structure the services read. Getting this wrong fails quietly, not loudly.</p>
+
+  <p>The worker and the agents read the survey filesystem directly, against <b>hard-coded stage
+  folder names</b>. If the layout does not match, the corresponding scans return empty results
+  rather than reporting an error &#8212; so build it exactly as shown.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 400" role="img" aria-label="Required NAS folder layout">
+      <rect x="8" y="8" width="884" height="384" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+      <text x="24" y="28" font-size="9" font-weight="700" letter-spacing="1.3" fill="#0369a1">NAS_BASE_PATH &#183; SET BOTH THE WORKER AND AGENT VARIABLES TO THIS ROOT</text>
+
+      <rect x="24" y="40" width="836" height="30" rx="5" fill="#0b1220"/>
+      <text x="38" y="60" font-size="9.6" font-weight="700" fill="#fff" font-family="Consolas,monospace">X:\nas\360_images\</text>
+      <text x="848" y="60" font-size="8.4" fill="#7dd3fc" text-anchor="end">root</text>
+
+      <g font-family="Consolas,monospace" font-size="9">
+        <text x="40" y="96" fill="#334155">|-- <tspan fill="#0369a1" font-weight="700">00_Raw_data/</tspan></text>
+        <text x="60" y="112" fill="#334155">|   -- <tspan fill="#b45309" font-weight="700">Grid 1/</tspan></text>
+        <text x="80" y="128" fill="#334155">|       -- &lt;SUBGRID&gt;/&lt;run&gt;/&lt;station tiles&gt;</text>
+
+        <text x="40" y="152" fill="#334155">|-- <tspan fill="#0369a1" font-weight="700">01_Metadata/</tspan></text>
+        <text x="60" y="168" fill="#334155">|   -- <tspan fill="#b45309" font-weight="700">Grid 1/</tspan></text>
+        <text x="80" y="184" fill="#334155">|       -- &lt;SUBGRID&gt;/&lt;run&gt;/*.csv</text>
+
+        <text x="40" y="208" fill="#334155">|-- <tspan fill="#475569">02_Blurring/</tspan></text>
+        <text x="60" y="224" fill="#334155">|   -- &lt;SUBGRID&gt;/</text>
+
+        <text x="40" y="248" fill="#334155">|-- <tspan fill="#0369a1" font-weight="700">03_Stitching/</tspan>  <tspan fill="#64748b">primary source</tspan></text>
+        <text x="60" y="264" fill="#334155">|   -- <tspan fill="#7c3aed" font-weight="700">Project-OUT/</tspan></text>
+        <text x="80" y="280" fill="#334155">|       -- <tspan fill="#b45309" font-weight="700">Grid 1/</tspan></text>
+        <text x="100" y="296" fill="#334155">|           -- &lt;SUBGRID&gt;/&lt;run&gt;/*.jpg  or  /panoramas/</text>
+
+        <text x="40" y="320" fill="#334155">|-- <tspan fill="#475569">04_Lightroom/</tspan></text>
+        <text x="60" y="336" fill="#334155">|   -- &lt;SUBGRID&gt;/</text>
+
+        <text x="40" y="360" fill="#334155">|-- <tspan fill="#0369a1" font-weight="700">05_Final/</tspan></text>
+        <text x="60" y="376" fill="#334155">|   -- <tspan fill="#7c3aed" font-weight="700">Project-OUT/</tspan>/<tspan fill="#b45309" font-weight="700">Grid 1/</tspan>/&lt;SUBGRID&gt;/&lt;run&gt;/</text>
+      </g>
+
+      <text x="470" y="96" font-size="8.2" fill="#64748b">capture points</text>
+      <text x="470" y="184" font-size="8.2" fill="#64748b">GNSS / IMU telemetry</text>
+      <text x="470" y="224" font-size="8.2" fill="#64748b">agent only &#8212; no depth rule</text>
+      <text x="470" y="336" font-size="8.2" fill="#64748b">agent only &#8212; no depth rule</text>
+      <text x="470" y="376" font-size="8.2" fill="#64748b">final deliverables</text>
+    </svg>
+    <figcaption><b>Figure 7.</b> Required folder tree. Colours mark the depth rules: amber
+    <code>Grid 1</code> (literal, with a space), violet <code>Project-OUT</code>.</figcaption>
+  </figure>
+
+  <h2>9.1 The depth rules</h2>
+  <p>Three different conventions are in play. Mixing them up fails silently.</p>
+  <table>
+    <thead><tr><th style="width:34%">Stage folder</th><th style="width:20%">Needs Project-OUT?</th><th style="width:20%">Needs Grid 1?</th><th>Used by</th></tr></thead>
+    <tbody>
+      <tr><td><code>00_Raw_data</code></td><td class="no">No</td><td class="yes">Yes</td><td>Worker + agent</td></tr>
+      <tr><td><code>01_Metadata</code></td><td class="no">No</td><td class="yes">Yes</td><td>Worker</td></tr>
+      <tr><td><code>02_Blurring</code></td><td class="no">No</td><td class="no">No</td><td>Agent only</td></tr>
+      <tr><td><code>03_Stitching</code></td><td class="yes">Yes</td><td class="yes">Yes</td><td>Worker + agent</td></tr>
+      <tr><td><code>04_Lightroom</code></td><td class="no">No</td><td class="no">No</td><td>Agent only</td></tr>
+      <tr><td><code>05_Final</code></td><td class="yes">Yes</td><td class="yes">Yes</td><td>Worker</td></tr>
+      <tr><td><code>DELIVERABLES</code></td><td class="no">No</td><td class="no">No</td><td>Agent only</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">Three things that commonly go wrong</span>
+    <ul>
+      <li><b><code>Grid 1</code> contains a space.</b> On Linux, confirm the mount preserves it.</li>
+      <li><b>The run folder name is a join key.</b> It links stitched imagery to its telemetry, so the
+      run folder under <code>03_Stitching</code> and the run folder under
+      <code>01_Metadata</code> must be <b>identical</b>. If they differ, coordinates will not be
+      paired to imagery.</li>
+      <li><b><code>02_</code>, <code>04_</code> and <code>DELIVERABLES</code> have no depth
+      rule.</b> Their first-level directories are read directly as subgrids.</li>
+    </ul>
+  </div>
+
+  <h2>9.2 Subgrid naming</h2>
+  <p>Use the <b>uppercase GIS form</b>, for example <code>N93E70</code> or
+  <code>N01E037</code>. The platform applies three different subgrid patterns for three different
+  purposes, and the uppercase GIS form is the only shape that satisfies all three. Lowercase works
+  on the worker but is handled inconsistently by the agents.</p>
+
+  <h2>9.3 Access rights</h2>
+  <table>
+    <thead><tr><th style="width:40%">Access</th><th>Requirement</th></tr></thead>
+    <tbody>
+      <tr><td>Read the whole survey tree</td><td class="yes">Required &#8212; worker and all four agents</td></tr>
+      <tr><td>Write to <code>DELIVERABLES</code></td><td class="yes">Required &#8212; bucket upload</td></tr>
+      <tr><td>Write to <code>panoramas/</code></td><td class="opt">Only for the rename action</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 10. WORKER ============================ -->
+<section class="page-break" id="sec-10">
+  <h1 class="sec"><span class="num">10</span>NAS worker</h1>
+  <p class="sec-lede">The read-only service that exposes the survey filesystem to the dashboard.</p>
+
+  <h2>10.1 Install</h2>
+  <pre><code><span class="c"># Windows PowerShell</span>
+<span class="k">cd</span> &lt;repository&gt;\worker
+py -3.10 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt</code></pre>
+  <pre><code><span class="c"># Linux</span>
+<span class="k">cd</span> &lt;repository&gt;/worker
+python3 -m venv .venv
+<span class="k">source</span> .venv/bin/activate
+pip install -r requirements.txt</code></pre>
+  <p>Dependencies are deliberately minimal &#8212; a web framework, a server and a configuration
+  loader. There is no image or scientific processing stack to install, and no model weights to
+  download.</p>
+
+  <h2>10.2 Configure</h2>
+  <pre><code>copy .env.example .env          <span class="c"># Windows PowerShell</span></code></pre>
+  <pre><code><span class="c"># Root of the survey tree. Every path the dashboard sends resolves under this,</span>
+<span class="c"># and any path escaping it is rejected with HTTP 400.</span>
+NAS_BASE_PATH=X:\nas\360_images
+
+<span class="c"># Shared secret. Required on any non-loopback bind. The Pages Functions and</span>
+<span class="c"># the development proxy inject this header server-side; the browser never sees it.</span>
+NAS_WORKER_TOKEN=&lt;generate a long random string&gt;
+
+<span class="c"># Seconds a storage response is cached before the volume is re-probed.</span>
+STORAGE_CACHE_TTL=30
+
+<span class="c"># 1 = structured JSON logs to stdout.</span>
+NAS_LOG_JSON=0
+
+<span class="c"># Identifier reported on /health, so several workers behind one endpoint</span>
+<span class="c"># can be told apart. Defaults to the machine hostname.</span>
+NAS_WORKER_ID=</code></pre>
+  <p>Generate a token with:</p>
+  <pre><code>python -c <span class="s">"import secrets; print(secrets.token_urlsafe(48))"</span></code></pre>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">If the token is blank, the worker accepts unauthenticated requests</span>
+    <p>Only safe on a loopback bind with the tunnel in front. Never leave
+    <code>NAS_WORKER_TOKEN</code> empty on a machine reachable from the local network.</p>
+  </div>
+
+  <h2>10.3 Run</h2>
+  <pre><code>uvicorn app:app --host 127.0.0.1 --port 8000</code></pre>
+  <p>Bind to <b>loopback only</b>. The Cloudflare Tunnel on the same machine terminates TLS and is
+  the sole public entry point. Do not bind <code>0.0.0.0</code> unless you also restrict the port
+  at the firewall.</p>
+  <p>Run it as a service for autostart, using the same pattern as the agents in Section 11.6.</p>
+
+  <h2>10.4 Verify</h2>
+  <pre><code>curl http://127.0.0.1:8000/health</code></pre>
+  <pre><code>{ "status": <span class="s">"ok"</span>, "nas_base": <span class="s">"X:\\nas\\360_images"</span>, "worker": <span class="s">"NAS-PC-01"</span> }</code></pre>
+  <p>Then test an authenticated data route:</p>
+  <pre><code>curl -H <span class="s">"Authorization: Bearer &lt;NAS_WORKER_TOKEN&gt;"</span> \
+  <span class="s">"http://127.0.0.1:8000/api/nas-scan?action=subgrids"</span></code></pre>
+  <p>Expected &#8212; your subgrid appearing here confirms the folder tree is correct:</p>
+  <pre><code>{
+  "success": <span class="s">true</span>,
+  "basePath": <span class="s">"X:\\nas\\360_images"</span>,
+  "detectedSubgrids": [<span class="s">"N93E70"</span>],
+  "subgrids": [{ "code": <span class="s">"N93E70"</span>, "existsInStitching": <span class="s">true</span>, "label": <span class="s">"N93E70"</span> }]
+}</code></pre>
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">An empty subgrid list means the tree does not match</span>
+    <p>Walk up from <code>NAS_BASE_PATH</code> and confirm that
+    <code>03_Stitching/Project-OUT/Grid 1/</code> exists, spelled exactly as shown &#8212; this is
+    the most common cause.</p>
+  </div>
+  <p>Also check storage telemetry:</p>
+  <pre><code>curl -H <span class="s">"Authorization: Bearer &lt;NAS_WORKER_TOKEN&gt;"</span> http://127.0.0.1:8000/api/storage</code></pre>
+
+  <h2>10.5 Run the worker tests</h2>
+  <pre><code><span class="k">cd</span> worker
+PYTHONPATH=. python -m pytest tests -q</code></pre>
+  <p>This covers the conditional-request behaviour of image previews and the six scan actions. The
+  configuration loader must be installed, or the HTTP tests skip silently.</p>
+</section>
+
+<!-- ============================ 11. AGENTS ============================ -->
+<section class="page-break" id="sec-11">
+  <h1 class="sec"><span class="num">11</span>Station agents</h1>
+  <p class="sec-lede">One small service per workstation, reporting progress and performing local actions.</p>
+
+  <h2>11.1 Station roles</h2>
+  <table>
+    <thead><tr><th style="width:16%">Identifier</th><th style="width:8%">PC</th><th style="width:22%">Software</th><th style="width:20%">Output stage (default)</th><th>Reads</th></tr></thead>
+    <tbody>
+      <tr><td><code>blur</code></td><td>1</td><td>Privacy / blur tool</td><td><code>02_Blurring</code></td><td><code>00_Raw_data</code></td></tr>
+      <tr><td><code>stitch</code></td><td>2</td><td>Stitching software</td><td><code>03_Stitching</code></td><td><code>02_Blurring</code></td></tr>
+      <tr><td><code>lightroom</code></td><td>3</td><td>Lightroom Classic</td><td><code>04_Lightroom</code></td><td><code>03_Stitching</code></td></tr>
+      <tr><td><code>photoshop</code></td><td>4</td><td>Photoshop batch</td><td><code>05_Final</code></td><td><code>04_Lightroom</code></td></tr>
+    </tbody>
+  </table>
+  <p>Only these four values are accepted. Any other value produces an empty stage and a watch
+  error.</p>
+
+  <h2>11.2 Install</h2>
+  <p>On <b>each</b> of the four PCs:</p>
+  <pre><code><span class="k">copy</span> &lt;repository&gt;\station-agent C:\station-agent /r /e
+
+<span class="k">cd</span> C:\station-agent
+py -3.10 -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt</code></pre>
+  <p>Dependencies are a web framework, a server, a configuration loader and
+  <b>process-inspection</b>. The process library matters:</p>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">Install the process library even though the service starts without it</span>
+    <p>Without it the agent cannot detect workstation processes, so the multi-station board never
+    leaves "awaiting agent", and per-station CPU, memory and disk telemetry is absent. The
+    service still runs, so the failure is silent.</p>
+  </div>
+
+  <div class="callout c-info">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">Optional GPU telemetry</span>
+    <p>To show GPU cards on the PC monitoring screen, install the GPU bindings as well &#8212; they
+    are not in the requirements file:</p>
+    <pre style="margin-top:2mm"><code>.\.venv\Scripts\python -m pip install pynvml</code></pre>
+    <p>This needs a vendor GPU driver. Without it the card falls back to a browser-reported
+    approximation.</p>
+  </div>
+
+  <h2>11.3 Configure</h2>
+  <pre><code>copy .env.example .env</code></pre>
+  <pre><code><span class="c"># Identity. MUST be one of: blur | stitch | lightroom | photoshop</span>
+STATION_ID=stitch
+
+<span class="c"># The NAS root AS MAPPED ON THIS PC (drive letter or UNC path).</span>
+WATCH_ROOT=X:\nas\360_images
+
+<span class="c"># Overrides, only if your layout differs from Section 9.</span>
+<span class="c"># OUT_STAGE=03_Stitching</span>
+<span class="c"># IN_STAGE=02_Blurring</span>
+
+<span class="c"># 1 = count capture POINTS instead of stitched images.</span>
+<span class="c"># Defaults to 1 for blur, 0 for the others.</span>
+<span class="c"># POINT_MODE=0</span>
+
+<span class="c"># Substrings matched against running process names/paths, comma separated.</span>
+<span class="c"># Match your actual software.</span>
+PROCESS_NAMES=ptgui.exe,ptguipro.exe
+
+<span class="c"># Watch loop period, and the "file is still growing" window in seconds.</span>
+SCAN_INTERVAL_SEC=5
+GROWING_WINDOW_SEC=90
+
+<span class="c"># Shared secret. Required unless the agent is unreachable from anywhere</span>
+<span class="c"># but this LAN.</span>
+AGENT_TOKEN=&lt;generate a long random string per station&gt;
+
+<span class="c"># Bind address and port. Keep 0.0.0.0 only with a firewall rule.</span>
+AGENT_HOST=0.0.0.0
+AGENT_PORT=8000</code></pre>
+  <p>Use a <b>different token per station</b>, and register each one in
+  <code>STATION_AGENT_TOKENS</code> (Section 8.4).</p>
+
+  <h2>11.4 Verify</h2>
+  <pre><code>.\.venv\Scripts\python app.py</code></pre>
+  <p>In a second shell:</p>
+  <pre><code>curl http://localhost:8000/health</code></pre>
+  <pre><code>{
+  "status": <span class="s">"ok"</span>, "agent_version": <span class="s">"1.0.0"</span>, "station_id": <span class="s">"stitch"</span>,
+  "hostname": <span class="s">"PC2"</span>, "uptime_sec": 86400,
+  "cpu_usage": 12, "cpu_cores": 16, "ram_total_gb": 32, "ram_used_gb": 14.2
+}</code></pre>
+  <p>Then check the station payload:</p>
+  <pre><code>curl -H <span class="s">"Authorization: Bearer &lt;AGENT_TOKEN&gt;"</span> http://localhost:8000/api/station</code></pre>
+  <p>Confirm two things:</p>
+  <ul>
+    <li>the watch error is <b>null</b> &#8212; meaning <code>WATCH_ROOT</code> resolved on this PC, and</li>
+    <li>the output section lists your subgrids.</li>
+  </ul>
+  <p>If a watch error is present, the path is wrong for this machine. A drive letter that exists on
+  one workstation frequently does not exist on another.</p>
+
+  <h2>11.5 Firewall</h2>
+  <p>The agent binds port 8000 with no transport encryption of its own. Restrict it to the local
+  network:</p>
+  <pre><code>New-NetFirewallRule -DisplayName <span class="s">"GeoSphere Station Agent"</span> `
+  -Direction Inbound -LocalPort 8000 -Protocol TCP `
+  -Action Allow -Profile Domain</code></pre>
+  <p>The Cloudflare Tunnel is outbound-only and needs no inbound rule.</p>
+
+  <h2>11.6 Autostart</h2>
+  <p><b>Windows</b> &#8212; Task Scheduler &#8594; Create Task:</p>
+  <ul>
+    <li>Trigger: <b>At startup</b></li>
+    <li>Action: <b>Start a program</b> &#8594; <code>C:\station-agent\run_agent.bat</code></li>
+    <li>Start in: <code>C:\station-agent</code></li>
+  </ul>
+  <p><b>Linux</b> &#8212; a systemd unit pointing at the virtual environment's server binary.</p>
+</section>
+
+<!-- ============================ 12. FIRST RUN ============================ -->
+<section class="page-break" id="sec-12">
+  <h1 class="sec"><span class="num">12</span>First-run configuration</h1>
+  <p class="sec-lede">Configuring the application itself, including one step that currently has no screen.</p>
+
+  <h2>12.1 Create your first project</h2>
+  <p>A project is <b>mandatory</b> &#8212; every query in the platform is scoped to the active project,
+  and the dashboard forces project selection immediately after login. The wizard's only required
+  field is the campaign name.</p>
+
+  <h2>12.2 Required settings</h2>
+  <p>Open <b>Settings &#8594; Project and Map Settings</b>. The form is read-only unless you are an
+  Administrator.</p>
+  <table>
+    <thead><tr><th style="width:34%">Setting</th><th>Why it is required</th></tr></thead>
+    <tbody>
+      <tr><td><b>Supabase REST endpoint URL</b></td><td>No database client without it</td></tr>
+      <tr><td><b>Public anon API key</b></td><td>No sign-in without it</td></tr>
+      <tr><td><b>Database host provider</b></td><td>Selects your provider topology</td></tr>
+      <tr><td><b>Storage provider</b></td><td>Selects the panorama URL builder</td></tr>
+      <tr><td><b>Provider bucket / domain / container</b></td><td>Without it, publishing stays disabled</td></tr>
+      <tr><td><b>Default basemap provider</b></td><td>Map backdrop</td></tr>
+    </tbody>
+  </table>
+  <p>Storage settings vary by provider &#8212; a bucket name, a CDN domain, or a bucket and region
+  pair.</p>
+
+  <div class="callout c-info">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">Build-time variables are not set here</span>
+    <p>The Supabase and map variables are <b>build-time</b> settings configured on Cloudflare Pages
+    (Section 8.3). This screen only pre-fills the form; it does not set them. Changing them here has
+    no effect on the running application.</p>
+  </div>
+
+  <h2>12.3 Two settings in an unexpected place</h2>
+  <p>The working directory and worker endpoint are <b>not</b> on the admin screen. Set them in
+  <b>NAS and Daemon &#8594; Capacity and Volumes</b>:</p>
+  <table style="width:74%">
+    <thead><tr><th style="width:44%">Setting</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>NAS working base path</td><td>Root that deliverable paths resolve against</td></tr>
+      <tr><td>Worker URL</td><td>Endpoint used when not proxying</td></tr>
+    </tbody>
+  </table>
+
+  <h2>12.4 Station address configuration</h2>
+  <div class="callout c-ok">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+    <span class="ct">No database step required</span>
+    <p>Station addresses are set in the interface: <b>Settings &#8594; Project &amp; Map Settings
+    &#8594; 4. Production Pipeline &amp; Workstations</b>. Enter the address for each of the four
+    processing PCs and press <b>Save</b>.</p>
+    <p>Earlier revisions had no screen for this and required a settings-table SQL update, tracked
+    as limitation 14.1. That defect is fixed. If you are upgrading, no migration is needed &#8212;
+    fill in the addresses and save.</p>
+  </div>
+
+  <table class="t">
+    <tr><th>Field</th><th>Purpose</th><th>Default</th></tr>
+    <tr><td><b>IP address or hostname</b></td><td>Where the dashboard polls the station agent</td><td>blank &#8594; station reports <i>Unconfigured</i></td></tr>
+    <tr><td>Agent port</td><td>Station agent listen port</td><td><code>8000</code></td></tr>
+    <tr><td>Live desktop channel</td><td><code>RDP (mstsc)</code> or <code>noVNC (browser)</code></td><td><code>RDP</code></td></tr>
+    <tr><td>RDP port</td><td>Port for the one-click <code>mstsc</code> launch</td><td><code>3389</code></td></tr>
+    <tr><td>noVNC port</td><td>websockify port for the in-browser desktop pane</td><td>blank</td></tr>
+    <tr><td>noVNC public URL</td><td>HTTPS noVNC endpoint; accepts <code>{ip}</code> and <code>{port}</code></td><td>blank</td></tr>
+    <tr><td>Agent token</td><td>Shared secret matching the PC's <code>AGENT_TOKEN</code></td><td>blank</td></tr>
+    <tr><td>Enabled</td><td>Whether the station is part of the active pipeline</td><td>on</td></tr>
+  </table>
+
+  <p>The section header shows <b>N of 4 stations configured</b>. A station with no address reports
+  itself as <b>Unconfigured</b> and the rest of the board keeps working, so PCs can be brought
+  online one at a time. A mistyped address is flagged <i>Check address</i> rather than blocked, so
+  a hostname that does not resolve to a dotted IP will not stop you saving.</p>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">The live desktop pane needs a public URL on HTTPS</span>
+    <p>A browser blocks a private <code>http://</code> VNC iframe as mixed content, so on an HTTPS
+    deployment the pane requires the public noVNC URL above. Leave it blank and the pane stays
+    hidden for that station; RDP launch still works from the office LAN.</p>
+    <p>Also sign out and back in after saving. The dashboard caches project settings in browser
+    storage, so a hard refresh or a fresh session is needed to pick up the change. The stored
+    settings type now declares the address and port keys, so exporting and re-importing project
+    settings no longer drops them &#8212; a defect that affected earlier builds.</p>
+  </div>
+
+  <p><b>Topology is not editable here.</b> Station order, software labels and the NAS stage folder
+  templates come from the shipped four-station topology so the pipeline contract cannot drift per
+  site. Only the address and remote-access fields are per-site.</p>
+
+  <p>In <b>proxy</b> mode &#8212; the default &#8212; the agents are reached through the Pages
+  Functions using the hostname map, so the addresses matter less. Set them anyway so that local
+  network fallback and the monitoring views work.</p>
+
+  <h2>12.5 Roles and capabilities</h2>
+  <p>Grant capabilities per operator in <b>Administration &#8594; Roles</b>. Remember that only eight
+  capabilities are enforced by the database (Section 6.3) &#8212; do not rely on the others for
+  compliance.</p>
+</section>
+
+<!-- ============================ 13. VERIFICATION ============================ -->
+<section class="page-break" id="sec-13">
+  <h1 class="sec"><span class="num">13</span>Verification</h1>
+  <p class="sec-lede">Two acceptance tiers, and the sign-off record.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 172" role="img" aria-label="Two-tier verification">
+      <defs>
+        <marker id="av" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#047857"/>
+        </marker>
+      </defs>
+      <rect x="14" y="22" width="200" height="120" rx="9" fill="#f0f9ff" stroke="#bae6fd"/>
+      <text x="114" y="44" font-size="11" font-weight="700" fill="#0369a1" text-anchor="middle">TIER A</text>
+      <text x="114" y="60" font-size="9.4" fill="#334155" text-anchor="middle">Dashboard verified</text>
+      <text x="30" y="80" font-size="8.4" fill="#334155">Cloud only. No NAS required.</text>
+      <text x="30" y="96" font-size="8.4" fill="#334155">Proves: sign-in, project,</text>
+      <text x="30" y="109" font-size="8.4" fill="#334155">settings, storage, diagnostics,</text>
+      <text x="30" y="122" font-size="8.4" fill="#334155">import, WebGIS map.</text>
+      <text x="30" y="136" font-size="8" fill="#64748b">About 30 minutes.</text>
+
+      <line x1="214" y1="82" x2="252" y2="82" stroke="#047857" stroke-width="1.8" marker-end="url(#av)"/>
+
+      <rect x="256" y="22" width="200" height="120" rx="9" fill="#f0f9ff" stroke="#bae6fd"/>
+      <text x="356" y="44" font-size="11" font-weight="700" fill="#0369a1" text-anchor="middle">TIER B</text>
+      <text x="356" y="60" font-size="9.4" fill="#334155" text-anchor="middle">Production pipeline</text>
+      <text x="272" y="80" font-size="8.4" fill="#334155">Requires the NAS worker, the four</text>
+      <text x="272" y="93" font-size="8.4" fill="#334155">agents, all five tunnels, and the</text>
+      <text x="272" y="106" font-size="8.4" fill="#334155">station registration from 12.4.</text>
+      <text x="272" y="122" font-size="8.4" fill="#334155">Proves: scans, board, intake,</text>
+      <text x="272" y="135" font-size="8.4" fill="#334155">gates, publish.</text>
+
+      <line x1="456" y1="82" x2="494" y2="82" stroke="#047857" stroke-width="1.8" marker-end="url(#av)"/>
+
+      <rect x="498" y="22" width="200" height="120" rx="9" fill="#ecfdf5" stroke="#a7f3d0"/>
+      <text x="598" y="44" font-size="11" font-weight="700" fill="#047857" text-anchor="middle">SMOKE TEST</text>
+      <text x="598" y="60" font-size="9.4" fill="#334155" text-anchor="middle">Final gate</text>
+      <text x="514" y="80" font-size="8.4" fill="#334155">Auth boundary, image</text>
+      <text x="514" y="93" font-size="8.4" fill="#334155">revalidation, privilege</text>
+      <text x="514" y="106" font-size="8.4" fill="#334155">checks.</text>
+      <text x="514" y="126" font-size="8.4" font-weight="700" fill="#065f46">Then record sign-off</text>
+      <text x="514" y="138" font-size="8" fill="#64748b">in the appendix sheet.</text>
+    </svg>
+    <figcaption><b>Figure 8.</b> Verification tiers. Tier B depends on Tier A plus the on-premises
+    half; the sign-off sheet is in the appendix.</figcaption>
+  </figure>
+
+  <h2>13.1 Tier A &#8212; dashboard verified</h2>
+  <p>About thirty minutes. Requires no NAS. Capture a screenshot at each pass signal for the
+  acceptance record.</p>
+  <table>
+    <thead><tr><th style="width:6%">#</th><th style="width:46%">Action</th><th>Pass signal</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Open the deployed URL</td><td>Landing page renders with the globe animation</td></tr>
+      <tr><td>2</td><td>Sign in as the seeded Administrator</td><td>No error banner</td></tr>
+      <tr><td>3</td><td>Project picker appears</td><td>Zero projects forces the wizard</td></tr>
+      <tr><td>4</td><td>Complete the wizard &#8212; campaign name is the only required field</td><td>Loading indicator, then the dashboard</td></tr>
+      <tr><td>5</td><td>Expand the left navigation rail</td><td>All workspaces listed; Settings and Administration unlocked</td></tr>
+      <tr><td>6</td><td><b>Settings &#8594; Diagnostics</b> &#8594; <b>Ping</b></td><td><b>Connected</b>, database <b>operational</b>, storage <b>operational</b>, a real latency figure</td></tr>
+      <tr><td>7</td><td>Expand <b>Runtime Environment</b></td><td>Database and map variables show values, not "not set"</td></tr>
+      <tr><td>8</td><td><b>Administration &#8594; System Health</b> &#8594; <b>Run Diagnostics</b></td><td>Database <b>operational</b> with a real millisecond figure</td></tr>
+      <tr><td>9</td><td><b>Administration &#8594; Users</b></td><td>Your row present with role <b>Administrator</b></td></tr>
+      <tr><td>10</td><td><b>Administration &#8594; Roles</b></td><td>The capability matrix renders</td></tr>
+      <tr><td>11</td><td>Settings &#8594; <b>Test database connection and latency</b></td><td>A number replaces "not measured"</td></tr>
+      <tr><td>12</td><td>Settings &#8594; set the provider bucket &#8594; <b>Verify manifest</b></td><td><b>Manifest OK</b> with a frame count</td></tr>
+      <tr><td>13</td><td><b>Save</b> settings</td><td>Success confirmation, and an entry in the audit log</td></tr>
+      <tr><td>14</td><td><b>Data Management</b> &#8594; import a two-row CSV with <code>filename</code>, <code>latitude</code>, <code>longitude</code></td><td>Columns auto-map; duplicate check reports 0</td></tr>
+      <tr><td>15</td><td><b>Road Analysis &#8594; Import Data</b> &#8594; add a small GeoJSON</td><td>Feature count renders; transport badge reads <b>worker</b></td></tr>
+      <tr><td>16</td><td><b>Dashboard</b></td><td>The embedded WebGIS renders a basemap</td></tr>
+      <tr><td>17</td><td>Header &#8594; audit log icon</td><td>The step-13 entry appears</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-info">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">Expected cosmetic artefact &#8212; not a fault</span>
+    <p>The diagnostics panel reports <b>WebGIS: unknown</b> and <b>Realtime: unknown</b> even on a
+    perfectly healthy installation, because those probes are not implemented. Ignore them and judge
+    health from the database, storage and latency figures.</p>
+  </div>
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">A blank map frame means one thing</span>
+    <p>If the WebGIS area on the dashboard is empty, the map variable is unset. There is no code
+    fallback &#8212; fix it on Cloudflare Pages and rebuild (Section 8.3).</p>
+  </div>
+
+  <h2>13.2 Tier B &#8212; production pipeline verified</h2>
+  <p>Tier A cannot prove the on-premises half. Continue once the worker, agents and tunnels are
+  running.</p>
+  <table>
+    <thead><tr><th style="width:6%">#</th><th style="width:46%">Check</th><th>Pass signal</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Scan for subgrids through the tunnel</td><td>Your subgrid is listed</td></tr>
+      <tr><td>2</td><td><b>NAS and Daemon</b> workspace</td><td>Folder browser lists the stitching stage; storage overview shows the volume</td></tr>
+      <tr><td>3</td><td><b>Production Hub</b> &#8594; flight board</td><td>All four cards show an agent, not "awaiting agent"</td></tr>
+      <tr><td>4</td><td><b>PC Monitoring</b></td><td>Live processor, memory and disk per station</td></tr>
+      <tr><td>5</td><td><b>Production Hub</b> &#8594; intake and pairing</td><td>Subgrid detected, survey folders listed, telemetry rows paired to imagery</td></tr>
+      <tr><td>6</td><td>Quality inspection station</td><td>Frames step through the 360 viewer; a defect flag writes to the ledger</td></tr>
+      <tr><td>7</td><td>Cloud bucket gate</td><td>Inventory verified and gate approved</td></tr>
+      <tr><td>8</td><td>WebGIS release gate &#8594; publish</td><td>Rows land in the published table</td></tr>
+      <tr><td>9</td><td><b>Main Dashboard</b></td><td>The published trajectory renders</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">Steps 3 and 4 depend on Section 12.4</span>
+    <p>Without the station registration those cards cannot reach the agents, however correctly the
+    tunnels are configured.</p>
+  </div>
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">Bucket gate limitation</span>
+    <p>Inventory verification works only with Supabase object storage. Other providers cannot
+    complete that gate today &#8212; see item 14.3.</p>
+  </div>
+
+  <h2>13.3 Final smoke test</h2>
+  <p>Run the repository's smoke checklist, which adds the authentication boundary, image
+  revalidation and privilege checks. Record the outcome in the appendix sheet.</p>
+</section>
+
+<!-- ============================ 14. LIMITATIONS ============================ -->
+<section class="page-break" id="sec-14">
+  <h1 class="sec"><span class="num">14</span>Known limitations</h1>
+  <p class="sec-lede">Product defects that affect a client installation. Read before go-live.</p>
+
+  <h2>14.1 Station addresses must be set before the board is useful <span class="tag-fixed">fixed</span></h2>
+  <p><b>Impact.</b> Until each station has an address saved, the flight board reports that station
+  as "Unconfigured", the rename action is unavailable for it, and bucket upload for non-Supabase
+  providers cannot run for it. A station without an address does not affect the rest of the board,
+  so PCs can be brought online one at a time.</p>
+  <p><b>Resolution.</b> Earlier revisions had no screen for this and required a settings-table SQL
+  update, and a settings export silently dropped the address and port keys. Both are fixed: set the
+  addresses in <b>Settings &#8594; Project &amp; Map Settings &#8594; 4. Production Pipeline &amp;
+  Workstations</b> (Section 12.4), and the stored settings type now declares those keys. No
+  migration is required when upgrading.</p>
+
+  <h2>14.2 Bucket upload works for only two providers</h2>
+  <p><b>Impact.</b> When a bucket upload includes the manifest, the agent builds its command
+  incorrectly for five of the seven supported providers, and the upload fails with an operating
+  system error.</p>
+  <table style="width:72%">
+    <thead><tr><th style="width:44%">Provider</th><th>Upload works</th></tr></thead>
+    <tbody>
+      <tr><td>Cloudflare R2</td><td class="yes">Yes</td></tr>
+      <tr><td>Network-share copy</td><td class="yes">Yes</td></tr>
+      <tr><td>AWS S3, Google Cloud Storage, Azure, Wasabi, Supabase CLI</td><td class="no">No &#8212; upload without the manifest option</td></tr>
+    </tbody>
+  </table>
+  <p><b>Workaround.</b> Use the R2 or network-share path, or run the provider command-line tool
+  yourself and skip the in-app upload.</p>
+
+  <h2>14.3 Bucket gate verification is Supabase-only</h2>
+  <p><b>Impact.</b> The inventory-verification step of the cloud bucket gate refuses every provider
+  except Supabase object storage. R2, S3 and Azure deployments <b>cannot pass the gate</b>.</p>
+  <p><b>Workaround.</b> Use Supabase object storage as the panorama bucket, or accept that the gate
+  cannot be completed and publish through the release gate only.</p>
+
+  <h2>14.4 The in-app tour and help text are out of date</h2>
+  <p><b>Impact.</b> The first-run interactive tour and the help dialog still describe the
+  pre-refactor interface. They will mislead operators and new staff.</p>
+  <p><b>Workaround.</b> Dismiss the tour and train against this guide instead.</p>
+
+  <h2>14.5 Default session timeout is thirty minutes</h2>
+  <p><b>Impact.</b> Users are signed out after thirty minutes of inactivity. Activity inside
+  embedded map and panorama frames is invisible to the dashboard, so someone actively working a 360
+  viewer can be signed out mid-task.</p>
+  <p><b>Workaround.</b> Raise the session timeout in Settings if this is disruptive.</p>
+
+  <h2>14.6 Deletion approval is an interface guard</h2>
+  <p><b>Impact.</b> The delete capability is granted at the database level to both Administrator and
+  Survey Operator, so the approval queue can be bypassed with a direct API call.</p>
+  <p><b>Workaround.</b> Do not grant the Survey Operator role where your process requires approval.</p>
+
+  <h2>14.6b Disable revokes permissions, but not the sign-in account</h2>
+  <p><b>Impact.</b> <b>Disable</b> in Administration &#8594; Users sets the directory row to
+  <code>Disabled</code>. Since migration <code>0030</code> that resolves to read-only at the database
+  level, so the control genuinely revokes.</p>
+  <p>It does <b>not</b> remove the person's Supabase sign-in account. They can still sign in; they
+  simply see nothing they are not permitted to see. There is deliberately no delete control in the
+  dashboard &mdash; deleting the row would leave no record of the revocation, and role resolution
+  would fall back to the token claim, restoring the elevated role.</p>
+  <p><b>Workaround.</b> To stop someone signing in at all, remove or disable the user in
+  <b>Supabase &#8594; Authentication &#8594; Users</b>.</p>
+
+  <h2>14.7 Retired configuration names</h2>
+  <table>
+    <thead><tr><th style="width:38%">Name</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td><code>VITE_NAS_API_ENABLED</code></td><td>Never existed in code. Documented in older notes</td></tr>
+      <tr><td><code>CONCURRENCY</code>, <code>MAX_ACTIVE_JOBS</code>, <code>MAX_QUEUE_DEPTH</code>, <code>WORKER_JOB_DB</code></td><td>Retired with the job queue. Setting them does nothing</td></tr>
+      <tr><td><code>MASK_NEIGHBOR_WARP</code>, <code>LAZY_MODEL_DOWNLOAD</code></td><td>Retired. Not read anywhere</td></tr>
+      <tr><td>Worker job, release and metrics endpoints</td><td>Removed. A "not found" response is expected, not a fault</td></tr>
+      <tr><td>Worker port <code>8787</code></td><td>Never correct. Use <code>8000</code></td></tr>
+      <tr><td><code>0019_map_shares_auth_only.sql</code></td><td>No such file. The real file is <code>0019_map_shares_public_access.sql</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>14.8 Renaming requires a panoramas folder</h2>
+  <p><b>Impact.</b> The NAS rename action targets the <code>panoramas/</code> subfolder of a survey
+  run. If it does not exist the request is rejected.</p>
+  <p><b>Workaround.</b> Use the tiled stitched layout (Section 9.1), or rename directly on the
+  filesystem.</p>
+</section>
+
+<!-- ============================ 15. TROUBLESHOOTING ============================ -->
+<section class="page-break" id="sec-15">
+  <h1 class="sec"><span class="num">15</span>Troubleshooting</h1>
+  <p class="sec-lede">Symptom to cause. Entries marked silent fail without an error message.</p>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <span class="ct">This platform prefers to report "unavailable" over raising an error</span>
+    <p>Several failures are therefore silent. When something is not working, check the table below
+    before assuming a data problem.</p>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:30%">Symptom</th><th style="width:30%">Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Blank frame where the map should be <span class="opt">(silent)</span></td><td>Map variable unset</td><td>Set it on Pages, then <b>rebuild</b> (8.3)</td></tr>
+      <tr><td>"Worker proxy is not configured" <span class="opt">(silent)</span></td><td>Proxy variables absent in the development file</td><td>Add both, restart the dev server (8.6)</td></tr>
+      <tr><td>Edge returns <b>503</b> on private routes</td><td>Runtime secrets missing</td><td>Set the API URL and worker token (8.4)</td></tr>
+      <tr><td>Edge returns <b>401</b> on a private route</td><td>Session missing or expired</td><td>Sign in again; confirm the server Supabase variables</td></tr>
+      <tr><td>Tunnel hostname returns <b>404</b></td><td>Ingress rule does not match the requested hostname</td><td>Check the ingress rule; restart the tunnel service</td></tr>
+      <tr><td>Tunnel hostname returns <b>401</b> and nothing else works</td><td><b>Correct</b> &#8212; the token is required</td><td>Add the authorisation header; if it works the tunnel is fine (7.6)</td></tr>
+      <tr><td>Tunnel hostname keeps changing</td><td>A quick tunnel was used</td><td>Create a <b>named</b> tunnel with DNS routing (7.2)</td></tr>
+      <tr><td>Station cards show <b>no-ip-configured</b></td><td>Address not saved for that PC</td><td>Set it in Settings &#8594; 4. Production Pipeline &amp; Workstations (Section 12.4)</td></tr>
+      <tr><td>Station cards show <b>unreachable</b></td><td>Tunnel, firewall, or agent not running</td><td>Check the agent is up, the ingress matches, port 8000 is allowed</td></tr>
+      <tr><td>Station cards show <b>not-reporting</b></td><td>Agent answers but its watch loop is failing</td><td>Check the watch root on that PC (11.4)</td></tr>
+      <tr><td>Agent exits immediately at startup</td><td>Station identifier missing or invalid</td><td>Must be one of the four values in 11.1</td></tr>
+      <tr><td>No processor or memory figures on a station</td><td>Process library not installed</td><td>Install the requirements on that PC (11.2)</td></tr>
+      <tr><td>No GPU card on the monitoring screen</td><td>GPU bindings not installed</td><td>Install the optional GPU package (11.2)</td></tr>
+      <tr><td>Panoramas render broken <span class="opt">(silent)</span></td><td>Bucket is private, or the wrong bucket name</td><td>Make it public; re-check the setting (4.1)</td></tr>
+      <tr><td>"No resolvable panorama URL" in quality review</td><td>Storage provider or bucket incomplete</td><td>Re-check Section 12.2</td></tr>
+      <tr><td>Subgrid scan returns an empty list <span class="opt">(silent)</span></td><td>Folder tree mismatch, or base path wrong</td><td>Re-check Sections 9.1 and 10.2</td></tr>
+      <tr><td>Coordinates not paired to imagery <span class="opt">(silent)</span></td><td>Run folder names differ between the two stage folders</td><td>Make them identical (9.1)</td></tr>
+      <tr><td>Publish button permanently disabled</td><td>Provider bucket not configured</td><td>Set the bucket in Settings (12.2)</td></tr>
+      <tr><td>Cannot reach the Administration workspace</td><td>Seeded role resolved to Viewer</td><td>Verify the role query (5.2)</td></tr>
+      <tr><td>Migration error mentioning a security function</td><td>Applied out of order</td><td>Re-apply in order (3.3)</td></tr>
+      <tr><td>Summary view missing after migrations</td><td>PostGIS was not enabled before the first migration</td><td>Enable PostGIS, re-run the view block (3.2)</td></tr>
+      <tr><td>Diagnostics show WebGIS or Realtime <b>unknown</b></td><td><b>Expected</b> &#8212; probe not implemented</td><td>Ignore (13.1)</td></tr>
+      <tr><td>Database changes not appearing after an edit</td><td>Settings cached in the browser</td><td>Sign out and back in, or hard refresh</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 16. REFERENCE ============================ -->
+<section class="page-break" id="sec-16">
+  <h1 class="sec"><span class="num">16</span>Reference</h1>
+  <p class="sec-lede">Lookup tables. Precedence is project settings, then environment variables, then built-in defaults.</p>
+
+  <h2>16.1 Browser build-time variables</h2>
+  <table>
+    <thead><tr><th style="width:34%">Variable</th><th style="width:12%">Required</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>VITE_SUPABASE_URL</code></td><td class="yes">Yes</td><td>Project base URL</td></tr>
+      <tr><td><code>VITE_SUPABASE_ANON_KEY</code></td><td class="yes">Yes</td><td>Public anon / publishable key</td></tr>
+      <tr><td><code>VITE_MAP_URL</code></td><td class="yes">Yes</td><td>WebGIS application base. No fallback</td></tr>
+      <tr><td><code>VITE_SUPABASE_KEY</code></td><td class="opt">No</td><td>Legacy alias for the anon key</td></tr>
+      <tr><td><code>VITE_WORKER_API_MODE</code></td><td class="opt">No</td><td><code>proxy</code> (default) or <code>direct</code></td></tr>
+      <tr><td><code>VITE_STATION_AGENT_MODE</code></td><td class="opt">No</td><td><code>proxy</code> in production, <code>direct</code> in development</td></tr>
+      <tr><td><code>VITE_SUPABASE_BUCKET</code> / <code>VITE_STORAGE_BUCKET</code></td><td class="opt">No</td><td>Panorama bucket. Default <code>MMS_PIC</code></td></tr>
+      <tr><td><code>VITE_STORAGE_PROVIDER</code></td><td class="opt">No</td><td>Storage provider selection</td></tr>
+      <tr><td><code>VITE_R2_BUCKET</code> / <code>VITE_R2_DOMAIN</code></td><td class="opt">No</td><td>Cloudflare R2 target</td></tr>
+      <tr><td><code>VITE_IMAGE_CDN_URL</code></td><td class="opt">No</td><td>Generic image CDN base</td></tr>
+      <tr><td><code>VITE_S3_BUCKET</code> / <code>VITE_S3_REGION</code></td><td class="opt">No</td><td>S3 target. Region default <code>ap-southeast-1</code></td></tr>
+      <tr><td><code>VITE_GCS_BUCKET</code></td><td class="opt">No</td><td>Google Cloud Storage target</td></tr>
+      <tr><td><code>VITE_AZURE_ACCOUNT</code> / <code>VITE_AZURE_CONTAINER</code></td><td class="opt">No</td><td>Azure target</td></tr>
+      <tr><td><code>VITE_WASABI_BUCKET</code> / <code>VITE_WASABI_REGION</code></td><td class="opt">No</td><td>Wasabi target. Region default <code>us-east-1</code></td></tr>
+      <tr><td><code>VITE_NAS_SERVER_URL</code></td><td class="opt">No</td><td>Direct NAS image origin</td></tr>
+      <tr><td><code>VITE_NAS_WORK_BASE_PATH</code></td><td class="opt">No</td><td>Default NAS working directory</td></tr>
+      <tr><td><code>VITE_PRODUCTION_API_URL</code></td><td class="opt">No</td><td>Worker base URL &#8212; only when mode is <code>direct</code></td></tr>
+      <tr><td><code>VITE_PRODUCTION_API_KEY</code></td><td class="opt">No</td><td>Static worker secret &#8212; direct mode only. Prefer proxying</td></tr>
+      <tr><td><code>VITE_ROAD_GEOMETRY_BUCKET</code></td><td class="opt">No</td><td>Private layer geometry bucket</td></tr>
+      <tr><td><code>VITE_ROAD_EXTRACTION_ROUTE</code></td><td class="opt">No</td><td><code>overpass</code> (default) or <code>custom</code></td></tr>
+      <tr><td><code>VITE_ROAD_EXTRACTION_URL</code></td><td class="opt">No</td><td>Road-network endpoint, browser fallback only</td></tr>
+      <tr><td><code>VITE_ROAD_EXTRACTION_PROXY</code></td><td class="opt">No</td><td>Server-side proxy &#8212; preferred</td></tr>
+      <tr><td><code>VITE_ROAD_EXTRACTION_DIRECT</code></td><td class="opt">No</td><td>Bypass the proxy for debugging</td></tr>
+      <tr><td><code>VITE_MAPLIBRE_WORKER_URL</code></td><td class="opt">No</td><td>Self-hosted map worker for strict content policies</td></tr>
+      <tr><td><code>VITE_SHARE_LIVE_MODE</code></td><td class="opt">No</td><td>Embed the live map in share pages</td></tr>
+      <tr><td><code>VITE_NAS_URL</code> / <code>VITE_ONPREM_URL</code></td><td class="opt">No</td><td>Provider-profile endpoints</td></tr>
+      <tr><td><code>VITE_DB_*</code> (eight variables)</td><td class="opt">No</td><td>Table and view name overrides</td></tr>
+      <tr><td><code>VITE_SENTRY_DSN</code></td><td class="opt">No</td><td>Error reporting. Omit to disable</td></tr>
+      <tr><td><code>VITE_DATA_QUIET</code></td><td class="opt">No</td><td>Suppress non-fatal analysis console noise</td></tr>
+    </tbody>
+  </table>
+
+  <h2>16.2 Edge runtime variables</h2>
+  <p>Server-side only &#8212; see Section 8.4 for the full table with requirements and purposes.</p>
+
+  <h2>16.3 NAS worker variables</h2>
+  <table>
+    <thead><tr><th style="width:32%">Variable</th><th style="width:16%">Required</th><th>Default</th></tr></thead>
+    <tbody>
+      <tr><td><code>NAS_BASE_PATH</code></td><td class="yes">Yes</td><td>Survey tree root. Paths outside it are rejected</td></tr>
+      <tr><td><code>NAS_WORKER_TOKEN</code></td><td class="yes">Non-loopback</td><td>Blank means unauthenticated</td></tr>
+      <tr><td><code>NAS_WORKER_ID</code></td><td class="opt">No</td><td>Machine hostname</td></tr>
+      <tr><td><code>STORAGE_CACHE_TTL</code></td><td class="opt">No</td><td>30 seconds</td></tr>
+      <tr><td><code>NAS_LOG_JSON</code></td><td class="opt">No</td><td><code>0</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>16.4 Station agent variables</h2>
+  <table>
+    <thead><tr><th style="width:32%">Variable</th><th style="width:16%">Required</th><th>Default</th></tr></thead>
+    <tbody>
+      <tr><td><code>STATION_ID</code></td><td class="yes">Yes</td><td>None &#8212; the service exits</td></tr>
+      <tr><td><code>WATCH_ROOT</code></td><td class="opt">No</td><td>Worker base path variable, else blank</td></tr>
+      <tr><td><code>OUT_STAGE</code></td><td class="opt">No</td><td>Per station (11.1)</td></tr>
+      <tr><td><code>IN_STAGE</code></td><td class="opt">No</td><td>Per station (11.1)</td></tr>
+      <tr><td><code>POINT_MODE</code></td><td class="opt">No</td><td><code>1</code> for blur, else <code>0</code></td></tr>
+      <tr><td><code>SUBGRID_PATTERN</code></td><td class="opt">No</td><td><code>^[A-Za-z]{1,3}[0-9A-Za-z]{2,11}$</code></td></tr>
+      <tr><td><code>PROCESS_NAMES</code></td><td class="opt">No</td><td>Empty &#8212; no process detection</td></tr>
+      <tr><td><code>SCAN_INTERVAL_SEC</code></td><td class="opt">No</td><td><code>5</code></td></tr>
+      <tr><td><code>GROWING_WINDOW_SEC</code></td><td class="opt">No</td><td><code>90</code></td></tr>
+      <tr><td><code>AGENT_TOKEN</code></td><td class="opt">No</td><td>Blank means unauthenticated</td></tr>
+      <tr><td><code>AGENT_HOST</code> / <code>AGENT_PORT</code></td><td class="opt">No</td><td><code>0.0.0.0</code> / <code>8000</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>16.5 NAS worker HTTP surface</h2>
+  <table>
+    <thead><tr><th style="width:16%">Method</th><th style="width:34%">Route</th><th style="width:12%">Auth</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET</code></td><td><code>/health</code></td><td class="no">No</td><td>Liveness and the configured mount</td></tr>
+      <tr><td><code>GET</code></td><td><code>/api/folders?path=</code></td><td class="yes">Yes</td><td>Directory listing with image counts</td></tr>
+      <tr><td><code>GET</code></td><td><code>/api/storage</code></td><td class="yes">Yes</td><td>Volume usage, per top-level folder</td></tr>
+      <tr><td><code>GET</code></td><td><code>/api/nas-scan?action=</code></td><td class="yes">Yes</td><td>Survey scans</td></tr>
+      <tr><td><code>GET</code></td><td><code>/api/images/{path}</code></td><td class="yes">Yes</td><td>Panorama preview with conditional requests</td></tr>
+    </tbody>
+  </table>
+  <p>Scan actions: <code>subgrids</code>, <code>survey-folders</code>, <code>read-csv</code>,
+  <code>folder-images</code>, <code>final-images</code>, <code>registry</code>. An unknown action
+  returns <b>400</b>.</p>
+
+  <h2>16.6 Station agent HTTP surface</h2>
+  <table>
+    <thead><tr><th style="width:16%">Method</th><th style="width:38%">Route</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET</code></td><td><code>/health</code></td><td>Liveness and host telemetry</td></tr>
+      <tr><td><code>GET</code></td><td><code>/api/station</code></td><td>Full station snapshot: task, output, capture points</td></tr>
+      <tr><td><code>GET</code></td><td><code>/api/station/{id}</code></td><td>Snapshot, only for the agent's own identifier</td></tr>
+      <tr><td><code>POST</code></td><td><code>/api/rename</code></td><td>Rename files within a stage folder</td></tr>
+      <tr><td><code>POST</code></td><td><code>/api/sync-bucket</code></td><td>Start a bucket upload</td></tr>
+      <tr><td><code>GET</code></td><td><code>/api/sync-bucket/{job_id}</code></td><td>Poll an upload</td></tr>
+    </tbody>
+  </table>
+
+  <h2>16.7 Capabilities enforced by the database</h2>
+  <p><code>runQaqc</code>, <code>reviewQaqc</code>, <code>viewAll</code>,
+  <code>manageDatasets</code>, <code>manageSettings</code>, <code>manageUsers</code>,
+  <code>approveDeletions</code>, <code>deleteData</code>.</p>
+  <p>The other thirteen capabilities in the interface matrix are presentation-only. See
+  Section 6.3.</p>
+
+  <h2>16.8 Continuous integration gates</h2>
+  <table>
+    <thead><tr><th style="width:26%">Gate</th><th>Runs</th></tr></thead>
+    <tbody>
+      <tr><td>Build</td><td>Type check, then the production bundle</td></tr>
+      <tr><td>Test</td><td>Unit and integration suite</td></tr>
+      <tr><td>Lint</td><td>Static analysis &#8212; blocking on errors</td></tr>
+      <tr><td>Python</td><td>Compile and unit tests for the worker, on two interpreter versions</td></tr>
+    </tbody>
+  </table>
+  <p>There is <b>no deployment automation</b> in the repository &#8212; the edge platform's Git
+  integration is the deployment mechanism. The station agents and the edge functions are not
+  covered by the automated gates.</p>
+</section>
+
+<!-- ============================ APPENDIX ============================ -->
+<section class="page-break" id="appendix">
+  <h1 class="sec"><span class="num">A</span>Appendix &#8212; acceptance record</h1>
+  <p class="sec-lede">Complete and sign once the installation is accepted.</p>
+
+  <h2>A.1 Installation details</h2>
+  <table class="sig">
+    <tbody>
+      <tr><td style="width:34%"><b>Client</b></td><td></td></tr>
+      <tr><td><b>Site / location</b></td><td></td></tr>
+      <tr><td><b>Supabase project URL</b></td><td></td></tr>
+      <tr><td><b>Web application URL</b></td><td></td></tr>
+      <tr><td><b>NAS worker hostname</b></td><td></td></tr>
+      <tr><td><b>NAS base path</b></td><td></td></tr>
+      <tr><td><b>Station agent hostnames</b></td><td></td></tr>
+      <tr><td><b>Guide revision applied</b></td><td></td></tr>
+      <tr><td><b>Installation date</b></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h2>A.2 Acceptance checklist</h2>
+  <table>
+    <thead><tr><th style="width:8%">Done</th><th style="width:46%">Item</th><th style="width:20%">Verified by</th><th>Date</th></tr></thead>
+    <tbody>
+      <tr><td class="box"></td><td>PostGIS enabled before the first migration</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>All 29 migrations applied in order (0011 is a test, run separately)</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Security test script passed (6.2 Tier 1)</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Privilege boundary proven (6.2 Tier 2)</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Panorama bucket created and public</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>First administrator bootstrapped and role verified</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Operator accounts created with roles assigned</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>NAS folder tree matches Section 9</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>NAS worker responding with a valid token</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Four station agents reporting</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Five tunnels created and routed over HTTPS</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Tunnels and services set to start automatically</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Edge project root directory set to the repository root</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Build-time and runtime variables configured</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Station addresses registered (12.4)</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Tier A verification complete (13.1)</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Tier B verification complete (13.2)</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Smoke test complete (13.3)</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Known limitations in Section 14 reviewed with the client</td><td></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h2>A.3 Signatures</h2>
+  <table class="sig">
+    <thead><tr><th style="width:34%">Role</th><th style="width:33%">Name</th><th>Signature and date</th></tr></thead>
+    <tbody>
+      <tr><td>Client &#8212; IT / infrastructure</td><td></td><td></td></tr>
+      <tr><td>Client &#8212; survey operations</td><td></td><td></td></tr>
+      <tr><td>Vendor &#8212; delivery engineer</td><td></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout c-info" style="margin-top:8mm">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+    <span class="ct">Source documents</span>
+    <p>This guide consolidates the setup documentation held in the platform repository under
+    <code>docs/Production Setup/</code>, together with the worker HTTP contract and the smoke-test
+    checklist. Where this guide and an older note disagree, <b>this guide is current</b>.</p>
+  </div>
+</section>
+
+</body>
+</html>

@@ -58,7 +58,13 @@ dev-smoke.log
 # Exclude implementation plans, agent rules/issues, and internal documentation
 implementation_plan*.md
 .agents/
-docs/
+
+# docs/ is excluded wholesale, EXCEPT the client-facing setup documentation,
+# which ships with the repo. `docs/*` (not `docs/`) is required here: git cannot
+# re-include a file whose parent directory is excluded.
+docs/*
+!docs/Production Setup/
+
 doc/
 *.docx
 
