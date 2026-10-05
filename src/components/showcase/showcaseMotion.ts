@@ -54,10 +54,39 @@ export interface GlobePose {
 }
 
 /**
+ * Aspect ratio of the viewport the satellite globe's camera pose was framed
+ * against. Everything in `globeFitScale` is relative to this.
+ */
+const REFERENCE_ASPECT = 1920 / 970;
+
+/**
+ * Full-bleed fit for the satellite globe.
+ *
+ * MapLibre holds the sphere at a fixed angular size, so across viewports the only
+ * thing that varies is how much of the frame the globe spans: a window wider
+ * than the reference exposes empty space past both limbs, while a narrow one
+ * crops in. Scaling the canvas by the aspect excess keeps the globe spanning edge
+ * to edge on any screen, which is what the showcase is composed around.
+ *
+ * Never below 1 — the globe has to stay full-bleed, not float in space. This
+ * replaces the per-section scale fudging (1.72 on mobile, 0.7 on module
+ * sections), which shrank the globe to 70% mid-scroll and read as the globe
+ * zooming out from under the viewer. Clamped at 1.6 so an ultrawide monitor
+ * cannot crop the sphere past recognition.
+ */
+export function globeFitScale(vw: number, vh: number): number {
+    if (!Number.isFinite(vw) || !Number.isFinite(vh) || vw <= 0 || vh <= 0) return 1;
+    return Math.max(1, Math.min(1.6, vw / vh / REFERENCE_ASPECT));
+}
+
+/**
  * Stationary-parallax choreography: where the backdrop globe sits for each
  * scroll section. Even sections keep text on the left (globe drifts left
  * behind the copy), odd sections mirror. Values are px offsets computed from
  * the live viewport so the drift scales with screen size.
+ *
+ * NOTE: these `scale` values are tuned for the SVG vector globe. The satellite
+ * globe ignores them and uses `globeFitScale` instead — see the caller.
  */
 export function globePoseFor(
     section: number,
@@ -66,11 +95,11 @@ export function globePoseFor(
     vh: number,
     globeMode: boolean
 ): GlobePose {
-    if (globeMode) return { x: 0, y: 0, scale: 1, opacity: 1 };
+    if (globeMode) return { x: 0, y: vh * 0.08, scale: 1, opacity: 1 };
     if (section === HERO_SECTION) {
         return isMobile
-            ? { x: 0, y: 0, scale: 1.72, opacity: 0.7 }
-            : { x: 0, y: vh * 0.02, scale: 1, opacity: 0.9 };
+            ? { x: 0, y: vh * 0.08, scale: 1.72, opacity: 0.7 }
+            : { x: 0, y: vh * 0.18, scale: 1, opacity: 0.95 };
     }
     if (section === WORKFLOW_SECTION) {
         return isMobile

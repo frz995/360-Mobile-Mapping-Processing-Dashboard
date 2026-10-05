@@ -39,6 +39,8 @@ REPLACE`) and safe to re-run from the Supabase SQL Editor or `psql`.
 | 0029 | `0029_csv_file_name.sql` | `csv_file_name` column + backfill. |
 | 0030 | `0030_role_precedence.sql` | Makes the `user_accounts` row authoritative for role **and status**, so **Disable revokes access**. Adds `sec.app_metadata_effective_role()` so the role repair and the post-apply verification query cannot drift apart. Reconciles role drift first, so it cannot lock anyone out. |
 | 0031 | `0031_rls_completeness_backstop.sql` | Closes two RLS gaps a from-empty install leaves: `survey_recycle_bin` never had RLS enabled, and `batch_logs` had RLS but **no policies** (deny-all). Additive and guarded; never loosens an existing policy. Apply **after** 0030. |
+| 0032 | `0032_qa_defects_run_scope.sql` | Adds `qa_defects.run_id` and widens the unique key to `(project_id, subgrid, run_id, point_id)`, so two survey runs of one subgrid can each hold a defect for the same filename. **Required by the app** — `datasets.ts` selects `run_id` and both defect writers upsert on it; without this the select fails (every run reads 0 defects) and every defect write is rejected. No backfill: existing rows keep `run_id` NULL and are treated as subgrid-level. |
+| 0033 | `0033_qa_defects_item_key.sql` | Formalises `qa_defects.item_key`, which was NOT NULL on at least one live database while appearing in **no migration** and being **written by no code** — every `qa_defects` write was rejected with a not-null violation. Adds the column where missing, backfills it from `point_id`, then enforces NOT NULL. |
 
 ## Ordering rule
 

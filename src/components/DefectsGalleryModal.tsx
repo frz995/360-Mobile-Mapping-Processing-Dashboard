@@ -42,6 +42,12 @@ export interface DefectsGalleryModalProps {
   projectSettings?: ExtendedProjectSettings;
   activeUserName?: string;
   fallbackDefects?: any[];
+  /**
+   * Survey run to scope the gallery to (qaqc_audit_runs.run_id). Required once
+   * a subgrid has more than one run — without it the gallery merges every run's
+   * defects for the same filename into one list.
+   */
+  runId?: string | null;
   onClose: () => void;
   onJumpTo360: (target: {
     pointId: string;
@@ -71,6 +77,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
   projectSettings,
   activeUserName = 'Operator',
   fallbackDefects,
+  runId,
   onClose,
   onJumpTo360,
   onDefectResolved,
@@ -100,17 +107,27 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
     let isMounted = true;
     setIsLoading(true);
 
-    fetchQADefectsForSubgrid(cleanSubgrid)
+    const cleanRunId = (runId || '').toString().trim();
+    const inScope = (d: any) => {
+      if ((d.subgrid || '').toUpperCase().trim() !== cleanSubgrid) return false;
+      if (!cleanRunId) return true;
+      const dRun = (d.run_id || d.runId || '').toString().trim();
+      // Rows without a run_id predate run-scoped auditing and stay in scope.
+      return !dRun || dRun === cleanRunId;
+    };
+
+    fetchQADefectsForSubgrid(cleanSubgrid, cleanRunId)
       .then((data) => {
         if (isMounted) {
           if (data && data.length > 0) {
             setDefects(data);
           } else if (Array.isArray(fallbackDefects) && fallbackDefects.length > 0) {
             const relevant = fallbackDefects
-              .filter((d: any) => (d.subgrid || '').toUpperCase().trim() === cleanSubgrid)
+              .filter(inScope)
               .map((d: any, idx: number) => ({
                 id: d.id || `fb-${idx}`,
                 subgrid: d.subgrid || cleanSubgrid,
+                run_id: (d.run_id || d.runId || cleanRunId) || null,
                 point_id: d.point_id || d.filename || `${cleanSubgrid}-${String(idx + 1).padStart(4, '0')}.jpg`,
                 frame_index: d.frame_index || (idx + 1),
                 defect_flags: typeof d.defect_flags === 'object' ? d.defect_flags : { blur: true },
@@ -135,10 +152,11 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
         if (isMounted) {
           if (Array.isArray(fallbackDefects) && fallbackDefects.length > 0) {
             const relevant = fallbackDefects
-              .filter((d: any) => (d.subgrid || '').toUpperCase().trim() === cleanSubgrid)
+              .filter(inScope)
               .map((d: any, idx: number) => ({
                 id: d.id || `fb-${idx}`,
                 subgrid: d.subgrid || cleanSubgrid,
+                run_id: (d.run_id || d.runId || cleanRunId) || null,
                 point_id: d.point_id || d.filename || `${cleanSubgrid}-${String(idx + 1).padStart(4, '0')}.jpg`,
                 frame_index: d.frame_index || (idx + 1),
                 defect_flags: typeof d.defect_flags === 'object' ? d.defect_flags : { blur: true },
@@ -201,7 +219,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
     if (!defect.point_id || resolvingPointId) return;
 
     setResolvingPointId(defect.point_id);
-    const success = await resolveQADefectInSupabase(cleanSubgrid, defect.point_id, activeUserName);
+    const success = await resolveQADefectInSupabase(cleanSubgrid, defect.point_id, activeUserName, defect.run_id || runId);
 
     if (success) {
       const nowStr = new Date().toISOString();

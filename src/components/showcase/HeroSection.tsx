@@ -37,7 +37,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     return (
         <section
             data-section-idx={HERO_SECTION}
-            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-center text-center px-2 xs:px-4 sm:px-8 py-16 pointer-events-none"
+            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-start text-center px-2 xs:px-4 sm:px-8 pt-20 sm:pt-24 md:pt-28 lg:pt-32 pb-16 pointer-events-none"
         >
             {/* Aurora depth field */}
             <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -50,13 +50,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 initial="hidden"
                 whileInView="show"
                 viewport={{ once: false, amount: 0.15 }}
-                className="relative z-10 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto px-1 sm:px-2"
+                className="relative z-10 w-full max-w-xl sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto px-1 sm:px-2"
             >
                 <h1
                     aria-label="Mobile Mapping Data, Manage in One Place"
-                    className="text-[25px] xs:text-[28px] sm:text-4xl md:text-5xl lg:text-[52px] font-bold tracking-tight text-white leading-[1.16] sm:leading-[1.15]"
+                    className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-[64px] xl:text-[72px] font-extrabold tracking-tight text-white leading-[1.12] sm:leading-[1.08] drop-shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
                 >
-                    <span className="block whitespace-nowrap">
+                    <span className="block sm:whitespace-nowrap">
                         {['Mobile', 'Mapping', 'Data,', 'Manage', 'in'].map((w, i) => (
                             <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
                                 <motion.span
@@ -93,7 +93,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                             transition: { delay: 0.45, duration: 0.75, ease: EASE },
                         },
                     }}
-                    className="mt-3 sm:mt-4 text-xs sm:text-sm md:text-base font-medium tracking-wide text-neutral-300/85 max-w-lg sm:max-w-xl mx-auto text-balance"
+                    className="mt-4 sm:mt-5 text-sm sm:text-base md:text-lg lg:text-xl font-normal tracking-wide text-neutral-200/90 max-w-xl sm:max-w-2xl lg:max-w-3xl mx-auto text-balance drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]"
                 >
                     A practical workspace for mobile mapping operations.
                 </motion.p>
@@ -104,7 +104,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.65, duration: 0.9 }}
-                className="relative z-10 w-full max-w-xs sm:max-w-md mx-auto h-6 sm:h-8 my-3 sm:my-4"
+                className="relative z-10 w-full max-w-xs sm:max-w-md mx-auto h-6 sm:h-8 my-1.5 sm:my-2"
             >
                 <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
                 <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-[2px] w-1/4" />
@@ -132,29 +132,33 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.8, duration: 0.75, ease: EASE }}
-                className="relative z-10 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 pointer-events-auto"
+                id="hero-cta-group"
+                className="relative z-10 flex flex-row flex-wrap items-center justify-center gap-3 sm:gap-4 mt-1.5 sm:mt-2.5 pointer-events-auto"
             >
                 <MagneticWrap>
                     <HoverBorderGradient
                         onClick={onExplorePlatform}
-                        containerClassName="group/btn rounded-lg cursor-pointer active:scale-[0.97]"
-                        className="px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 text-neutral-100"
+                        containerClassName="group/btn rounded-xl cursor-pointer active:scale-[0.97] shadow-[0_4px_24px_rgba(0,0,0,0.6)]"
+                        className="px-5 py-2.5 sm:px-6 sm:py-2.5 rounded-xl font-medium text-xs sm:text-sm flex items-center justify-center gap-2 text-white"
                     >
                         <span>Explore Platform</span>
-                        <ArrowRight className="w-3.5 h-3.5 text-neutral-400 group-hover/btn:text-white transition-all group-hover/btn:translate-x-0.5" />
+                        <ArrowRight className="w-4 h-4 text-neutral-400 group-hover/btn:text-white transition-all group-hover/btn:translate-x-0.5" />
                     </HoverBorderGradient>
                 </MagneticWrap>
                 <button
                     onClick={onExploreEarth}
-                    className="group flex items-center gap-1.5 sm:gap-2 rounded-lg border border-white/10 hover:border-white/30 bg-white/[0.03] hover:bg-white/[0.08] px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-medium text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-[0.97]"
+                    className="group inline-flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium text-neutral-200 hover:text-white bg-[#0b1018]/70 hover:bg-[#0b1018]/90 border border-white/15 hover:border-white/30 backdrop-blur-md transition-all cursor-pointer active:scale-[0.97] shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
                 >
-                    <span className="material-symbols-outlined text-[14px] sm:text-[15px] leading-none text-neutral-400 group-hover:text-sky-300 transition-colors">public</span>
+                    <span className="material-symbols-outlined text-[16px] leading-none text-sky-400 group-hover:text-sky-300 transition-colors">public</span>
                     <span>Explore 3D Earth</span>
                 </button>
             </motion.div>
 
             {/* Scroll hint — pinned to bottom */}
-            <div className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-0 right-0 flex justify-center pointer-events-none">
+            <div
+                id="hero-scroll-hint"
+                className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-0 right-0 flex justify-center pointer-events-none"
+            >
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}

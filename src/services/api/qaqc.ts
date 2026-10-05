@@ -1,7 +1,19 @@
 import { supabase, scoped, getServiceProjectId } from './client';
 import { DATABASE_TABLE_DEFAULTS } from '../../config/defaults';
+import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
 import type { QADefectRecord, QAQCAuditRunRecord } from '../../types/admin';
 import { saveAuditLogToSupabase } from './admin';
+
+/**
+ * Stable operation keys for the write-failure banner. Grouping by operation
+ * means a retry loop that fails 50 times shows one line, not fifty.
+ */
+export const WRITE_OPS = {
+  auditRun: 'qaqc.audit_run',
+  defectRow: 'qaqc.defect_row',
+  defectResolve: 'qaqc.defect_resolve',
+  defectBatch: 'qaqc.defect_batch'
+} as const;
 
 function extractSubgrid(filename: string): string {
   if (!filename) return '';
@@ -55,10 +67,20 @@ export async function updateDefectStatusInSupabase(
       const subgrid = (defectFlags?.subgrid || extractSubgrid(cleanKey) || cleanKey.split('-')[0] || cleanKey).toUpperCase().trim();
       const pointId = defectFlags?.point_id || cleanKey;
       const isResolved = qaStatus?.toLowerCase().includes('passed') || qaStatus?.toLowerCase().includes('clean');
+      const pid = getServiceProjectId();
+      const runId = (defectFlags?.run_id || defectFlags?.runId || '').toString().trim() || null;
 
-      await supabase.from(qaDefectsTable).upsert({
+      const { error: defectErr } = await supabase.from(qaDefectsTable).upsert({
+        ...(pid ? { project_id: pid } : {}),
         subgrid: subgrid,
+        run_id: runId,
         point_id: pointId,
+        // `item_key` is NOT NULL on installs where it exists, yet no migration
+        // creates it and no reader requires it to differ from point_id — the
+        // three read sites treat it purely as a legacy synonym. Writing it as
+        // the same value satisfies the constraint without inventing new
+        // semantics. See migration 0033.
+        item_key: (defectFlags?.item_key || defectFlags?.itemKey || pointId || '').toString(),
         frame_index: typeof defectFlags?.frame_index === 'number' ? defectFlags.frame_index : 0,
         defect_flags: defectFlags?.selectedQaFlags || defectFlags || {},
         defect_type: defectFlags?.defect_type || (qaStatus === 'flagged' ? 'Defect Detected' : 'Manual QAQC Inspection'),
@@ -72,9 +94,23 @@ export async function updateDefectStatusInSupabase(
         user_id: authUser?.id || null,
         user_email: authUser?.email || null,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'subgrid,point_id' });
+      }, { onConflict: pid ? 'project_id,subgrid,run_id,point_id' : 'subgrid,run_id,point_id' });
+
+      // upsert() reports a rejected write via `error`, not by throwing. Without
+      // this check a schema mismatch here is indistinguishable from success.
+      if (defectErr) {
+        console.warn('qa_defects sync notice (non-fatal):', defectErr.message);
+        reportWriteFailure(WRITE_OPS.defectRow, `QA defect record — ${subgrid}`, defectErr.message);
+      } else {
+        reportWriteSuccess(WRITE_OPS.defectRow);
+      }
     } catch (qaErr) {
       console.warn('qa_defects sync notice (non-fatal):', qaErr);
+      reportWriteFailure(
+        WRITE_OPS.defectRow,
+        'QA defect record',
+        qaErr instanceof Error ? qaErr.message : String(qaErr)
+      );
     }
 
     return { success: true, message: `Synced QA status for ${cleanKey} in Supabase` };
@@ -144,7 +180,10 @@ export async function fetchQaAuditRunsFromSupabase(settings?: any): Promise<Reco
         updatedAt: row.updated_at
       };
       result[`${normSg}_${runId}`] = record;
-      if (!result[`${normSg}_default`]) {
+      // Only a genuinely run-less audit earns the `_default` alias. Aliasing an
+      // arbitrary run here made every other run of the same subgrid inherit that
+      // run's defect count.
+      if (!row.run_id && !result[`${normSg}_default`]) {
         result[`${normSg}_default`] = record;
       }
     });
@@ -187,11 +226,21 @@ export async function saveQaAuditRunToSupabase(
       updated_at: new Date().toISOString()
     };
 
-    const { error } = await supabase.from(qaqcRunsTable).upsert(payload, { onConflict: 'subgrid,run_id' });
+    const { error } = await supabase.from(qaqcRunsTable)
+      .upsert(payload, { onConflict: pid ? 'project_id,subgrid,run_id' : 'subgrid,run_id' });
     if (error) {
       console.warn('saveQaAuditRunToSupabase notice:', error.message);
+      // This is the write that made a refresh-reset defect count invisible for
+      // months: every attempt failed, the console showed a warning nobody read,
+      // and the UI looked correct until reload.
+      reportWriteFailure(
+        WRITE_OPS.auditRun,
+        `QA/QC audit summary — ${normSg}`,
+        error.message
+      );
       return false;
     }
+    reportWriteSuccess(WRITE_OPS.auditRun);
     return true;
   } catch (err) {
     console.warn('saveQaAuditRunToSupabase catch:', err);
@@ -202,20 +251,26 @@ export async function saveQaAuditRunToSupabase(
 /**
  * Fetch all QA defect anomaly records for a specific subgrid.
  */
-export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefectRecord[]> {
+export async function fetchQADefectsForSubgrid(subgrid: string, runId?: string | null): Promise<QADefectRecord[]> {
   try {
     const cleanSub = (subgrid || '').toUpperCase().trim();
     if (!cleanSub) return [];
 
+    // Migration 0032: one filename can carry a defect in several runs of the
+    // same subgrid. Without a run filter both sources below merge every run into
+    // one list keyed by filename, so the first run's row shadows the rest.
+    const cleanRun = (runId || '').toString().trim();
     const defectMap = new Map<string, QADefectRecord>();
 
     // 1. Fetch from dedicated qa_defects table
     try {
-      const { data: qaRows, error } = await scoped(supabase
+      let q = supabase
         .from('qa_defects')
-        .select('point_id, filename, item_key, id, subgrid, frame_index, defect_flags, defect_type, pic, image_url, lat, lng, bearing, is_resolved, resolved_at, created_at'))
-        .eq('subgrid', cleanSub)
-        .order('frame_index', { ascending: true });
+        .select('point_id, filename, item_key, id, subgrid, run_id, frame_index, defect_flags, defect_type, pic, image_url, lat, lng, bearing, is_resolved, resolved_at, created_at')
+        .eq('subgrid', cleanSub);
+      if (cleanRun) q = q.eq('run_id', cleanRun);
+
+      const { data: qaRows, error } = await scoped(q.order('frame_index', { ascending: true }));
 
       if (!error && Array.isArray(qaRows)) {
         qaRows.forEach((row: any) => {
@@ -224,6 +279,7 @@ export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefec
           defectMap.set(ptId.toUpperCase(), {
             id: row.id,
             subgrid: row.subgrid || cleanSub,
+            run_id: row.run_id || null,
             point_id: ptId,
             frame_index: row.frame_index || 1,
             defect_flags: typeof row.defect_flags === 'object' ? row.defect_flags : {},
@@ -243,11 +299,13 @@ export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefec
 
     // 2. Also fetch from qaqc_audit_runs where defects_list JSON is stored
     try {
-      const { data: auditRows, error: auditError } = await scoped(supabase
+      let aq = supabase
         .from('qaqc_audit_runs')
-        .select('id, defects_list, pic, created_at'))
-        .ilike('subgrid', `%${cleanSub}%`)
-        .order('created_at', { ascending: false });
+        .select('id, subgrid, run_id, defects_list, pic, created_at')
+        .ilike('subgrid', `%${cleanSub}%`);
+      if (cleanRun) aq = aq.eq('run_id', cleanRun);
+
+      const { data: auditRows, error: auditError } = await scoped(aq.order('created_at', { ascending: false }));
 
       if (!auditError && Array.isArray(auditRows)) {
         auditRows.forEach((audit: any) => {
@@ -289,11 +347,16 @@ export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefec
 /**
  * Update QA defect record as resolved/dismissed in Supabase.
  */
-export async function resolveQADefectInSupabase(subgrid: string, pointId: string, resolvedBy?: string): Promise<boolean> {
+export async function resolveQADefectInSupabase(
+  subgrid: string,
+  pointId: string,
+  resolvedBy?: string,
+  runId?: string | null
+): Promise<boolean> {
   try {
     const cleanSub = (subgrid || '').toUpperCase().trim();
     const now = new Date().toISOString();
-    const { error } = await supabase
+    let query = supabase
       .from('qa_defects')
       .update({
         is_resolved: true,
@@ -302,10 +365,24 @@ export async function resolveQADefectInSupabase(subgrid: string, pointId: string
       .eq('subgrid', cleanSub)
       .eq('point_id', pointId);
 
+    // Migration 0032 lets one filename carry a defect in several runs of the
+    // same subgrid. Without this filter, dismissing one run's defect silently
+    // resolved every run's copy of that filename.
+    const cleanRun = (runId || '').toString().trim();
+    if (cleanRun) query = query.eq('run_id', cleanRun);
+
+    const { error } = await query;
+
     if (error) {
       console.warn('resolveQADefectInSupabase error:', error.message);
+      reportWriteFailure(
+        WRITE_OPS.defectResolve,
+        `Defect dismissal — ${cleanSub}`,
+        error.message
+      );
       return false;
     }
+    reportWriteSuccess(WRITE_OPS.defectResolve);
 
     // Save audit trail
     const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });

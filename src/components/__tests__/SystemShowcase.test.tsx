@@ -7,9 +7,15 @@ vi.mock('../common/Sparkles', () => ({
   SparklesCore: () => <div data-testid="sparkles-mock" />,
 }));
 
-// WebGL / three.js is not available in jsdom — stub the Atomic point-cloud globe host.
-vi.mock('../common/AtomicGlobeHost', () => ({
-  AtomicGlobeHost: () => <div data-testid="atomic-globe-mock" />,
+// WebGL / maplibre-gl is not available in jsdom — stub the satellite globe so the
+// showcase renders its own chrome without a GPU context or a tile network.
+// The pose constants are plain numbers derived in that module, so mirror the real
+// values rather than omitting them: SystemShowcase seeds its shared zoom from
+// INTRO_ZOOM and reads SATELLITE_FOCUS_ZOOM when the renderer toggle is used.
+vi.mock('../common/MapLibreGlobe', () => ({
+  MapLibreGlobe: () => <div data-testid="maplibre-globe-mock" />,
+  INTRO_ZOOM: 2.41,
+  SATELLITE_FOCUS_ZOOM: 2.69,
 }));
 
 afterEach(() => {

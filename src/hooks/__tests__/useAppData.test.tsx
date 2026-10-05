@@ -91,9 +91,34 @@ describe('useAppData derived-state hydration', () => {
   })
 
   it('hydrates dailyData with a defectCount and QAQC status string', async () => {
+    // The per-run count comes from fetchSupabaseData (run-scoped qa_defects),
+    // not from a subgrid-wide tally re-applied here.
     db.daily = [
       {
         id: 'd-1',
+        subgrid: 'N93E70',
+        date: '2026-01-01',
+        imagesProcessed: 1000,
+        imagesTotal: 1000,
+        defectCount: 1,
+        imagesDefected: 1
+      }
+    ]
+    const { result } = await renderHookResult()
+
+    const daily = result()?.dailyData[0]!
+    expect(daily).toBeTruthy()
+    expect(daily.defectCount).toBe(1)
+    expect(daily.imagesDefected).toBe(1)
+    expect(daily.qaqcStatus).toContain('1 Defect')
+  })
+
+  it('does not apply a subgrid-wide qa_defects tally to a run with no run-scoped count', async () => {
+    // db.qaRows holds one flagged row for SURVEY_A. Nothing in dailyData is
+    // run-scoped for it, so the count must not bleed in from the subgrid total.
+    db.daily = [
+      {
+        id: 'd-leak',
         subgrid: 'SURVEY_A',
         date: '2026-01-01',
         imagesProcessed: 1000,
@@ -102,31 +127,24 @@ describe('useAppData derived-state hydration', () => {
     ]
     const { result } = await renderHookResult()
 
-    const daily = result()?.dailyData[0]!
-    expect(daily).toBeTruthy()
-    // defectCount hydrates from the count of flagged rows for that subgrid
-    // (the source tallies +1 per flagged row, not the defect_count column).
-    expect(daily.defectCount).toBe(1)
-    expect(daily.imagesDefected).toBe(1)
-    // Since there is no cached audit run and subgrid is published=false,
-    // qaqcStatus stays unset in this path.
-    expect('qaqcStatus' in daily).toBe(false)
+    expect(result()?.dailyData[0]!.defectCount).toBe(0)
   })
 
-  it('clamps defectCount to the processed frame count when cached defects exceed it', async () => {
+  it('clamps defectCount to the processed frame count when the count exceeds it', async () => {
     db.daily = [
       {
         id: 'd-2',
-        subgrid: 'SURVEY_A',
+        subgrid: 'N93E70',
         date: '2026-01-01',
         imagesProcessed: 1,
-        imagesTotal: 1
+        imagesTotal: 1,
+        defectCount: 9
       }
     ]
     const { result } = await renderHookResult()
 
     const daily = result()?.dailyData[0]!
-    // 1 flagged row but only 1 processed frame -> clamped to 1.
+    // 9 defects but only 1 processed frame -> clamped to 1.
     expect(daily.defectCount).toBe(1)
   })
 
@@ -179,10 +197,12 @@ describe('useAppData derived-state hydration', () => {
   })
 
   it('hydrates QAQC audit runs directly from Supabase cloud database', async () => {
+    // Use a real subgrid code: extractSubgridName('SURVEY_A') truncates to
+    // 'SURVEY', which does not match its own audit-cache key.
     db.auditRuns = {
-      SURVEY_A_default: {
-        subgrid: 'SURVEY_A',
-        runId: 'default',
+      N93E70_default: {
+        subgrid: 'N93E70',
+        runId: null,
         totalStations: 50,
         defectCount: 3,
         passRate: 94
@@ -192,7 +212,7 @@ describe('useAppData derived-state hydration', () => {
     db.daily = [
       {
         id: 'd-cloud-qaqc',
-        subgrid: 'SURVEY_A',
+        subgrid: 'N93E70',
         date: '2026-01-01',
         imagesProcessed: 50,
         poiCount: 50
@@ -211,6 +231,48 @@ describe('useAppData derived-state hydration', () => {
     const { result } = await renderHookResult()
     expect(result()?.isDataLoading).toBe(false)
     expect(result()?.supabaseError).toBeNull()
+  })
+
+  it('does not leak one run\'s audit defects onto a sibling run of the same subgrid', async () => {
+    // Regression: both runs are N93E70. Only the 08 Apr run was audited.
+    // The 27 Sep run must report 0, not inherit 54 from its sibling.
+    db.auditRuns = {
+      'N93E70_spd-n93e70-08apr2022': {
+        subgrid: 'N93E70',
+        runId: 'spd-n93e70-08apr2022',
+        totalStations: 92,
+        defectCount: 54,
+        passRate: 41
+      }
+    }
+
+    db.daily = [
+      {
+        id: 'spd-n93e70-08apr2022',
+        subgrid: 'N93E70',
+        date: '2022-04-08',
+        imagesProcessed: 92,
+        poiCount: 92
+      },
+      {
+        id: 'spd-n93e70-27sep2026',
+        subgrid: 'N93E70',
+        date: '2026-09-27',
+        imagesProcessed: 0,
+        poiCount: 196
+      }
+    ]
+
+    const { result } = await renderHookResult()
+    const [audited, unaudited] = result()!.dailyData
+
+    expect(audited.defectCount).toBe(54)
+    // The sibling has no audit of its own -> no inherited count.
+    expect(unaudited.defectCount).toBe(0)
+    expect(unaudited.imagesDefected).toBe(0)
+    expect(unaudited.qaqcStatus).toBeUndefined()
+
+    db.auditRuns = {}
   })
 })
 

@@ -10,6 +10,19 @@ declare module '*.mjs?url' {
   export default url;
 }
 
+/** Minimal shims for the Node built-ins used by tests. The project type-checks
+ *  without `@types/node`, and `?raw` cannot be used because Vitest stubs CSS
+ *  imports to an empty string. */
+declare module 'node:fs' {
+  export function readFileSync(path: string, encoding: 'utf8'): string;
+}
+
+declare module 'node:path' {
+  export function resolve(...segments: string[]): string;
+}
+
+declare const process: { cwd(): string };
+
 interface ImportMetaEnv {
   readonly VITE_MAP_URL?: string;
   /** Worker / NAS transport: 'proxy' (default) or 'direct'. See src/config/transport.ts */

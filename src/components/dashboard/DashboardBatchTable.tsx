@@ -17,7 +17,7 @@ import {
   formatDisplayDate
 } from '../../utils/dashboardData';
 import { formatPIC } from '../../services/supabase';
-import { getItemId } from '../../utils/items';
+import { getItemId, resolveAuditForRun } from '../../utils/items';
 
 export interface DashboardBatchTableProps {
   activeTab: 'batches' | 'daily';
@@ -153,7 +153,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                         const isWholeSubgridActive = isThisMasterlistActive && !qaqcWorkerState.runId;
 
                         const batchFrames = getImagesProcessedCount(log);
-                        const cached = qaqcAuditRuns[`${batchSubgrid}_default`];
+                        const cached = resolveAuditForRun(qaqcAuditRuns, batchSubgrid);
                         const cachedDefects = (cached && typeof cached.defectCount === 'number') ? cached.defectCount : undefined;
 
                         let parsedDefects: number | undefined;
@@ -176,7 +176,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
 
                               const runId = getItemId(d);
                               const isThisDailyActive = isSpecificRunActive && qaqcWorkerState.runId === runId;
-                              const dailyCached = (runId ? qaqcAuditRuns[`${batchSubgrid}_${runId}`] : undefined) || qaqcAuditRuns[`${batchSubgrid}_default`];
+                              const dailyCached = resolveAuditForRun(qaqcAuditRuns, batchSubgrid, runId);
                               const dailyCachedCount = (dailyCached && typeof dailyCached.defectCount === 'number') ? dailyCached.defectCount : 0;
 
                               let runDefects = 0;
@@ -333,9 +333,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                 );
 
                 let cachedDefects: number | undefined;
-                const cachedAuditObj = (runId ? qaqcAuditRuns[`${dailySubgrid}_${runId}`] : undefined) ||
-                  qaqcAuditRuns[`${dailySubgrid}_default`] ||
-                  Object.entries(qaqcAuditRuns).find(([k]) => k.startsWith(`${dailySubgrid}_`))?.[1];
+                const cachedAuditObj = resolveAuditForRun(qaqcAuditRuns, dailySubgrid, runId);
                 if (cachedAuditObj && typeof cachedAuditObj.defectCount === 'number') {
                   cachedDefects = cachedAuditObj.defectCount;
                 }
@@ -429,6 +427,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                             setDefectGalleryContext({
                               mode: 'daily',
                               subgrid: dailySubgrid,
+                              runId,
                               surveyDate: log.date || ((log as any).created_at ? new Date((log as any).created_at).toLocaleDateString() : undefined),
                               totalPoi: log.poiCount || dailyPanos.length || getImagesProcessedCount(log),
                               batchFilenames: dailyPanos.map((p: any) => p.filename || p.id).filter((f: any): f is string => Boolean(f))

@@ -271,7 +271,18 @@ export interface ExtendedProjectSettings {
 export interface QADefectRecord {
   id?: string;
   subgrid: string;
+  /**
+   * Survey run this defect belongs to (qaqc_audit_runs.run_id). Null means the
+   * defect predates run-scoped auditing and is treated as subgrid-level.
+   */
+  run_id?: string | null;
   point_id: string;
+  /**
+   * Legacy synonym for point_id. NOT NULL on installs carrying the column,
+   * absent from every migration, and read only as a fallback. Writers set it
+   * to the same value as point_id.
+   */
+  item_key?: string;
   frame_index: number;
   defect_flags: Record<string, any>;
   defect_type: string;

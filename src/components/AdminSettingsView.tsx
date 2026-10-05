@@ -1461,13 +1461,27 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.stagingTable || 'staging_panoramas'
 );
 
 -- 3. QC Defects Table
+--    Aligned with supabase/migrations: the app writes subgrid/point_id/run_id
+--    and never sends filename, so declaring filename NOT NULL here produced a
+--    table that rejected every QA/QC write. See migration 0033 for item_key.
 CREATE TABLE IF NOT EXISTS ${projectSettings.qaDefectsTable || DATABASE_TABLE_DEFAULTS.qaDefectsTable} (
   id BIGSERIAL PRIMARY KEY,
-  subgrid VARCHAR(50) NOT NULL,
-  filename VARCHAR(255) NOT NULL,
+  subgrid VARCHAR(50),
+  point_id VARCHAR(100),
+  item_key VARCHAR(100) NOT NULL,
+  run_id VARCHAR(100),
+  frame_index INT DEFAULT 0,
   qa_status VARCHAR(50) DEFAULT 'pending',
   defect_flags JSONB DEFAULT '{}',
   defect_count INT DEFAULT 0,
+  defect_type VARCHAR(100) DEFAULT 'Defect',
+  pic VARCHAR(100) DEFAULT 'Inspector',
+  image_url TEXT,
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  bearing NUMERIC,
+  is_resolved BOOLEAN DEFAULT false,
+  resolved_at TIMESTAMP WITH TIME ZONE,
   defect_comment TEXT,
   verified_at TIMESTAMP WITH TIME ZONE
 );

@@ -10,6 +10,8 @@ interface ModuleTourCardsProps {
     isMobile: boolean;
     /** Fires with the hovered card id (or null) so the host can restack. */
     onHoverChange?: (id: string | null) => void;
+    /** Optional callback when a card in the dock is clicked to navigate to that module. */
+    onSelectModule?: (index: number) => void;
 }
 
 /** Single white identity for every tour card. */
@@ -68,10 +70,10 @@ const LONG_PRESS_SLOP_PX = 12;
 const TIP_DELAY_MS = 900;
 const TIP_VISIBLE_MS = 7000;
 
-/** The centred mobile preview box for a held card. */
+/** The centered preview box for a hovered card. */
 const previewSize = (vw: number) => {
-    const w = Math.min(vw - 28, 440);
-    return { w, h: Math.round((w * 9) / 16) + 40 };
+    const w = Math.min(680, Math.max(340, Math.round(vw * 0.44)));
+    return { w, h: Math.round((w * 9) / 16) + 52 };
 };
 
 /** Id of the card under a viewport point, or null. */
@@ -110,6 +112,7 @@ const TourVideo: React.FC<{ moduleId: string; active: boolean; isMobile: boolean
     isMobile,
 }) => {
     const ref = useRef<HTMLVideoElement | null>(null);
+    const [isLoaded, setIsLoaded] = useState(false);
     const poster = `/videos/tour-${moduleId}-poster.png`;
 
     useEffect(() => {
@@ -120,6 +123,10 @@ const TourVideo: React.FC<{ moduleId: string; active: boolean; isMobile: boolean
         el.defaultMuted = true;
         el.setAttribute('muted', '');
         el.playsInline = true;
+
+        if (el.readyState >= 2) {
+            setIsLoaded(true);
+        }
 
         if (!active) {
             try { el.pause(); } catch { /* jsdom / unsupported */ }
@@ -144,7 +151,10 @@ const TourVideo: React.FC<{ moduleId: string; active: boolean; isMobile: boolean
         };
 
         tryPlay();
-        const onReady = () => tryPlay();
+        const onReady = () => {
+            setIsLoaded(true);
+            tryPlay();
+        };
         PLAY_RETRY_EVENTS.forEach((ev) => el.addEventListener(ev, onReady));
         // A policy-blocked autoplay clears on the first real interaction.
         window.addEventListener('pointerdown', onReady, { passive: true });
@@ -164,21 +174,39 @@ const TourVideo: React.FC<{ moduleId: string; active: boolean; isMobile: boolean
     }, [moduleId, active]);
 
     return (
-        <video
-            ref={ref}
-            autoPlay={active}
-            loop
-            muted
-            playsInline
-            preload={isMobile ? 'metadata' : 'auto'}
-            poster={poster}
-            className="absolute inset-0 w-full h-full object-cover"
-            data-tour-id={moduleId}
-            data-testid="module-tour-video"
-            aria-hidden="true"
-        >
-            <source src={`/videos/tour-${moduleId}.mp4`} type="video/mp4" />
-        </video>
+        <div className="absolute inset-0 w-full h-full overflow-hidden bg-[#070b12]">
+            {/* Fallback poster with smooth fade-out */}
+            <img
+                src={poster}
+                alt=""
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-out ${
+                    isLoaded ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                }`}
+                onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
+                loading="lazy"
+            />
+            {/* Video with smooth fade-in once loaded */}
+            <video
+                ref={ref}
+                autoPlay={active}
+                loop
+                muted
+                playsInline
+                preload={isMobile ? 'metadata' : 'auto'}
+                onLoadedData={() => setIsLoaded(true)}
+                onPlaying={() => setIsLoaded(true)}
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-out ${
+                    isLoaded ? 'opacity-100' : 'opacity-0'
+                }`}
+                data-tour-id={moduleId}
+                data-testid="module-tour-video"
+                aria-hidden="true"
+            >
+                <source src={`/videos/tour-${moduleId}.mp4`} type="video/mp4" />
+            </video>
+        </div>
     );
 };
 /**
@@ -199,6 +227,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
     activeSection,
     isMobile,
     onHoverChange,
+    onSelectModule,
 }) => {
     const [hovered, setHovered] = useState<string | null>(null);
     const [revealed, setRevealed] = useState(false);
@@ -207,6 +236,31 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
         w: typeof window !== 'undefined' ? window.innerWidth : 1280,
         h: typeof window !== 'undefined' ? window.innerHeight : 800,
     }));
+    const [dockAnchorY, setDockAnchorY] = useState<number | null>(null);
+
+    useEffect(() => {
+        const updateAnchor = () => {
+            if (typeof document === 'undefined') return;
+            const hint = document.getElementById('hero-scroll-hint');
+            if (hint) {
+                const rect = hint.getBoundingClientRect();
+                if (rect.top > 0) {
+                    setDockAnchorY(Math.round(rect.top));
+                    return;
+                }
+            }
+            setDockAnchorY(null);
+        };
+        updateAnchor();
+        const t1 = window.setTimeout(updateAnchor, 150);
+        const t2 = window.setTimeout(updateAnchor, 500);
+        window.addEventListener('resize', updateAnchor);
+        return () => {
+            window.clearTimeout(t1);
+            window.clearTimeout(t2);
+            window.removeEventListener('resize', updateAnchor);
+        };
+    }, [activeSection]);
     useEffect(() => {
         const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
         window.addEventListener('resize', onResize);
@@ -267,75 +321,25 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
         const ringR = clearance + Math.hypot(hw, hh);
 
         if (!isMobile) {
-            // DESKTOP: 2 Flanking Mid-Height Cards + 4 Lower-Curve Cards strictly matching user's sketch!
-            // Slot 0: 01 Project Management (Mid-Left with horizontal ──o line)
-            // Slot 1: 02 WebGIS Dashboard & Data (Lower-Left Box 1 with ┌── line from globe rim)
-            // Slot 2: 03 Road Analysis & Explorer (Lower-Center-Left Box 2 with │ straight line under Johor)
-            // Slot 3: 04 Production Hub (Lower-Center-Right Box 3 with │ straight line under Indonesia)
-            // Slot 4: 05 PC Monitoring & NAS (Lower-Right Box 4 with ──┐ line pointing LEFT to globe)
-            // Slot 5: 06 Analytics, Reports & Admin (Mid-Right with horizontal o── line)
-            const getSlotType = (modId: string, idx: number): number => {
-                switch (modId) {
-                    case 'project':      return 0; // 01 Project Management
-                    case 'dashboard':    return 1; // 02 WebGIS Dashboard & Data (Box 1)
-                    case 'roadAnalysis': return 2; // 03 Road Analysis & Explorer (Box 2)
-                    case 'production':   return 3; // 04 Production Hub (Box 3)
-                    case 'pcmon':        return 4; // 05 PC Monitoring & NAS (Box 4)
-                    case 'insights':     return 5; // 06 Analytics, Reports & Admin
-                    default:             return idx % 6;
-                }
-            };
-
-            // Card dimensions scaled cleanly for desktop
-            const desktopCardW = Math.min(160, Math.max(126, vw * 0.10));
-            const desktopCardH = desktopCardW * (9 / 16) + 18;
+            // DESKTOP: Mini-card glassmorphic bottom strip above "Scroll to explore"
+            const n = modules.length;
+            const gap = Math.min(10, Math.max(6, Math.round(vw * 0.005)));
+            // Much smaller card style: ~92px - 98px wide, ~62px - 66px high
+            const desktopCardW = Math.min(96, Math.max(76, Math.floor((vw - 48 - (n - 1) * gap) / n)));
+            const desktopCardH = Math.round(desktopCardW * (9 / 16) + 12);
             const dhw = desktopCardW / 2;
             const dhh = desktopCardH / 2;
 
-            // Slot 0 (01 Project Management): Mid-Left, outside globe rim
-            const card0_right = Math.min(globeCX - globeR - 20, vw * 0.28);
-            const card0_left = Math.max(margin, card0_right - desktopCardW);
-            const card0_cx = card0_left + dhw;
-            const card0_cy = globeCY - 0.08 * globeR;
-
-            // Slot 5 (06 Analytics, Reports & Admin): Mid-Right, outside globe rim
-            const card5_left = Math.max(globeCX + globeR + 20, vw * 0.72);
-            const card5_cx = Math.min(vw - margin - dhw, card5_left + dhw);
-            const card5_cy = globeCY - 0.08 * globeR;
-
-            // Center gap between Slot 2 (Box 2) and Slot 3 (Box 3) leaves room for "Scroll to explore"
-            const centerHalfGap = Math.max(28, vw * 0.024);
-            const card2_cx = globeCX - centerHalfGap - dhw;
-            const card2_cy = Math.min(vh - dhh - 24, globeCY + globeR * 0.62);
-
-            const card3_cx = globeCX + centerHalfGap + dhw;
-            const card3_cy = Math.min(vh - dhh - 24, globeCY + globeR * 0.62);
-
-            // Slot 1 (02 WebGIS Dashboard & Data - Box 1): Lower-Left, between Card 01 and Box 2
-            const card1_left = Math.max(card0_left + 36, (card2_cx - dhw) - desktopCardW - Math.max(16, vw * 0.015));
-            const card1_cx = card1_left + dhw;
-            const card1_cy = Math.min(vh - dhh - 30, globeCY + globeR * 0.38);
-
-            // Slot 4 (05 PC Monitoring & NAS - Box 4): Lower-Right, between Box 3 and Card 06
-            const card4_right = Math.min((card5_cx + dhw) - 36, (card3_cx + dhw) + desktopCardW + Math.max(16, vw * 0.015));
-            const card4_left = card4_right - desktopCardW;
-            const card4_cx = card4_left + dhw;
-            const card4_cy = Math.min(vh - dhh - 30, globeCY + globeR * 0.38);
-
-            const slotCoords: Record<number, { cx: number; cy: number; left: number; top: number }> = {
-                0: { cx: card0_cx, cy: card0_cy, left: card0_left, top: card0_cy - dhh },
-                1: { cx: card1_cx, cy: card1_cy, left: card1_left, top: card1_cy - dhh },
-                2: { cx: card2_cx, cy: card2_cy, left: card2_cx - dhw, top: card2_cy - dhh },
-                3: { cx: card3_cx, cy: card3_cy, left: card3_cx - dhw, top: card3_cy - dhh },
-                4: { cx: card4_cx, cy: card4_cy, left: card4_left, top: card4_cy - dhh },
-                5: { cx: card5_cx, cy: card5_cy, left: card5_cx - dhw, top: card5_cy - dhh },
-            };
+            const totalDockW = n * desktopCardW + (n - 1) * gap;
+            const startX = Math.round((vw - totalDockW) / 2);
+            // Position directly above the "Scroll to explore" hint (with 10px breathing room)
+            const dockTop = dockAnchorY != null && dockAnchorY > 0
+                ? Math.max(topMargin, dockAnchorY - desktopCardH - 10)
+                : Math.max(topMargin, Math.round(vh - desktopCardH - 74));
 
             const cards = modules.map((mod, i) => {
-                const s = getSlotType(mod.id, i);
-                const pos = slotCoords[s] ?? slotCoords[i % 6];
-                const left = clamp(pos.left, margin, vw - desktopCardW - margin);
-                const top = clamp(pos.top, topMargin, vh - desktopCardH - bottomMargin);
+                const left = startX + i * (desktopCardW + gap);
+                const top = dockTop;
                 return {
                     id: mod.id,
                     left,
@@ -345,58 +349,15 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                 };
             });
 
-            // Orthogonal leader lines matching user's sketch with geometric precision
-            const lineAnchors = cards.map((card, i) => {
-                const s = getSlotType(modules[i].id, i);
-                let gx = globeCX;
-                let gy = globeCY;
-                let pathD = '';
-                let bracketD = '';
-
-                if (s === 0) {
-                    // Slot 0 (01 Project Management): Horizontal line from globe left rim to card right edge
-                    gx = globeCX - globeR;
-                    gy = card.cy;
-                    const cardRight = card.left + desktopCardW;
-                    pathD = `M ${gx} ${gy} H ${cardRight}`;
-                    bracketD = `M ${cardRight} ${card.cy - 6} L ${cardRight} ${card.cy + 6}`;
-                } else if (s === 1) {
-                    // Slot 1 (02 WebGIS Dashboard & Data - Box 1): line from card top turning RIGHT towards globe
-                    gy = card.top - 20;
-                    const dogleg = Math.max(46, vw * 0.036);
-                    gx = card.cx + dogleg;
-                    pathD = `M ${gx} ${gy} H ${card.cx} V ${card.top}`;
-                    bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
-                } else if (s === 2) {
-                    // Slot 2 (03 Road Analysis & Explorer - Box 2): │ vertical drop under Johor to card top
-                    gx = card.cx;
-                    gy = card.top - 34;
-                    pathD = `M ${gx} ${gy} V ${card.top}`;
-                    bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
-                } else if (s === 3) {
-                    // Slot 3 (04 Production Hub - Box 3): │ vertical drop under Indonesia to card top
-                    gx = card.cx;
-                    gy = card.top - 34;
-                    pathD = `M ${gx} ${gy} V ${card.top}`;
-                    bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
-                } else if (s === 4) {
-                    // Slot 4 (05 PC Monitoring & NAS - Box 4): line from card top turning LEFT towards globe
-                    gy = card.top - 20;
-                    const dogleg = Math.max(46, vw * 0.036);
-                    gx = card.cx - dogleg;
-                    pathD = `M ${gx} ${gy} H ${card.cx} V ${card.top}`;
-                    bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
-                } else {
-                    // Slot 5 (06 Analytics, Reports & Admin): Horizontal line from globe right rim to card left edge
-                    gx = globeCX + globeR;
-                    gy = card.cy;
-                    const cardLeft = card.left;
-                    pathD = `M ${gx} ${gy} H ${cardLeft}`;
-                    bracketD = `M ${cardLeft} ${card.cy - 6} L ${cardLeft} ${card.cy + 6}`;
-                }
-
-                return { gx, gy, ax: card.cx, ay: card.cy, pathD, bracketD };
-            });
+            // No lines cutting across the spinning 3D Earth
+            const lineAnchors = cards.map((card) => ({
+                gx: card.cx,
+                gy: card.cy,
+                ax: card.cx,
+                ay: card.cy,
+                pathD: '',
+                bracketD: '',
+            }));
 
             return { cardW: desktopCardW, cardH: desktopCardH, cards, globeCX, globeCY, globeR, lineAnchors };
         }
@@ -436,18 +397,29 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
         }));
 
         return { cardW, cardH, cards, globeCX, globeCY, globeR, lineAnchors };
-    }, [viewport, modules, activeSection, isMobile]);
+    }, [viewport, modules, activeSection, isMobile, dockAnchorY]);
 
-    // Hover is resolved from the document: the scrolling showcase sits ABOVE
+    // Hover and clicks are resolved from the document: the scrolling showcase sits ABOVE
     // this layer in z-order, so per-card pointer events would never fire.
     useEffect(() => {
         if (isMobile) return;
         const onMove = (e: MouseEvent) => {
             setHovered(cardAtPoint(layout.cards, layout.cardW, layout.cardH, e.clientX, e.clientY));
         };
+        const onClick = (e: MouseEvent) => {
+            const hit = cardAtPoint(layout.cards, layout.cardW, layout.cardH, e.clientX, e.clientY);
+            if (hit) {
+                const idx = modules.findIndex((m) => m.id === hit);
+                if (idx >= 0) onSelectModule?.(idx);
+            }
+        };
         window.addEventListener('mousemove', onMove);
-        return () => window.removeEventListener('mousemove', onMove);
-    }, [isMobile, layout]);
+        window.addEventListener('click', onClick);
+        return () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('click', onClick);
+        };
+    }, [isMobile, layout, modules, onSelectModule]);
 
     // Touch screens have no hover at all, so a short press stands in for it:
     // hold a card for ~200ms and its preview opens, centred, with the tour
@@ -624,54 +596,68 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                     </AnimatePresence>
 
                     <AnimatePresence>
-                        {isMobile && visible && hoveredMod && (
+                        {visible && hoveredMod && (
                             <motion.div
-                                key="module-tour-preview"
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.94 }}
-                                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
-                                className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none"
+                                key={`module-tour-preview-${hoveredMod.id}`}
+                                initial={{ opacity: 0, scale: 0.93, y: 12 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 6 }}
+                                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                                className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none select-none"
                                 aria-hidden="true"
                                 data-testid="module-tour-preview"
                             >
                                 <div
-                                    className="relative rounded-2xl overflow-hidden border"
+                                    className="relative rounded-2xl overflow-hidden border pointer-events-none"
                                     style={{
                                         width: preview.w,
                                         height: preview.h,
-                                        borderColor: CARD_WHITE,
-                                        boxShadow: `0 30px 80px -30px rgba(0,0,0,0.95), 0 0 70px -18px ${CARD_WHITE}`,
-                                        background: '#0b1018',
+                                        borderColor: '#38bdf8',
+                                        boxShadow: '0 30px 90px -20px rgba(0,0,0,0.95), 0 0 60px -10px rgba(56,189,248,0.3)',
+                                        background: '#070b12',
                                     }}
                                 >
-                                    <TourVideo moduleId={hoveredMod.tourVideoId ?? hoveredMod.id} active isMobile={isMobile} />
+                                    <TourVideo moduleId={hoveredMod.tourVideoId ?? hoveredMod.id} active isMobile={false} />
 
-                                    <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />
+                                    {/* Readability scrim */}
+                                    <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none" />
 
-                                    <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5">
+                                    {/* Identity pill */}
+                                    <div className="absolute left-3 top-3 flex items-center gap-2 bg-black/70 backdrop-blur-md rounded-lg px-2.5 py-1 border border-white/15 shadow-md">
                                         {hoveredMod.iconImage ? (
                                             <img
                                                 src={hoveredMod.iconImage}
                                                 alt=""
-                                                className="icon-white w-4 h-4 object-contain opacity-90"
+                                                className="icon-white w-4 h-4 object-contain opacity-95"
                                                 loading="lazy"
                                             />
                                         ) : (
-                                            <span className="w-2 h-2 rounded-full" style={{ background: CARD_WHITE }} />
+                                            <span className="w-2 h-2 rounded-full bg-sky-400" />
                                         )}
-                                        <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-white/85">
+                                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-sky-300">
                                             {String(hoveredIndex + 1).padStart(2, '0')}
+                                        </span>
+                                        <span className="text-[10px] font-medium text-white/90 uppercase tracking-wide">
+                                            {hoveredMod.title.split('&')[0].trim()}
                                         </span>
                                     </div>
 
-                                    <div className="absolute inset-x-0 bottom-0 px-3 pb-2.5">
-                                        <span className="block text-sm font-medium leading-tight text-white/95">
-                                            {hoveredMod.title.split('&')[0].trim()}
-                                        </span>
-                                        <span className="mt-0.5 block text-[9px] uppercase tracking-[0.18em] text-white/55">
-                                            Tap outside to close
-                                        </span>
+                                    {/* Bottom details */}
+                                    <div className="absolute inset-x-0 bottom-0 px-4 pb-3 flex items-end justify-between gap-4">
+                                        <div className="min-w-0">
+                                            <span className="block text-sm sm:text-base font-bold text-white tracking-tight leading-snug truncate">
+                                                {hoveredMod.title}
+                                            </span>
+                                            {hoveredMod.description && (
+                                                <p className="text-[11px] text-neutral-300/85 line-clamp-1 mt-0.5">
+                                                    {hoveredMod.description}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="shrink-0 flex items-center gap-1 text-[11px] font-medium text-sky-300 bg-sky-500/10 border border-sky-400/30 px-2.5 py-1 rounded-lg">
+                                            <span>Click card to launch</span>
+                                            <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
+                                        </div>
                                     </div>
                                 </div>
                             </motion.div>
@@ -699,7 +685,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                 >
                     {/* Tag lines drawing out from the globe rim to each card
                         (web only — the clutter is not welcome on small screens) */}
-                    {!isMobile && (
+                    {!isMobile && layout.lineAnchors.some((l) => l.pathD !== '') && (
                     <svg
                         className="absolute inset-0"
                         width={viewport.w}
@@ -803,59 +789,61 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                         const shortTitle = mod.title.split('&')[0].trim();
                         const isHovered = hovered === mod.id;
                         const dimmed = hovered !== null && !isHovered;
-                        // Translucent at rest, fully opaque on hover, faded
-                        // back while a sibling is hovered.
-                        const restOpacity = isHovered ? 1 : dimmed ? 0.25 : 0.62;
+                        // Reduced opacity at rest (0.55), dimming siblings to 0.28, full 1.0 on hover
+                        const restOpacity = isHovered ? 1 : dimmed ? 0.28 : 0.55;
                         return (
                             <motion.div
                                 key={mod.id}
-                                initial={{ opacity: 0, scale: 0.82, y: 18, left: card.left, top: card.top }}
+                                onClick={() => onSelectModule?.(i)}
+                                initial={{ opacity: 0, scale: 0.9, y: 14, left: card.left, top: card.top }}
                                 animate={{
                                     opacity: revealed ? restOpacity : 0,
-                                    scale: revealed ? (isHovered && !isMobile ? 2.2 : 1) : 0.82,
-                                    y: revealed ? 0 : 18,
+                                    scale: revealed ? (isHovered && !isMobile ? 1.08 : 1) : 0.9,
+                                    y: revealed ? (isHovered && !isMobile ? -6 : 0) : 14,
                                     left: card.left,
                                     top: card.top,
                                 }}
                                 transition={{
-                                    duration: 0.72,
+                                    duration: 0.35,
                                     ease: [0.16, 1, 0.3, 1],
                                     delay: introDelayFor(i),
                                 }}
-                                className="absolute rounded-xl overflow-hidden border"
+                                className={`absolute rounded-lg overflow-hidden border backdrop-blur-md transition-shadow cursor-pointer ${
+                                    isHovered ? 'ring-1 ring-sky-400/50' : ''
+                                }`}
                                 style={{
                                     width: layout.cardW,
                                     height: layout.cardH,
-                                    borderColor: isHovered ? CARD_WHITE : `${CARD_WHITE}66`,
-                                    boxShadow: `0 18px 50px -22px rgba(0,0,0,0.95), 0 0 46px -14px ${CARD_WHITE}`,
-                                    zIndex: isHovered ? 25 : 1,
-                                    pointerEvents: 'none',
+                                    borderColor: isHovered ? '#38bdf8' : 'rgba(255,255,255,0.12)',
+                                    boxShadow: isHovered
+                                        ? '0 16px 36px -8px rgba(0,0,0,0.9), 0 0 24px -4px rgba(56,189,248,0.45)'
+                                        : '0 8px 20px -10px rgba(0,0,0,0.85), 0 0 12px -6px rgba(255,255,255,0.05)',
+                                    zIndex: isHovered ? 35 : 15,
+                                    pointerEvents: 'auto',
                                     background: '#0b1018',
                                 }}
                                 data-testid="module-tour-card"
                             >
-                                {/* Phones decode nothing in the ring itself —
-                                    the centred preview owns playback there. */}
                                 <TourVideo moduleId={mod.tourVideoId ?? mod.id} active={!isMobile} isMobile={isMobile} />
 
-                                {/* Readability scrim only — card body stays opaque */}
-                                <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />
+                                {/* Readability scrim */}
+                                <div className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none" />
 
-                                {/* Identity chip */}
-                                <div className="absolute left-1.5 top-1.5 flex items-center gap-1">
+                                {/* Identity chip: top left */}
+                                <div className="absolute left-1 top-1 flex items-center gap-0.5 bg-black/70 backdrop-blur-sm rounded px-1 py-0.5 border border-white/10">
                                     {mod.iconImage ? (
-                                        <img src={mod.iconImage} alt="" className="icon-white w-3 h-3 object-contain opacity-90" loading="lazy" />
+                                        <img src={mod.iconImage} alt="" className="icon-white w-2 h-2 object-contain opacity-90" loading="lazy" />
                                     ) : (
-                                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: CARD_WHITE }} />
+                                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: isHovered ? '#38bdf8' : CARD_WHITE }} />
                                     )}
-                                    <span className="text-[7px] font-mono uppercase tracking-[0.2em] text-white/85">
+                                    <span className="text-[7px] font-mono font-bold uppercase tracking-wider text-white/90">
                                         {String(i + 1).padStart(2, '0')}
                                     </span>
                                 </div>
 
-                                {/* Caption */}
+                                {/* Caption: bottom */}
                                 <div className="absolute inset-x-0 bottom-0 px-1.5 pb-1">
-                                    <span className="block text-[8px] font-medium leading-tight text-white/90 truncate">
+                                    <span className="block text-[8px] sm:text-[9px] font-medium leading-tight text-white/95 truncate">
                                         {shortTitle}
                                     </span>
                                 </div>

@@ -7,7 +7,16 @@ import { calculatePathDistanceKm } from '../../utils/geo';
 import { formatPIC } from '../../utils/picFormat';
 import { batchLogToDbRow } from '../../utils/dashboardData';
 import { extractSubgridName } from '../../utils/subgrid';
+import { resolveAuditForRun } from '../../utils/items';
+import { resolveRunDefectCount, buildQaqcStatus } from '../../utils/defectCounts';
+import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
 import { getDatabaseTableMapping } from '../supabaseConfig';
+
+/** Operation keys for the write-failure banner. */
+export const DATASET_WRITE_OPS = {
+  batchLog: 'datasets.batch_log',
+  publishRelease: 'datasets.publish_release'
+} as const;
 import { withRetry } from '../../lib/retry';
 import { STORAGE_BUCKET_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../../config/defaults';
 import { checkProductionPublicationEligibility } from './productionRuns';
@@ -207,12 +216,22 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       return { count: filenames.length, verifiedFilenames: [...filenames], verified: false };
     }
 
-    // Query qa_defects table to aggregate actual defect counts per subgrid
+    // Query qa_defects to aggregate defect counts per SURVEY RUN.
+    //
+    // Migration 0032 added qa_defects.run_id. Keying the tally on subgrid alone
+    // handed every run of a subgrid the same count, so a subgrid surveyed twice
+    // showed one run's defects on the other. Two keys are kept:
+    //   `${SUBGRID}_${runId}` — a defect scoped to one run
+    //   `${SUBGRID}`           — a row with run_id NULL, which speaks for the
+    //                            whole subgrid (pre-0032 rows)
+    // A run reads its own key first and only falls back to the subgrid key when
+    // no run-scoped row exists for it.
+    const qaDefectsPerRun = new Map<string, number>();
     const qaDefectsPerSubgrid = new Map<string, number>();
     const knownDefectFilenames = new Set<string>();
     const knownDefectsList: any[] = [];
     try {
-      const { data: qdRows } = await scoped(supabase.from('qa_defects').select('point_id, filename, item_key, subgrid, qa_status, defect_flags, defect_count, defect_type, is_resolved'));
+      const { data: qdRows } = await scoped(supabase.from('qa_defects').select('point_id, filename, item_key, subgrid, run_id, qa_status, defect_flags, defect_count, defect_type, is_resolved'));
       if (qdRows && qdRows.length > 0) {
         qdRows.forEach((r: any) => {
           const fn = (r.point_id || r.filename || r.item_key || '').split('/').pop()?.toUpperCase().trim();
@@ -225,11 +244,25 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             (r.defect_count && Number(r.defect_count) > 0);
           if (isFlagged && r.subgrid) {
             const norm = (extractSubgrid(r.subgrid) || r.subgrid).toUpperCase().trim();
-            qaDefectsPerSubgrid.set(norm, (qaDefectsPerSubgrid.get(norm) || 0) + 1);
+            const runKey = (r.run_id || '').toString().trim();
+            if (runKey) {
+              const k = `${norm}_${runKey}`;
+              qaDefectsPerRun.set(k, (qaDefectsPerRun.get(k) || 0) + 1);
+            } else {
+              qaDefectsPerSubgrid.set(norm, (qaDefectsPerSubgrid.get(norm) || 0) + 1);
+            }
           }
         });
       }
     } catch (_) { }
+
+    // Resolve the defect tally for one run: its own rows win; the subgrid-level
+    // tally is only used when the run has no run-scoped rows at all.
+    const defectsForRun = (normSubgrid: string, runKey: string): number => {
+      const own = qaDefectsPerRun.get(`${normSubgrid}_${runKey}`);
+      if (typeof own === 'number') return own;
+      return qaDefectsPerSubgrid.get(normSubgrid) || 0;
+    };
 
     // Query cloud qaqc_audit_runs table for persisted QAQC audit metrics
     const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || DATABASE_TABLE_DEFAULTS.qaqcRunsTable;
@@ -255,7 +288,9 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             completedAt: r.completed_at || r.created_at
           };
           cloudAuditCache[`${norm}_${runId}`] = entry;
-          if (!cloudAuditCache[`${norm}_default`]) {
+          // Only a run-less audit earns the `_default` alias; aliasing an
+          // arbitrary run leaks its defect count into every sibling run.
+          if (!r.run_id && !cloudAuditCache[`${norm}_default`]) {
             cloudAuditCache[`${norm}_default`] = entry;
           }
           if (Array.isArray(r.defects_list)) {
@@ -412,17 +447,25 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
       const normSubgrid = subgrid.toUpperCase().trim();
       const runId = `sp-d-${runKey}`;
-      const subgridDefectsFromDb = qaDefectsPerSubgrid.get(normSubgrid) || 0;
-      const cachedAudit = cloudAuditCache[`${normSubgrid}_${runId}`] || (runKey ? cloudAuditCache[`${normSubgrid}_${runKey}`] : undefined) || cloudAuditCache[`${normSubgrid}_default`] || Object.entries(cloudAuditCache).find(([k]) => k.startsWith(`${normSubgrid}_`))?.[1];
+      const runDefects = defectsForRun(normSubgrid, runId);
+      const cachedAudit = resolveAuditForRun(cloudAuditCache, normSubgrid, runId)
+        || resolveAuditForRun(cloudAuditCache, normSubgrid, runKey);
       const cachedDefectCount = (cachedAudit && typeof cachedAudit.defectCount === 'number')
         ? cachedAudit.defectCount
-        : (g.recordDefects || subgridDefectsFromDb || 0);
-      const defects = (poiCount > 0 || finalImageCount > 0)
-        ? Math.min(cachedDefectCount, Math.max(poiCount, finalImageCount))
-        : cachedDefectCount;
-      const qaqcStatus = cachedAudit || defects > 0
-        ? (defects === 0 ? 'Published (QAQC Verified)' : `Published (${defects} Defect${defects === 1 ? '' : 's'} Found)`)
-        : undefined;
+        : null;
+      const defects = resolveRunDefectCount({
+        subgrid: normSubgrid,
+        runId,
+        fromRunRows: runDefects || null,
+        fromRunAudit: cachedDefectCount,
+        fromSubgridRows: typeof g.recordDefects === 'number' ? g.recordDefects : null,
+        ceiling: Math.max(poiCount, finalImageCount)
+      });
+      const qaqcStatus = buildQaqcStatus({
+        defectCount: defects,
+        isPublished: true,
+        hasAudit: Boolean(cachedAudit) || defects > 0
+      });
 
       let dateFormatted = g.dateStr;
       const d = new Date(g.dateStr);
@@ -634,21 +677,26 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const picName = formatPIC(g.pic || knownMetadata[sg]?.pic || 'Unassigned');
           const normSg = sg.toUpperCase().trim();
           const runId = `staging-d-${runKey}`;
-          const subgridDefectsFromDb = qaDefectsPerSubgrid.get(normSg) || 0;
-          const cachedAudit = cloudAuditCache[`${normSg}_${runId}`] || (runKey ? cloudAuditCache[`${normSg}_${runKey}`] : undefined) || cloudAuditCache[`${normSg}_default`] || Object.entries(cloudAuditCache).find(([k]) => k.startsWith(`${normSg}_`))?.[1];
+          const runDefects = defectsForRun(normSg, runId);
+          const cachedAudit = resolveAuditForRun(cloudAuditCache, normSg, runId)
+            || resolveAuditForRun(cloudAuditCache, normSg, runKey);
           const cachedDefectCount = (cachedAudit && typeof cachedAudit.defectCount === 'number')
             ? cachedAudit.defectCount
-            : (g.defectCount || subgridDefectsFromDb || 0);
-          const finalDefectCount = (explicitPoi > 0 || finalImgCount > 0)
-            ? Math.min(cachedDefectCount, Math.max(explicitPoi, finalImgCount))
-            : cachedDefectCount;
+            : null;
+          const finalDefectCount = resolveRunDefectCount({
+            subgrid: normSg,
+            runId,
+            fromRunRows: runDefects || null,
+            fromRunAudit: cachedDefectCount,
+            fromSubgridRows: typeof g.defectCount === 'number' ? g.defectCount : null,
+            ceiling: Math.max(explicitPoi, finalImgCount)
+          });
           const isPub = g.status === 'yes';
-          const qaqcStatus = cachedAudit || finalDefectCount > 0
-            ? (isPub
-              ? (finalDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
-              : (finalDefectCount === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
-            )
-            : undefined;
+          const qaqcStatus = buildQaqcStatus({
+            defectCount: finalDefectCount,
+            isPublished: isPub,
+            hasAudit: Boolean(cachedAudit) || finalDefectCount > 0
+          });
 
           dailyData.push({
             id: `staging-d-${runKey}`,
@@ -1422,15 +1470,32 @@ export async function persistBatchLogToSupabase(batch: BatchLog, settings?: any)
     const row = batchLogToDbRow(batch);
     if (!row.subgrid) return true;
 
+    const pid = getServiceProjectId();
+    // Migration 0016 replaced UNIQUE (subgrid) with UNIQUE (project_id, subgrid),
+    // so the bare 'subgrid' target no longer resolves and Postgres rejects every
+    // upsert. Same class of failure as the QAQC audit-run bug.
     const { error } = await supabase
       .from(batchLogsTableName)
-      .upsert([row], { onConflict: 'subgrid' });
+      .upsert([row], { onConflict: pid ? 'project_id,subgrid' : 'subgrid' });
 
     if (error) {
       console.warn('persistBatchLogToSupabase upsert notice:', error.message);
+      reportWriteFailure(
+        DATASET_WRITE_OPS.batchLog,
+        `Masterlist record — ${String(row.subgrid).toUpperCase()}`,
+        error.message
+      );
+      return false;
     }
+    reportWriteSuccess(DATASET_WRITE_OPS.batchLog);
   } catch (err) {
     console.warn('persistBatchLogToSupabase exception:', err);
+    reportWriteFailure(
+      DATASET_WRITE_OPS.batchLog,
+      'Masterlist record',
+      err instanceof Error ? err.message : String(err)
+    );
+    return false;
   }
   return true;
 }

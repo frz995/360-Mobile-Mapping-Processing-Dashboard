@@ -33,8 +33,9 @@ import Snap from 'lenis/snap';
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { StarsBackground } from './common/StarsBackground';
 import { GeoSphereFullLogo } from './common/GeoSphereLogo';
-import { EarthGlobe, type GlobeMarker } from './common/EarthGlobe';
-import { AtomicGlobeHost, type AtomicGlobeMarker } from './common/AtomicGlobeHost';
+import { EarthGlobe } from './common/EarthGlobe';
+import { MapLibreGlobe, SATELLITE_FOCUS_ZOOM, INTRO_ZOOM } from './common/MapLibreGlobe';
+import type { GlobeMarker } from './common/EarthGlobe';
 import { ProjectBoundaryMap } from './common/ProjectBoundaryMap';
 import { DISTRICT_METADATA } from './boundary/districtMetadata';
 import { MALAYSIA_REGIONS } from './boundary/malaysiaRegions';
@@ -52,14 +53,16 @@ import { SectionRail } from './showcase/SectionRail';
 import { ModuleTourCards } from './showcase/ModuleTourCards';
 import { LaunchPortal } from './showcase/LaunchPortal';
 import type { SectionHotspot, SystemModule, WorkflowStep } from './showcase/types';
-import { HERO_SECTION, globePoseFor, springGlide } from './showcase/showcaseMotion';
+import { HERO_SECTION, globePoseFor, globeFitScale, springGlide } from './showcase/showcaseMotion';
 
 // Shared showcase types live in ./showcase/types — re-exported for compatibility.
 export type { SectionHotspot, SystemModule, WorkflowStep };
 
-/** Fallback so a WebGL/runtime hiccup inside the vendored AtomicGlobe can never
- *  leave the showcase blank — errors degrade back to the vector SVG EarthGlobe. */
-class AtomicGlobeBoundary extends React.Component<
+/** Fallback so a WebGL/tile/runtime hiccup inside the MapLibre globe can never
+ *  leave the showcase blank — errors degrade back to the vector SVG EarthGlobe.
+ *  A satellite globe is also network-dependent, so this covers a failed tile
+ *  fetch as well as a renderer exception. */
+class GlobeRenderBoundary extends React.Component<
     { markers: GlobeMarker[]; children: React.ReactNode },
     { failed: boolean }
 > {
@@ -68,7 +71,7 @@ class AtomicGlobeBoundary extends React.Component<
         return { failed: true };
     }
     componentDidCatch(error: unknown) {
-        console.error('[AtomicGlobe] runtime error — falling back to vector globe:', error);
+        console.error('[MapLibreGlobe] runtime error — falling back to vector globe:', error);
     }
     render() {
         if (!this.state.failed) return this.props.children;
@@ -292,7 +295,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const [atomicGlobeFocus, setAtomicGlobeFocus] = useState<{ lat: number; lng: number } | null>(null);
     const [isZoomedToDistrict, setIsZoomedToDistrict] = useState(false);
     const [isFlyingIn, setIsFlyingIn] = useState(false);
-    const [globeZoom, setGlobeZoom] = useState(1.05);
+    // Seeded from the satellite globe's hero pose so the HUD percentage, the
+    // atmospheric glow and the camera all agree on what "at rest" means before
+    // the intro dive reports its first zoom.
+    const [globeZoom, setGlobeZoom] = useState(INTRO_ZOOM);
     const [globePan, setGlobePan] = useState({ x: 0, y: 0 });
     const [showAtomicGlobe, setShowAtomicGlobe] = useState(true);
     // Card currently held/pointed in the tour layer — lets the layer restack
@@ -397,13 +403,18 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             const pose = globePoseFor(activeSection, isMobile, vw, vh, viewMode === 'globe');
             poseX.set(pose.x);
             poseY.set(pose.y);
-            poseScale.set(pose.scale);
+            // The satellite globe must stay full-bleed at every viewport size, so
+            // it sizes by `globeFitScale` and ignores the vector globe's
+            // per-section scale — that choreography was shrinking the satellite
+            // canvas to 70% on module sections, which read as the globe zooming
+            // out. Parallax offset and opacity still apply to both.
+            poseScale.set(showAtomicGlobe ? globeFitScale(vw, vh) : pose.scale);
             poseOpacity.set(pose.opacity);
         };
         apply();
         window.addEventListener('resize', apply);
         return () => window.removeEventListener('resize', apply);
-    }, [activeSection, isMobile, viewMode, poseX, poseY, poseScale, poseOpacity]);
+    }, [activeSection, isMobile, viewMode, showAtomicGlobe, poseX, poseY, poseScale, poseOpacity]);
 
     // Scroll-velocity lean: quick flicks tilt the globe, then it settles back.
     const lastScrollYRef = useRef<number | null>(null);
@@ -1506,15 +1517,15 @@ const SYSTEM_MODULES: SystemModule[] = [
             ? districtAnchorLng
             : (globeMarkers[0]?.longitude ?? districtAnchorLng);
 
-    // Atomic Globe (vendored Framer) markers — reuses the same committed-state pins.
-    const atomicGlobeMarkers = useMemo<AtomicGlobeMarker[]>(() => {
+    // The MapLibre globe consumes the same committed-state pins directly — the
+    // marker shape is identical to EarthGlobe's, so no translation is needed.
+    // The active district is emphasised so the tour's current pin is legible.
+    const globeMarkersForMap = useMemo<GlobeMarker[]>(() => {
         return globeMarkers.map((m) => ({
-            label: m.label,
-            lat: m.latitude,
-            lng: m.longitude,
-            description: m.description,
+            ...m,
+            active: m.label === activeDistrict.name
         }));
-    }, [globeMarkers]);
+    }, [globeMarkers, activeDistrict.name]);
 
     // Focus camera directly onto active project location with smooth flight
     const handleFocusProject = useCallback((target?: { lat: number; lng: number } | React.MouseEvent | React.KeyboardEvent) => {
@@ -1613,12 +1624,27 @@ const SYSTEM_MODULES: SystemModule[] = [
                     </div>
                 </div>
 
-                {/* The 3D Interactive Globe (vector Globe by default, switchable to the Atomic point-cloud Globe).
-                    Wrapped in a spring-driven motion layer: per-section parallax poses + scroll-velocity lean. */}
+                {/* The 3D Interactive Globe (vector SVG by default, switchable to the satellite WebGL globe).
+                    Wrapped in a spring-driven motion layer: per-section parallax poses + scroll-velocity lean.
+
+                    NOTE: the CSS 3D parts of this layer (rotateX + transformPerspective) only
+                    apply to the VECTOR globe. A WebGL <canvas> cannot be CSS-transformed in 3D —
+                    the browser warps the rendered pixels, which produced trapezoid streaks, and the
+                    perspective layer swallowed pointer events so the satellite globe could not be
+                    panned or rotated. The satellite globe therefore gets translation, scale and
+                    opacity only; its own pitch/rotation is driven by the MapLibre camera. */}
                 <motion.div
-                    className={`absolute inset-0 flex items-center justify-center z-10 will-change-transform ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'
+                    className={`absolute inset-0 flex items-center justify-center z-10 will-change-transform ${viewMode === 'globe' || showAtomicGlobe ? 'pointer-events-auto' : 'pointer-events-none'
                         }`}
-                    style={{ x: globeX, y: globeY, scale: globeScale, opacity: globeOpacity, rotateX: globeTilt, transformPerspective: 1600 }}
+                    style={{
+                        x: globeX,
+                        y: globeY,
+                        scale: globeScale,
+                        opacity: globeOpacity,
+                        ...(showAtomicGlobe
+                            ? {}
+                            : { rotateX: globeTilt, transformPerspective: 1600 })
+                    }}
                 >
                     {/* Soft atmospheric glow light behind the globe */}
                     <div
@@ -1669,54 +1695,44 @@ const SYSTEM_MODULES: SystemModule[] = [
                                 ? 'scale-[1.7] opacity-0 blur-[2px]'
                                 : 'scale-100 opacity-100'
                             }`}>
-                            <AtomicGlobeBoundary markers={globeMarkers}>
-                            <AtomicGlobeHost
-                                markers={atomicGlobeMarkers}
+                            <GlobeRenderBoundary markers={globeMarkers}>
+                            <MapLibreGlobe
+                                markers={globeMarkersForMap}
                                 className="w-full h-full"
                                 focusTarget={atomicGlobeFocus}
                                 activeTargetCoord={{ lat: activeLat, lng: activeLng }}
                                 zoom={globeZoom}
                                 onZoomChange={setGlobeZoom}
-                                enableZoom
                                 onDragStart={() => {
                                     // User grabbed the globe — release any fly-to focus so the
-                                    // rotation targets aren't hard-overwritten every frame.
+                                    // camera is not fought over by an in-flight easeTo.
                                     setAtomicGlobeFocus(null);
                                 }}
+                                autoRotate={viewMode === 'modules' || (autoRotate && !viewTransitioning)}
+                                // Degrees per second — MapLibre's own bearing unit. The
+                                // previous 0.06 was multiplied by a stray 30 inside the
+                                // globe, giving 1.8 deg/s (a 200-second turn) that read as
+                                // a frozen planet next to the vector globe's 103 deg/s.
+                                // 6 was then judged too busy for a backdrop, so this is the
+                                // calm hero drift: one full turn every ~2.4 minutes.
+                                rotationSpeed={1.0}
+                                enableScrollZoom={viewMode === 'globe'}
                                 activeMarkerLabel={activeDistrict.name}
                                 onActiveMarkerProjected={handleActiveMarkerProjected}
-                                backgroundColor="transparent"
-                                dotColor="#cfe0ff"
-                                dotDensity={80000}
-                                baseSize={4.5}
-                                backParticleOpacity={0.12}
-                                rotationSpeed={viewMode === 'modules' || (autoRotate && !viewTransitioning) ? 0.06 : 0}
-                                centerLng={activeLng}
-                                tilt={18}
-                                globeScale={isMobile ? 0.59 : 1.05}
-                                introDuration={2.2}
-                                persistentAssembly={false}
-                                reformOnScroll={false}
-                                allowVerticalDrag
-                                verticalDragLimit={70}
-                                enableHover
-                                markerType="beacon"
-                                pinColor="#4da6ff"
-                                markerBgColor="#0b1020"
-                                markerTextColor="#ffffff"
-                                markerActiveBgColor="#4da6ff"
-                                markerActiveIconColor="#0b1020"
-                                showArcs
-                                arcColor="#4da6ff"
-                                arcSpeed={0.25}
-                                arcMode="chain"
-                                arcHeight={0.4}
-                                performanceMode="auto"
-                                showAtmosphereRing={true}
-                                atmosphereRingColor="#E2EEFF"
-                                atmosphereRingIntensity={0.42}
+                                onMarkerClick={(marker) => {
+                                    const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
+                                    if (idx >= 0) {
+                                        if (showDistrictPopup && idx === selectedDistrictIdx) {
+                                            handleDeselectDistrict();
+                                        } else {
+                                            handleSelectDistrict(idx);
+                                        }
+                                    } else if (Number.isFinite(marker.latitude) && Number.isFinite(marker.longitude)) {
+                                        handleFocusProject({ lat: marker.latitude, lng: marker.longitude });
+                                    }
+                                }}
                             />
-                            </AtomicGlobeBoundary>
+                            </GlobeRenderBoundary>
                         </div>
                     ) : (
                         <div className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isFlyingIn
@@ -1725,7 +1741,7 @@ const SYSTEM_MODULES: SystemModule[] = [
                             }`}>
                             <EarthGlobe
                                 autoRotate={viewMode === 'modules' || (autoRotate && !viewTransitioning)}
-                                autoRotateSpeed={1.8}
+                                autoRotateSpeed={0.8}
                                 centerLatitude={activeLat}
                                 centerLongitude={activeLng}
                                 flyTo={flyTarget || undefined}
@@ -1765,17 +1781,23 @@ const SYSTEM_MODULES: SystemModule[] = [
                     )}
                 </motion.div>
 
-                {/* Module tour videos — parked at z-5: BEHIND the globe (z-10)
-                    and behind the scrolling content (z-20), so the cards read
-                    as parked behind the sphere. Rendered on desktop only so mobile
-                    screens remain clean and unobstructed. */}
+                {/* Module tour videos — layered at z-15: ABOVE the globe (z-10) and still
+                    behind the scrolling story (z-20), so the globe sits back behind the
+                    video gallery instead of covering it. (This was z-5, which parked the
+                    cards behind the sphere.)
+                    Rendered on desktop only so mobile screens remain clean and unobstructed.
+
+                    Safe to overlay a `pointer-events-auto` globe: the cards hit-test from a
+                    window-level mousemove listener rather than DOM pointer events, so the
+                    globe stays draggable through the gaps between cards. */}
                 {viewMode === 'modules' && !isMobile && (
-                    <div className={`absolute inset-0 pointer-events-none ${tourHovered ? 'z-50' : 'z-[5]'}`}>
+                    <div className={`absolute inset-0 pointer-events-none ${tourHovered ? 'z-50' : 'z-[15]'}`}>
                         <ModuleTourCards
                             modules={SYSTEM_MODULES}
                             activeSection={activeSection}
                             isMobile={isMobile}
                             onHoverChange={setTourHovered}
+                            onSelectModule={handleModuleChange}
                         />
                     </div>
                 )}
@@ -1964,7 +1986,13 @@ const SYSTEM_MODULES: SystemModule[] = [
                                 </span>
                             </div>
                             <span className="text-[11px] text-neutral-400 font-mono tracking-wide hidden sm:block">
-                                Left-drag: Rotate • Right-drag / Shift: Pan • Scroll: Zoom • Double-click: Reset
+                                {/* MapLibre's own bindings, which are the opposite of what this
+                                    label used to claim: left-drag pans, right-drag (or Ctrl-drag)
+                                    rotates, shift is not a modifier. Kept in sync with the
+                                    dragPan/dragRotate options in MapLibreGlobe. */}
+                                {showAtomicGlobe
+                                    ? 'Left-drag: Pan \u2022 Right-drag / Ctrl-drag: Rotate \u2022 Scroll: Zoom \u2022 Double-click: Reset'
+                                    : 'Left-drag: Rotate \u2022 Right-drag / Shift: Pan \u2022 Scroll: Zoom \u2022 Double-click: Reset'}
                             </span>
                         </div>
 
@@ -2050,10 +2078,14 @@ const SYSTEM_MODULES: SystemModule[] = [
                                 <div className="flex items-center bg-neutral-900/80 backdrop-blur-md px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border border-white/10 shadow-md">
                                     <button
                                         onClick={() => {
-                                            // Share one default district zoom (~atomic dive scale) so the
-                                            // vector globe mounts at the same apparent focus level instead of
-                                            // carrying over a stale deep-zoom value between renderers.
-                                            if (showDistrictPopup) setGlobeZoom(1.55);
+                                            // `globeZoom` is one shared 1.0-at-rest multiplier that
+                                            // both renderers translate internally, so switching renderer
+                                            // has to hand the new one ITS rest value: focused district
+                                            // if the popup is open, otherwise the resting pose.
+                                            // The vector globe rests at 1.05 and focuses via
+                                            // flyTarget.zoom (1.55); the satellite globe's rest value is
+                                            // the hero pose and its focus value comes from the renderer.
+                                            setGlobeZoom(showDistrictPopup ? 1.55 : 1.05);
                                             setFlyTarget(null);
                                             setShowAtomicGlobe(false);
                                         }}
@@ -2065,21 +2097,22 @@ const SYSTEM_MODULES: SystemModule[] = [
                                     </button>
                                     <button
                                         onClick={() => {
-                                            // Atomic's dive is relative to its own fit scale — reset the shared zoom to
-                                            // baseline so it focuses at its natural ~1.55x dive rather than inheriting the
-                                            // vector globe's deep-zoom value.
-                                            if (showDistrictPopup) setGlobeZoom(1.05);
+                                            // Same contract as the Vector button: focused district
+                                            // if the popup is open, else the satellite globe's own
+                                            // resting pose. Both values come from the renderer so
+                                            // they cannot drift away from what it actually flies to.
+                                            setGlobeZoom(showDistrictPopup ? SATELLITE_FOCUS_ZOOM : INTRO_ZOOM);
                                             setFlyTarget(null);
                                             setShowAtomicGlobe(true);
                                         }}
-                                        title="Switch to the photorealistic point-cloud globe"
+                                        title="Switch to the satellite globe"
                                         className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer inline-flex items-center gap-0.5 sm:gap-1 ${showAtomicGlobe ? 'bg-sky-500/80 text-white' : 'text-neutral-400 hover:text-white'
                                             }`}
                                     >
                                         <span className="material-symbols-outlined text-[10px] sm:text-[11px] leading-none shrink-0">
-                                            blur_on
+                                            satellite_alt
                                         </span>
-                                        <span className="leading-none">Atomic</span>
+                                        <span className="leading-none">Satellite</span>
                                     </button>
                                 </div>
 
@@ -2104,7 +2137,7 @@ const SYSTEM_MODULES: SystemModule[] = [
                                     </button>
                                     {(Math.abs(globeZoom - 1.0) > 0.05 || globePan.x !== 0 || globePan.y !== 0) && (
                                         <button
-                                            onClick={() => { setGlobeZoom(1.05); setGlobePan({ x: 0, y: 0 }); }}
+                                            onClick={() => { setGlobeZoom(showAtomicGlobe ? INTRO_ZOOM : 1.05); setGlobePan({ x: 0, y: 0 }); setAtomicGlobeFocus(null); setFlyTarget(null); }}
                                             title="Reset View (Double-click)"
                                             className="ml-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] rounded-md bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-colors cursor-pointer"
                                         >

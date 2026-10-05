@@ -11,7 +11,8 @@ import {
   fetchProjectSettingsFromSupabase
 } from '../services/supabase';
 import { extractSubgridName } from '../utils/subgrid';
-import { getItemId } from '../utils/items';
+import { getItemId, resolveAuditForRun } from '../utils/items';
+import { resolveRunDefectCount, buildQaqcStatus } from '../utils/defectCounts';
 import { getActiveProjectId } from '../services/projectContext';
 import { buildDefaultProjectBoundary } from '../components/boundary/malaysiaDistricts';
 import { STORAGE_BUCKET_DEFAULT, STORAGE_PATH_PREFIX_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../config/defaults';
@@ -167,8 +168,9 @@ export function useAppData() {
         }
         setQaqcAuditRuns(cloudAuditMap);
 
-        // Process QA Defects map first from qaRes
-        const defectsPerSubgrid = new Map<string, number>();
+        // Total flagged QA rows, for the live counter only. Per-run defect counts
+        // come from fetchSupabaseData (run-scoped); a subgrid-wide tally here
+        // would be a second, coarser implementation of the same number.
         let totalFlaggedCount = 0;
         if (qaRes.status === 'fulfilled' && qaRes.value.data) {
           const qaRows = qaRes.value.data;
@@ -177,13 +179,7 @@ export function useAppData() {
               (q.defect_flags && typeof q.defect_flags === 'object' && Object.values(q.defect_flags).some(Boolean)) ||
               (q.defect_count && Number(q.defect_count) > 0);
 
-            if (isFlagged) {
-              totalFlaggedCount++;
-              if (q.subgrid) {
-                const normSg = (extractSubgridName(q.subgrid) || q.subgrid).toUpperCase().trim();
-                defectsPerSubgrid.set(normSg, (defectsPerSubgrid.get(normSg) || 0) + 1);
-              }
-            }
+            if (isFlagged) totalFlaggedCount++;
           });
           setLiveDefectCount(totalFlaggedCount);
         }
@@ -197,22 +193,32 @@ export function useAppData() {
             const runId = getItemId(d);
             const frameCount = getImagesProcessedCount(d);
             const poiCount = getPOICount(d) || frameCount;
-            const subgridDefectsFromDb = defectsPerSubgrid.get(sg) || 0;
-            const cachedAudit = (runId ? cloudAuditMap[`${sg}_${runId}`] : undefined) || cloudAuditMap[`${sg}_default`] || Object.entries(cloudAuditMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
-            const cachedDefects = (cachedAudit && typeof cachedAudit.defectCount === 'number')
-              ? cachedAudit.defectCount
-              : (d.defectCount || d.imagesDefected || subgridDefectsFromDb || 0);
-            const finalDefects = (poiCount > 0 || frameCount > 0)
-              ? Math.min(cachedDefects, Math.max(poiCount, frameCount))
-              : cachedDefects;
             const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
 
-            const qaqcStatus = cachedAudit
-              ? (isPub
-                ? (finalDefects === 0 ? 'Published (QAQC Verified)' : `Published (${finalDefects} Defect${finalDefects === 1 ? '' : 's'} Found)`)
-                : (finalDefects === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${finalDefects} Defect${finalDefects === 1 ? '' : 's'} Found)`)
-              )
-              : (d.qaqcStatus ? d.qaqcStatus : (isPub ? 'Published' : undefined));
+            // fetchSupabaseData already resolved this run's defect count from
+            // run-scoped qa_defects rows (src/utils/defectCounts.ts). Re-deriving
+            // it here against a subgrid-wide tally is what let two surfaces
+            // disagree about the same run, so the persisted audit summary is used
+            // only to fill a gap the data layer left.
+            const rowDefects = typeof d.defectCount === 'number' ? d.defectCount : null;
+            const cachedAudit = resolveAuditForRun(cloudAuditMap, sg, runId);
+            const finalDefects = resolveRunDefectCount({
+              subgrid: sg,
+              runId,
+              fromRunRows: rowDefects,
+              fromRunAudit: cachedAudit && typeof cachedAudit.defectCount === 'number'
+                ? cachedAudit.defectCount
+                : null,
+              fromSubgridRows: typeof d.imagesDefected === 'number' ? d.imagesDefected : null,
+              ceiling: Math.max(poiCount, frameCount)
+            });
+
+            const qaqcStatus = buildQaqcStatus({
+              defectCount: finalDefects,
+              isPublished: isPub,
+              hasAudit: Boolean(cachedAudit) || finalDefects > 0,
+              existing: d.qaqcStatus
+            });
 
             return {
               ...d,
@@ -228,14 +234,26 @@ export function useAppData() {
             const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
             const bWithOverrides = applyBatchLogOverrides(b, batchOverrides);
             const matchingDaily = hydratedDaily.filter((d: any) => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === sg);
+            // A masterlist row aggregates its runs, so the total is the sum of
+            // the already-resolved per-run counts. Reading them off the hydrated
+            // rows (rather than re-tallying qa_defects) keeps the aggregate
+            // consistent with the rows it summarises.
             const dailyDefectsSum = matchingDaily.reduce((acc: number, d: any) => acc + (d.defectCount || 0), 0);
-            const cachedAudit = cloudAuditMap[`${sg}_default`] || Object.entries(cloudAuditMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+            const cachedAudit = resolveAuditForRun(cloudAuditMap, sg);
             const cachedDefects = (cachedAudit && typeof cachedAudit.defectCount === 'number') ? cachedAudit.defectCount : 0;
-            const finalDefects = dailyDefectsSum > 0 ? dailyDefectsSum : (cachedDefects > 0 ? cachedDefects : (typeof b.defects === 'number' ? b.defects : 0));
+            const finalDefects = resolveRunDefectCount({
+              subgrid: sg,
+              runId: null,
+              fromRunRows: dailyDefectsSum || null,
+              fromRunAudit: cachedDefects || null,
+              fromSubgridRows: typeof b.defects === 'number' ? b.defects : null
+            });
 
-            const qaqcStatus = b.qaqcStatus || (cachedAudit
-              ? (cachedDefects === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
-              : (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined));
+            const qaqcStatus = b.qaqcStatus || buildQaqcStatus({
+              defectCount: finalDefects,
+              isPublished: false,
+              hasAudit: Boolean(cachedAudit) || finalDefects > 0
+            }) || undefined;
 
             return {
               ...bWithOverrides,

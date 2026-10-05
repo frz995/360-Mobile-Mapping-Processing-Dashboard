@@ -4,6 +4,8 @@ import { analyzeImageSharpness, detectBlurAndObstruction } from '../utils/qaqcAn
 import { resolvePanoramaUrl, supabase } from '../services/supabase';
 import { withRetry } from '../lib/retry';
 import { reportWarn } from '../lib/report';
+import { reportWriteFailure, reportWriteSuccess } from '../lib/writeFailures';
+import { WRITE_OPS as QAQC_WRITE_OPS } from '../services/api/qaqc';
 import { getActiveProjectId } from '../services/projectContext';
 import { DATABASE_TABLE_DEFAULTS } from '../config/defaults';
 import type {
@@ -182,17 +184,32 @@ const DEFAULT_CONFIG: QAQCConfig = {
 
 const QA_DEFECTS_BATCH_SIZE = 50;
 
-async function persistDefectBatch(
+/**
+ * Batched upsert of completed run results into `qa_defects`.
+ *
+ * Exported for test coverage: this is the write that rejected the whole 50-row
+ * batch when `item_key` was NOT NULL and unsupplied, so the map construction
+ * below is asserted directly rather than through the hook.
+ */
+export async function persistDefectBatch(
   defects: QADefectRecord[],
   table: string,
-  authUser?: { id?: string; email?: string; name?: string }
+  authUser?: { id?: string; email?: string; name?: string },
+  runId?: string | null
 ): Promise<number> {
   let synced = 0;
   const pid = getActiveProjectId();
+  const scopedRunId = (runId || '').toString().trim() || null;
   for (let i = 0; i < defects.length; i += QA_DEFECTS_BATCH_SIZE) {
     const chunk = defects.slice(i, i + QA_DEFECTS_BATCH_SIZE).map(defectRecord => ({
       subgrid: defectRecord.subgrid,
+      run_id: defectRecord.run_id || scopedRunId,
       point_id: defectRecord.point_id,
+      // Mirrors point_id. `item_key` is NOT NULL on installs that carry the
+      // column, it is absent from every migration, and all three read sites
+      // treat it as a legacy synonym for point_id. Omitting it rejected the
+      // whole 50-row batch with a not-null violation. See migration 0033.
+      item_key: defectRecord.item_key || defectRecord.point_id,
       frame_index: defectRecord.frame_index,
       defect_flags: defectRecord.defect_flags,
       defect_type: defectRecord.defect_type,
@@ -209,7 +226,13 @@ async function persistDefectBatch(
     }));
     const { error: upsertErr } = await withRetry(
       async () => {
-        const res = await supabase.from(table).upsert(chunk, { onConflict: 'project_id,subgrid,point_id' });
+        // Migration 0032 widened the key to include run_id, so two runs of one
+        // subgrid can each own a defect for the same filename. Requires 0032 to
+        // be applied; the legacy 3-column target is kept for installs that have
+        // not run it yet.
+        const res = await supabase.from(table).upsert(chunk, {
+          onConflict: pid ? 'project_id,subgrid,run_id,point_id' : 'subgrid,run_id,point_id'
+        });
         if (res.error) throw new Error(res.error.message);
         return res;
       },
@@ -225,8 +248,18 @@ async function persistDefectBatch(
     });
     if (upsertErr) {
       console.warn('qa_defects batch sync notice:', upsertErr);
+      // The operator ran a full audit and this is the write that records it.
+      // A silent failure here means the frame-by-frame verdicts exist only in
+      // React state and vanish on refresh.
+      reportWriteFailure(
+        QAQC_WRITE_OPS.defectBatch,
+        `QA/QC defect results — chunk ${Math.floor(i / QA_DEFECTS_BATCH_SIZE) + 1}`,
+        upsertErr.message,
+        'warning'
+      );
     } else {
       synced += chunk.length;
+      reportWriteSuccess(QAQC_WRITE_OPS.defectBatch);
     }
   }
   return synced;
@@ -567,6 +600,9 @@ export function useQAQCWorker() {
         });
 
         const onCompleteCb = runCallbacksRef.current?.onComplete;
+        // Captured before the ref is cleared below, so the defect rows persist
+        // against the run that produced them.
+        const completedRunId = msg.runId ?? runCallbacksRef.current?.runId ?? null;
         runCallbacksRef.current = null;
         if (onCompleteCb) {
           onCompleteCb({
@@ -581,7 +617,7 @@ export function useQAQCWorker() {
         // Batch-result persist (single batched upsert at end of run, not per-frame)
         if (msg.defects.length > 0) {
           const qaDefectsTable = projectSettings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || DATABASE_TABLE_DEFAULTS.qaDefectsTable;
-          void persistDefectBatch(msg.defects, qaDefectsTable, authUser).then(synced => {
+          void persistDefectBatch(msg.defects, qaDefectsTable, authUser, completedRunId).then(synced => {
             setWorkerState(prev => ({ ...prev, syncedCount: synced }));
           });
         }

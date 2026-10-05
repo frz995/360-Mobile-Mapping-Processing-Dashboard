@@ -37,6 +37,26 @@ describe('WorkstationNetworkEditor', () => {
     expect(screen.getByText(/0 of 4 stations configured/i)).toBeTruthy();
   });
 
+  it('renders the configured count as plain text, not a coloured badge', () => {
+    setup();
+    const count = screen.getByText(/0 of 4 stations configured/i);
+    // A badge/textbox would carry a tinted background, a border and/or rounding.
+    const className = count.className || '';
+    expect(className).not.toMatch(/rounded|bg-|border|amber|emerald|px-|py-/);
+  });
+
+  it('scales field labels and inputs down to the panel scale', () => {
+    setup();
+    // Without an explicit size these inherit the 16px body default and render
+    // larger than the section heading.
+    const label = card('blur').getByLabelText(/IP address or hostname/i);
+    expect(label.className).toContain('text-[11px]');
+
+    const ip = card('blur').getByLabelText(/IP address or hostname/i) as HTMLInputElement;
+    expect(ip.className).toContain('text-[11px]');
+    expect(ip.className).not.toMatch(/(^|\s)px-3(\s|$)/);
+  });
+
   it('shows a station as ready once its address is stored', () => {
     setup(normalizeWorkstations([{ id: 'blur', ipAddress: '10.20.30.11' } as never]));
     expect(screen.getByText(/1 of 4 stations configured/i)).toBeTruthy();

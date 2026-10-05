@@ -35,6 +35,7 @@ export { DataManagementPage };
 import { DefectsGalleryModal } from './components/DefectsGalleryModal';
 import { ContentLoading } from './components/common/ContentLoading';
 import { Toaster } from './components/common/Toaster';
+import { WriteFailureBanner } from './components/common/WriteFailureBanner';
 import { WorkspaceErrorBoundary } from './components/common/WorkspaceErrorBoundary';
 import { GeoSphereIcon } from './components/common/GeoSphereLogo';
 import { translate } from './lib/i18n';
@@ -118,8 +119,8 @@ export type { Layer, Folder };
 
 import { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, reconcileBatchLogs } from './utils/dashboardData';
 export { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, reconcileBatchLogs };
-import { getItemId } from './utils/items';
-export { getItemId };
+import { getItemId, resolveAuditForRun } from './utils/items';
+export { getItemId, resolveAuditForRun };
 import { openPrintableReport } from './utils/reportDocuments';
 import { buildExecutivePdfHtml } from './components/reports/reportPdf';
 import { Share2 } from 'lucide-react';
@@ -1301,9 +1302,7 @@ export default function App() {
         );
 
         let cachedDefects: number | undefined;
-        const cached = (runId ? qaqcAuditRuns[`${dailySubgrid}_${runId}`] : undefined) ||
-          qaqcAuditRuns[`${dailySubgrid}_default`] ||
-          Object.entries(qaqcAuditRuns).find(([k]) => k.startsWith(`${dailySubgrid}_`))?.[1];
+        const cached = resolveAuditForRun(qaqcAuditRuns, dailySubgrid, runId);
         if (cached && typeof cached.defectCount === 'number') {
           cachedDefects = cached.defectCount;
         }
@@ -1338,7 +1337,7 @@ export default function App() {
       if (bPoi === 0 && bFrames === 0) return sum;
 
       let cachedDefects: number | undefined;
-      const cached = qaqcAuditRuns[`${sg}_default`] || Object.entries(qaqcAuditRuns).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+      const cached = resolveAuditForRun(qaqcAuditRuns, sg);
       if (cached && typeof cached.defectCount === 'number') {
         cachedDefects = cached.defectCount;
       }
@@ -1473,7 +1472,7 @@ export default function App() {
           const runId = getItemId(sd);
           const frameCount = getImagesProcessedCount(sd);
           const poiCount = getPOICount(sd) || frameCount;
-          const cachedAudit = (runId && qaqcAuditRuns[`${sg}_${runId}`]) || qaqcAuditRuns[`${sg}_default`];
+          const cachedAudit = resolveAuditForRun(qaqcAuditRuns, sg, runId);
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defectCount === 'number') ? matchedPrev.defectCount : 0;
           const maxDefects = Math.max(sd.defectCount || 0, prevCount, cachedCount);
@@ -1503,7 +1502,7 @@ export default function App() {
             const fCount = getImagesProcessedCount(d);
             const dPoi = getPOICount(d) || fCount;
             const runId = getItemId(d);
-            const runCache = (runId && qaqcAuditRuns[`${sg}_${runId}`]) || qaqcAuditRuns[`${sg}_default`];
+            const runCache = resolveAuditForRun(qaqcAuditRuns, sg, runId);
             const def = (runCache && typeof runCache.defectCount === 'number')
               ? runCache.defectCount
               : (typeof d.imagesDefected === 'number' && d.imagesDefected > 0)
@@ -1518,7 +1517,7 @@ export default function App() {
             }
           });
 
-          const cachedAudit = qaqcAuditRuns[`${sg}_default`];
+          const cachedAudit = resolveAuditForRun(qaqcAuditRuns, sg);
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defects === 'number') ? matchedPrev.defects : 0;
 
@@ -1926,6 +1925,8 @@ export default function App() {
     surveyDate?: string;
     totalPoi?: number;
     batchFilenames?: string[];
+    /** Survey run to scope the gallery to; set for 'daily' mode. */
+    runId?: string | null;
   } | null>(null);
 
   const getStationsForSubgrid = (targetSubgrid: string, runId?: string | null): StationNode[] => {
@@ -2238,8 +2239,9 @@ export default function App() {
 
           setQaqcAuditRuns(prev => ({
             ...prev,
-            ...(targetRunId ? { [`${normSg}_${targetRunId}`]: cacheRecord } : {}),
-            [`${normSg}_default`]: cacheRecord
+            ...(targetRunId
+              ? { [`${normSg}_${targetRunId}`]: cacheRecord }
+              : { [`${normSg}_default`]: cacheRecord })
           }));
           window.dispatchEvent(new CustomEvent('qaqc_audit_updated', { detail: { subgrid: normSg, record: cacheRecord } }));
 
@@ -2874,6 +2876,9 @@ export default function App() {
     >
       {/* GLOBAL TOAST NOTIFICATION VIEWPORT */}
       <Toaster />
+
+      {/* FAILED DATABASE WRITES — persistent, sits above the toaster */}
+      <WriteFailureBanner />
 
       {/* SLEEK GLASSMORPHIC TOAST NOTIFICATION FOR SETTINGS SAVE */}
       {settingsSaveToast && (
@@ -4255,6 +4260,7 @@ export default function App() {
               mode={defectGalleryContext?.mode || 'master'}
               surveyDate={defectGalleryContext?.surveyDate}
               batchFilenames={defectGalleryContext?.batchFilenames}
+              runId={defectGalleryContext?.runId}
               totalPoi={defectGalleryContext?.totalPoi}
               projectSettings={projectSettings}
               activeUserName={activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator'}

@@ -37,8 +37,13 @@ export interface WorkstationNetworkEditorProps {
   themeMode?: 'dark' | 'light';
 }
 
+// Field typography is pinned explicitly. Without a font-size class these inherit
+// the 16px body default, which rendered LARGER than the section heading above
+// them and out of scale with the other settings panels (all text-[11px]).
 const INPUT_BASE =
-  'w-full px-3 py-2 rounded-lg font-medium focus:outline-none border';
+  'w-full px-2.5 py-1.5 rounded-lg text-[11px] font-medium focus:outline-none border';
+
+const LABEL_CLASS = 'block text-[11px] text-text-muted font-medium mb-1';
 
 export function WorkstationNetworkEditor({
   value,
@@ -47,7 +52,7 @@ export function WorkstationNetworkEditor({
 }: WorkstationNetworkEditorProps) {
   const light = themeMode === 'light';
   const inputBg = light ? 'bg-white border-slate-300 text-slate-900' : 'bg-card border-subtle text-text-base';
-  const labelClass = 'block text-text-muted font-medium mb-1';
+  const labelClass = LABEL_CLASS;
   const stations = normalizeWorkstations(value);
   const configured = countConfiguredStations(stations);
 
@@ -56,25 +61,16 @@ export function WorkstationNetworkEditor({
 
   return (
     <div className="space-y-4">
-      <p className={`text-[11px] ${light ? 'text-text-muted' : 'text-text-muted'}`}>
+      <p className="text-[11px] text-text-muted leading-relaxed">
         Each station runs a small agent on its own PC. The dashboard polls it to show live status,
         progress and telemetry on the Flight Board. Leave an address blank and that station reports
         itself as <strong>unconfigured</strong> — the rest of the board keeps working.
       </p>
 
-      <div className="flex flex-wrap items-center gap-2 text-[11px]">
-        <span
-          className={`px-2.5 py-1 rounded-full font-bold border ${
-            configured === stations.length
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-          }`}
-        >
-          {configured} of {stations.length} stations configured
-        </span>
-        <span className="text-text-muted">
-          Default agent port {STATION_AGENT_DEFAULT_PORT} · RDP {RDP_DEFAULT_PORT}
-        </span>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-muted">
+        <span>{configured} of {stations.length} stations configured</span>
+        <span aria-hidden="true">·</span>
+        <span>Default agent port {STATION_AGENT_DEFAULT_PORT} · RDP {RDP_DEFAULT_PORT}</span>
       </div>
 
       {stations.map((station) => {
@@ -86,15 +82,15 @@ export function WorkstationNetworkEditor({
           <div
             key={station.id}
             data-testid={`workstation-${station.id}`}
-            className={`rounded-lg border p-4 space-y-3 ${
+            className={`rounded-lg border p-3.5 space-y-2.5 ${
               light ? 'bg-slate-50 border-slate-200' : 'bg-card border-subtle'
             }`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <Monitor size={15} className="text-sky-400 shrink-0" />
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Monitor size={13} className="text-sky-400 shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-text-base truncate">
+                  <div className="text-[11px] font-bold text-text-base truncate">
                     Step {station.stepNumber} · {station.name}
                   </div>
                   <div className="text-[10px] text-text-muted truncate">{station.software}</div>
@@ -102,7 +98,7 @@ export function WorkstationNetworkEditor({
               </div>
 
               <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer">
+                <label className="flex items-center gap-1.5 text-[10px] text-text-muted cursor-pointer">
                   <input
                     type="checkbox"
                     checked={station.enabled !== false}
@@ -127,7 +123,7 @@ export function WorkstationNetworkEditor({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
               <div>
                 <label className={labelClass} htmlFor={`ws-${station.id}-ip`}>
                   IP address or hostname

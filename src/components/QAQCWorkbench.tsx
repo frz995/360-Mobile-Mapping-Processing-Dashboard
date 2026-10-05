@@ -43,6 +43,7 @@ import { isGpuAccelerationSupported, getGpuHardwareName } from '../utils/qaqcAna
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
 import { InspectorDrawer, type DrawerWidthMode } from './common/InspectorDrawer';
 import { extractSubgridName } from '../utils/subgrid';
+import { resolveAuditForRun } from '../utils/items';
 import { DEFAULT_BASEMAP } from '../config/defaults';
 import {
   getImagesProcessedCount,
@@ -377,7 +378,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const next = {
           ...prev,
           [cacheKey]: record,
-          [`${activeRunningSubgrid.toUpperCase()}_default`]: record
+          // Only a run-less audit owns the `_default` slot; otherwise every
+          // sibling run of this subgrid would resolve to this run's result.
+          ...(workerState.runId ? {} : { [`${activeRunningSubgrid.toUpperCase()}_default`]: record })
         };
         window.dispatchEvent(new CustomEvent('qaqc_audit_updated', { detail: { cacheKey, record } }));
         return next;
@@ -396,7 +399,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const formattedDate = formatDisplayDate(d.date);
         const pic = (d.pic && d.pic.trim().toLowerCase() !== 'unassigned') ? d.pic : (activeUserName || 'Operator');
 
-        const cachedAuditRecord = (runId ? auditCache[`${sg}_${runId}`] : undefined) || auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+        const cachedAuditRecord = resolveAuditForRun(auditCache, sg, runId);
         let parsedDefects: number | undefined;
         let defectCount = (typeof d.defectCount === 'number')
           ? d.defectCount
@@ -455,7 +458,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       const pic = (b.pic && b.pic.trim().toLowerCase() !== 'unassigned') ? b.pic : ((b as any).adminPic || activeUserName || 'Admin');
       const formattedDate = formatDisplayDate(b.date);
 
-      const cachedAuditRecord = auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+      const cachedAuditRecord = resolveAuditForRun(auditCache, sg);
       let parsedDefects: number | undefined;
       if (b.qaqcStatus) {
         const m = b.qaqcStatus.match(/(\d+)\s+Defect/i);
@@ -549,10 +552,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
   const cachedAudit: AuditRunRecord | null = useMemo(() => {
     if (!selectedSubgrid) return null;
-    const key = `${selectedSubgrid.toUpperCase()}_${selectedRunId || 'default'}`;
-    const direct = auditCache[key];
-    if (direct) return direct;
-    return Object.entries(auditCache).find(([k]) => k.startsWith(`${selectedSubgrid.toUpperCase()}_`))?.[1] || null;
+    return resolveAuditForRun(auditCache, selectedSubgrid, selectedRunId) || null;
   }, [auditCache, selectedSubgrid, selectedRunId]);
 
   const effectiveDefectsList = useMemo(() => {
@@ -1752,9 +1752,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 filteredTargetList.map((item) => {
                   const isSelected = selectedSubgrid === item.subgrid && (targetTab === 'masterlist' || selectedRunId === item.runId);
                   const isZeroFrames = item.frameCount === 0;
-                  const cached = auditCache[`${item.subgrid.toUpperCase()}_${item.runId || 'default'}`];
-                  const hasAudit = Boolean(item.defectCount > 0 || (cached && typeof cached.defectCount === 'number') || item.qaqcStatus === 'QA/QC Approved' || (item.qaqcStatus && item.qaqcStatus.includes('Defect')));
-                  const auditDefects = item.defectCount;
+                  // A run with zero frames can never be audited, so it must not
+                  // borrow a sibling run's audit count to render a "Defects" chip.
+                  const cached = isZeroFrames ? undefined : resolveAuditForRun(auditCache, item.subgrid, item.runId);
+                  const hasAudit = !isZeroFrames && Boolean(item.defectCount > 0 || (cached && typeof cached.defectCount === 'number') || item.qaqcStatus === 'QA/QC Approved' || (item.qaqcStatus && item.qaqcStatus.includes('Defect')));
+                  const auditDefects = isZeroFrames ? 0 : item.defectCount;
 
                   return (
                     <div
@@ -2601,7 +2603,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         {(() => {
           const targetSub = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
           const activeItem = filteredTargetList.find(t => t.subgrid.toUpperCase().trim() === targetSub);
-          const cachedAuditRecord = auditCache[`${targetSub}_${activeItem?.runId || 'default'}`] || auditCache[`${targetSub}_default`];
+          const cachedAuditRecord = resolveAuditForRun(auditCache, targetSub, activeItem?.runId);
 
           const currentSubgrid = targetSub || 'GENERAL';
           const currentDate = surveyDate || activeItem?.date || (cachedAuditRecord as any)?.surveyDate || (cachedAuditRecord ? new Date(cachedAuditRecord.completedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }));

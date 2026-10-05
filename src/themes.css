@@ -693,7 +693,11 @@ html.showcase-active[data-theme] aside {
 }
 
 /* 3c. Debossed Checklist Pills & Status Wells (Press Effect for Non-Input Content) */
-[data-theme][data-surface="neumorphism"] li[class*="bg-inner"] {
+/* Drag-reorder rows are excluded: Framer Motion owns `transform` on a
+   `Reorder.Item`, so pinning `transform: none !important` here freezes both the
+   drag offset and the sibling reflow animation. They get the raised surface
+   treatment further down this file instead. */
+[data-theme][data-surface="neumorphism"] li[class*="bg-inner"]:not([data-reorder-item]) {
     background-color: var(--bg-app) !important;
     border: 1px solid rgba(255, 255, 255, 0.04) !important;
     box-shadow:
@@ -1280,10 +1284,10 @@ html.showcase-active[data-theme] aside {
 }
 
 /* Debossed Checklist Pills & Status Wells (Light Themes - Press Effect) */
-[data-theme="daylight"][data-surface="neumorphism"] li[class*="bg-inner"],
-[data-theme="alabaster"][data-surface="neumorphism"] li[class*="bg-inner"],
-[data-theme="neumorph-clay"][data-surface="neumorphism"] li[class*="bg-inner"],
-.light-mode[data-surface="neumorphism"] li[class*="bg-inner"] {
+[data-theme="daylight"][data-surface="neumorphism"] li[class*="bg-inner"]:not([data-reorder-item]),
+[data-theme="alabaster"][data-surface="neumorphism"] li[class*="bg-inner"]:not([data-reorder-item]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] li[class*="bg-inner"]:not([data-reorder-item]),
+.light-mode[data-surface="neumorphism"] li[class*="bg-inner"]:not([data-reorder-item]) {
     background-color: var(--bg-app) !important;
     border: 1px solid rgba(166, 175, 195, 0.28) !important;
     box-shadow:
@@ -1731,4 +1735,80 @@ html.showcase-active[data-theme] aside {
 .light-mode [class*="border-slate-700"],
 .light-mode [class*="border-zinc-700"] {
     border-color: var(--border-subtle) !important;
+}
+
+/* ==========================================================================
+   DRAG REORDER ROWS — Framer Motion owns `transform`, styles never fight it
+   ==========================================================================
+   `Reorder.Item` writes `transform` inline every frame: once while the row
+   follows the pointer, and once for each sibling that reflows into the new
+   slot. Two things used to break that in Neumorphism:
+     1. the debossed `li[class*="bg-inner"]` well rule above forced
+        `transform: none !important`, which beat the inline style and froze the
+        whole interaction — the order still committed on drop, but nothing
+        animated;
+     2. Tailwind's `transition-all` on the row re-interpolates every one of
+        those inline transform writes, so the row trails the cursor instead of
+        tracking it.
+   Both are neutralised below: the row keeps colour/shadow transitions, never
+   transitions `transform`, and the neumorphic surface is applied through
+   `box-shadow` only. */
+
+/* Applies to every surface style, not just neumorphism — `!important` is needed
+   to beat Tailwind's `.transition-all` utility, which ships in index.css. */
+[data-reorder-item] {
+    transition-property: box-shadow, border-color, background-color, color, opacity !important;
+}
+
+[data-reorder-item][data-reorder-dragging] {
+    transition-property: none !important;
+    will-change: transform;
+}
+
+/* Dark themes: rest as a raised card, lifted further while dragging so the
+   active row is obvious. */
+[data-theme][data-surface="neumorphism"] li[data-reorder-item] {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.045) !important;
+    box-shadow:
+        -4px -4px 10px var(--neu-shadow-light),
+        4px 5px 12px var(--neu-shadow-dark),
+        inset 1px 1px 0px var(--neu-shadow-light) !important;
+}
+
+[data-theme][data-surface="neumorphism"] li[data-reorder-item][data-reorder-dragging] {
+    background-color: var(--bg-card) !important;
+    border-color: var(--accent) !important;
+    box-shadow:
+        -6px -6px 16px var(--neu-shadow-light),
+        12px 14px 28px rgba(0, 0, 0, 0.55),
+        0 0 0 1px var(--accent) !important;
+}
+
+/* Light themes: same raised card, white top/left bevel. */
+[data-theme="daylight"][data-surface="neumorphism"] li[data-reorder-item],
+[data-theme="alabaster"][data-surface="neumorphism"] li[data-reorder-item],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] li[data-reorder-item],
+.light-mode[data-surface="neumorphism"] li[data-reorder-item] {
+    background-color: var(--bg-app) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-right: 1px solid rgba(166, 175, 195, 0.3) !important;
+    border-bottom: 1px solid rgba(166, 175, 195, 0.3) !important;
+    box-shadow:
+        -5px -5px 12px rgba(255, 255, 255, 0.95),
+        5px 6px 14px rgba(166, 175, 195, 0.45),
+        inset 1px 1px 0px rgba(255, 255, 255, 0.9) !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] li[data-reorder-item][data-reorder-dragging],
+[data-theme="alabaster"][data-surface="neumorphism"] li[data-reorder-item][data-reorder-dragging],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] li[data-reorder-item][data-reorder-dragging],
+.light-mode[data-surface="neumorphism"] li[data-reorder-item][data-reorder-dragging] {
+    background-color: var(--bg-card) !important;
+    border-color: var(--accent) !important;
+    box-shadow:
+        -7px -7px 18px rgba(255, 255, 255, 1),
+        8px 10px 20px rgba(166, 175, 195, 0.55),
+        0 0 0 1px var(--accent) !important;
 }

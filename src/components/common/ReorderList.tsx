@@ -73,6 +73,7 @@ export function ReorderList<T>({
         className={className}
         as={as}
         layoutScroll
+        data-reorder-group=""
       >
         {children}
       </Reorder.Group>
@@ -141,6 +142,8 @@ export function ReorderItem<T>({
           scale: 1.015,
           zIndex: 40
         }}
+        data-reorder-item=""
+        data-reorder-dragging={isDragging ? '' : undefined}
         className={`relative transition-shadow duration-150 ${className} ${
           isDragging ? dragElevationClassName : ''
         }`}
