@@ -190,7 +190,7 @@ figcaption b{ color:var(--ink2); }
     <div class="cg-grid">
       <div class="cg"><span class="cg-k">GPU required</span><span class="cg-v no">No</span></div>
       <div class="cg"><span class="cg-k">Tunnel hostnames</span><span class="cg-v">5</span></div>
-      <div class="cg"><span class="cg-k">Database migrations</span><span class="cg-v">28 files</span></div>
+      <div class="cg"><span class="cg-k">Database migrations</span><span class="cg-v">33 files</span></div>
       <div class="cg"><span class="cg-k">On-prem services</span><span class="cg-v">5</span></div>
       <div class="cg"><span class="cg-k">Verification tiers</span><span class="cg-v">2</span></div>
       <div class="cg"><span class="cg-k">Hosting target</span><span class="cg-v">Cloudflare Pages</span></div>
@@ -477,7 +477,7 @@ approval (6.3).</div>
     <tbody>
       <tr><td>1</td><td>Create Cloudflare and Supabase accounts; attach a domain</td><td>2.2, 2.4</td><td>1 day</td></tr>
       <tr><td>2</td><td>Create the Supabase project; <b>enable PostGIS first</b></td><td>3.1, 3.2</td><td>30 min</td></tr>
-      <tr><td>3</td><td>Apply migrations <code>0001</code>&#8211;<code>0010</code> then <code>0012</code>&#8211;<code>0029</code></td><td>3.3</td><td>45 min</td></tr>
+      <tr><td>3</td><td>Apply migrations <code>0001</code>&#8211;<code>0010</code> then <code>0012</code>&#8211;<code>0033</code></td><td>3.3</td><td>45 min</td></tr>
       <tr><td>4</td><td>Create the <code>MMS_PIC</code> storage bucket (public)</td><td>4.1</td><td>5 min</td></tr>
       <tr><td>5</td><td>Create the first administrator</td><td>5</td><td>15 min</td></tr>
       <tr><td>6</td><td>Build the NAS folder tree</td><td>9</td><td>1 day</td></tr>
@@ -595,7 +595,7 @@ approval (6.3).</div>
   <h2>3.3 Apply the migrations</h2>
   <p>This project is not wired to a migration runner: there is no Supabase configuration file and
   no seed script, so <code>supabase db push</code> will not work. The migrations are applied as a
-  hand-run, ordered sequence &#8212; 29 of the 30 files.</p>
+  hand-run, ordered sequence &#8212; 32 of the 33 files.</p>
 
   <figure>
     <svg viewBox="0 0 900 132" role="img" aria-label="Migration order">
@@ -624,12 +624,12 @@ approval (6.3).</div>
       <line x1="488" y1="60" x2="518" y2="60" stroke="#0369a1" stroke-width="1.6" marker-end="url(#am)"/>
 
       <rect x="522" y="40" width="354" height="40" rx="6" fill="#ecfdf5" stroke="#a7f3d0"/>
-      <text x="538" y="58" font-size="10" font-weight="700" fill="#065f46">0012 &#8211; 0030</text>
+      <text x="538" y="58" font-size="10" font-weight="700" fill="#065f46">0012 &#8211; 0033</text>
       <text x="538" y="73" font-size="8.4" fill="#065f46">PostGIS &#183; projects &#183; shares &#183; production &#183; station board</text>
 
       <text x="24" y="106" font-size="8.6" fill="#64748b"><tspan font-weight="700" fill="#b91c1c">0011 is a test script, not a schema change.</tspan> Run it separately as a verification step (Section 6.2). A shell loop over <tspan font-family="Consolas,monospace">00*.sql</tspan> will wrongly include it.</text>
     </svg>
-    <figcaption><b>Figure 4.</b> Migration order. Twenty-eight files apply; <code>0011</code> is excluded.</figcaption>
+    <figcaption><b>Figure 4.</b> Migration order. Thirty-two files apply; <code>0011</code> is excluded.</figcaption>
   </figure>
 
   <h4>Files to apply</h4>
@@ -667,8 +667,25 @@ approval (6.3).</div>
       <tr><td>28</td><td><code>0029_csv_file_name.sql</code></td><td>CSV filename column and backfill</td></tr>
       <tr><td>29</td><td><code>0030_role_precedence.sql</code></td><td><b>Directory row becomes authoritative for role and status</b> &mdash; makes <b>Disable</b> revoke access. Back-fills first, so it cannot lock anyone out</td></tr>
       <tr><td>30</td><td><code>0031_rls_completeness_backstop.sql</code></td><td>Closes the two RLS gaps a fresh install leaves: <code>survey_recycle_bin</code> never had RLS enabled, and <code>batch_logs</code> had RLS but <b>no policies</b> (deny-all)</td></tr>
+      <tr><td>31</td><td><code>0032_qa_defects_run_scope.sql</code></td><td><b>Required.</b> Adds <code>qa_defects.run_id</code> and widens the unique key to <code>(project_id, subgrid, run_id, point_id)</code>, so one run's defects stop appearing on a sibling run of the same subgrid</td></tr>
+      <tr><td>32</td><td><code>0033_qa_defects_item_key.sql</code></td><td><b>Required.</b> Adds <code>qa_defects.item_key</code> where missing, back-fills it from <code>point_id</code>, then enforces <code>NOT NULL</code></td></tr>
     </tbody>
   </table>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">0032 and 0033 are required, not optional</span>
+    <p>Stopping at <code>0031</code> produces a build that starts, reads, and quietly lies.</p>
+    <p><b>Without <code>0032</code></b> the <code>qa_defects</code> select in <code>datasets.ts</code>
+    fails on the missing <code>run_id</code> column &mdash; and that failure is caught and swallowed,
+    so <b>every survey run reports 0 defects</b>. Both defect writers upsert on a unique index that
+    does not exist and are rejected. The board looks healthy because there is nothing on it to
+    inspect.</p>
+    <p><b>Without <code>0033</code></b> every <code>qa_defects</code> write is rejected with
+    <code>null value in column &quot;item_key&quot; &hellip; violates not-null constraint</code>. QA/QC
+    results appear to save, then vanish on refresh.</p>
+    <p>Both are idempotent and safe to re-run. Apply them.</p>
+  </div>
 
   <div class="callout c-warn">
     <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
@@ -2045,6 +2062,9 @@ AGENT_PORT=8000</code></pre>
       <tr><td>Publish button permanently disabled</td><td>Provider bucket not configured</td><td>Set the bucket in Settings (12.2)</td></tr>
       <tr><td>Cannot reach the Administration workspace</td><td>Seeded role resolved to Viewer</td><td>Verify the role query (5.2)</td></tr>
       <tr><td>Migration error mentioning a security function</td><td>Applied out of order</td><td>Re-apply in order (3.3)</td></tr>
+      <tr><td>Every survey run reports <b>0 defects</b></td><td><code>0032</code> not applied, or PostgREST serves a stale schema</td><td>Apply <code>0032</code>. If the column exists, <code>NOTIFY pgrst, 'reload schema';</code> or restart PostgREST. The select error is caught, so nothing is logged &#8212; the count is absent, not zero</td></tr>
+      <tr><td><code>Could not find the 'run_id' column</code></td><td>Missing <code>0032</code>, or a stale PostgREST schema cache</td><td>Apply <code>0032</code>, then <code>NOTIFY pgrst, 'reload schema';</code></td></tr>
+      <tr><td><code>item_key &hellip; violates not-null constraint</code> on a QA/QC write</td><td><code>0033</code> not applied</td><td>Apply <code>0033</code> &#8212; it adds the column and back-fills from <code>point_id</code></td></tr>
       <tr><td>Summary view missing after migrations</td><td>PostGIS was not enabled before the first migration</td><td>Enable PostGIS, re-run the view block (3.2)</td></tr>
       <tr><td>Diagnostics show WebGIS or Realtime <b>unknown</b></td><td><b>Expected</b> &#8212; probe not implemented</td><td>Ignore (13.1)</td></tr>
       <tr><td>Database changes not appearing after an edit</td><td>Settings cached in the browser</td><td>Sign out and back in, or hard refresh</td></tr>
@@ -2090,8 +2110,27 @@ AGENT_PORT=8000</code></pre>
       <tr><td><code>VITE_DB_*</code> (eight variables)</td><td class="opt">No</td><td>Table and view name overrides</td></tr>
       <tr><td><code>VITE_SENTRY_DSN</code></td><td class="opt">No</td><td>Error reporting. Omit to disable</td></tr>
       <tr><td><code>VITE_DATA_QUIET</code></td><td class="opt">No</td><td>Suppress non-fatal analysis console noise</td></tr>
+      <tr><td><code>VITE_BRAND_NAME</code></td><td class="opt">No</td><td>Product wordmark in the logo lockup. Default <code>GeoSphere</code></td></tr>
+      <tr><td><code>VITE_BRAND_MARK</code></td><td class="opt">No</td><td>Trailing accent mark. Default <code>360&#176;</code>; set <b>empty</b> to omit</td></tr>
+      <tr><td><code>VITE_BRAND_URL</code></td><td class="opt">No</td><td>Canonical origin for canonical / OG / Twitter / JSON-LD URLs. No trailing slash</td></tr>
+      <tr><td><code>VITE_BRAND_PROJECT_NAME</code></td><td class="opt">No</td><td>Seeded project name on a fresh install</td></tr>
+      <tr><td><code>VITE_BRAND_CONTRACT_CODE</code></td><td class="opt">No</td><td>Seeded contract code on a fresh install</td></tr>
+      <tr><td><code>VITE_BRAND_CLIENT_NAME</code></td><td class="opt">No</td><td>Seeded client name on a fresh install</td></tr>
     </tbody>
   </table>
+
+  <h3>Rebranding a deployment</h3>
+  <p>The six <code>VITE_BRAND_*</code> variables replace the product name, the browser tab title,
+  every generated report and PDF footer, and the canonical / Open Graph / Twitter / JSON-LD
+  metadata. Logo <b>artwork</b> is not covered &#8212; overwrite <code>public/branding/</code> at
+  deploy time if you need your own.</p>
+  <p>All six default to the shipped values, so leaving them unset reproduces the default build
+  exactly. Blank means &ldquo;not configured&rdquo; for five of them; <code>VITE_BRAND_MARK</code> is
+  the exception, where an empty value is the instruction to omit the mark.</p>
+  <p>They are <b>build-time</b> &#8212; Vite inlines them into <code>dist/</code>, so changing them
+  requires a rebuild, not a settings edit. Same constraint as <code>VITE_SUPABASE_URL</code>:
+  <b>one build per deployment</b>. The three seeded values are only what an untouched install shows
+  before anyone logs in; Admin Settings writes them to the database, and the database wins.</p>
 
   <h2>16.2 Edge runtime variables</h2>
   <p>Server-side only &#8212; see Section 8.4 for the full table with requirements and purposes.</p>
@@ -2201,7 +2240,7 @@ AGENT_PORT=8000</code></pre>
     <thead><tr><th style="width:8%">Done</th><th style="width:46%">Item</th><th style="width:20%">Verified by</th><th>Date</th></tr></thead>
     <tbody>
       <tr><td class="box"></td><td>PostGIS enabled before the first migration</td><td></td><td></td></tr>
-      <tr><td class="box"></td><td>All 29 migrations applied in order (0011 is a test, run separately)</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>All 32 migrations applied in order (0011 is a test, run separately)</td><td></td><td></td></tr>
       <tr><td class="box"></td><td>Security test script passed (6.2 Tier 1)</td><td></td><td></td></tr>
       <tr><td class="box"></td><td>Privilege boundary proven (6.2 Tier 2)</td><td></td><td></td></tr>
       <tr><td class="box"></td><td>Panorama bucket created and public</td><td></td><td></td></tr>

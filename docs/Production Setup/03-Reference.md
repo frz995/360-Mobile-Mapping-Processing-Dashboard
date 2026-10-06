@@ -169,6 +169,9 @@ failures are therefore **silent** — the table marks those.
 | Publish button permanently disabled | Provider bucket not configured | Set the bucket in Settings (`02` §4.2) |
 | Can't reach the Administration workspace | Seeded role resolved to Viewer | Verify `select sec.get_app_role();` (`01` §4.2) |
 | Migration error mentioning `sec.can` | `0009` not applied before `0010` | Re-apply in order (`01` §2.3) |
+| Every survey run reports **0 defects** | **`0032` not applied**, or PostgREST is serving a stale schema | Apply `0032`. If the column exists, `NOTIFY pgrst, 'reload schema';` or restart PostgREST. The select error is caught, so nothing is logged — the count is simply absent, not zero |
+| `Could not find the 'run_id' column` | Same as above: missing `0032`, or a stale PostgREST schema cache | Apply `0032`, then `NOTIFY pgrst, 'reload schema';` |
+| `item_key … violates not-null constraint` on any QA/QC write | **`0033` not applied** | Apply `0033`; it adds the column and back-fills from `point_id` |
 | `panoramas_subgrid_summary` view missing | PostGIS was not enabled before `0001` | Enable PostGIS, re-run the `0001` view block (`01` §2.2) |
 | Diagnostics shows WebGIS/Realtime **unknown** | **Expected** — probe not implemented | Ignore (`02` §5.1) |
 | Settings changes do not appear after a database edit | Browser cached project settings | Sign out/in or hard refresh |
@@ -217,6 +220,37 @@ Only these three are required. All are compiled into the shipped bundle.
 | `VITE_DB_*` (8 vars) | No | sensible defaults | Table/view name overrides |
 | `VITE_SENTRY_DSN` | No | absent = disabled | Error reporting. Omit to disable |
 | `VITE_DATA_QUIET` | No | off | Suppress non-fatal analysis console noise |
+| `VITE_BRAND_NAME` | No | `GeoSphere` | Product wordmark — the logo lockup. Set to your own product name |
+| `VITE_BRAND_MARK` | No | `360°` | Trailing accent mark in the logo. **Set to an empty string to omit it** |
+| `VITE_BRAND_URL` | No | `https://app.geosphere.my` | Canonical origin for canonical / OG / Twitter / JSON-LD URLs. No trailing slash |
+| `VITE_BRAND_PROJECT_NAME` | No | `360 Mobile Mapping — Spatial Operations Division` | Seeded project name on a fresh install |
+| `VITE_BRAND_CONTRACT_CODE` | No | `MMS-2026-GEO-01` | Seeded contract code on a fresh install |
+| `VITE_BRAND_CLIENT_NAME` | No | `Spatial Asset Operations` | Seeded client name on a fresh install |
+
+#### Branding a deployment under your own identity
+
+These six variables replace the product name, the browser tab title, every
+generated report and PDF footer, and the canonical / Open Graph / Twitter /
+JSON-LD metadata in `index.html`. `public/branding/` is **not** touched —
+overwrite those files at deploy time if you need your own logo artwork.
+
+Two properties worth knowing before you set them:
+
+- **Every default reproduces the shipped build exactly.** With none of the six
+  set, the compiled `index.html` is identical to a build produced before the
+  branding layer existed. An unset variable can never blank a field.
+- **`VITE_BRAND_MARK` is the exception.** For the other five, a blank value means
+  "not configured" and falls back to the default. For the mark, an empty string
+  is the *instruction* to omit it, because otherwise there would be no way to
+  drop the mark at all.
+
+Changing any of them requires a **rebuild** — these are inlined into `dist/` at
+build time, not read at runtime. This is the same constraint as
+`VITE_SUPABASE_URL` (§4, `01` §7.3): **one `npm run build` per deployment**.
+
+The three seed values are defaults only. Admin Settings ▸ project settings
+writes `projectName` / `contractCode` / `clientName` to the database, and the
+database wins — so a reseller can correct them on first run without rebuilding.
 
 > ⚠️ **Never** place a service-role key, NAS token, or agent token in a `VITE_`
 > variable. Vite inlines them into the bundle and they become public.
@@ -299,6 +333,23 @@ Only these three are required. All are compiled into the shipped bundle.
 | `0026` | `hub_session_state` |
 | `0027`–`0029` | Panorama column reconcile, file-inventory sync, CSV filename |
 | `0030` | Directory row becomes authoritative for role **and status**, so **Disable revokes access** (back-fills first) |
+| `0031` | RLS backstop: `survey_recycle_bin` and `batch_logs` policies, so no table is left with RLS on and no policy |
+| `0032` | **`qa_defects.run_id`**, and the unique key widened to `(project_id, subgrid, run_id, point_id)` |
+| `0033` | **`qa_defects.item_key`** — added where missing, back-filled from `point_id`, then enforced `NOT NULL` |
+
+> ⚠️ **`0032` and `0033` are required by the application, not schema hygiene.**
+> Applying `0001`–`0031` produces a build that starts, reads, and quietly lies:
+>
+> - **Without `0032`:** `qa_defects` has no `run_id`, so the select in
+>   `datasets.ts` fails — and that failure is caught and swallowed, so **every
+>   survey run reports 0 defects**. Both defect writers upsert on a unique index
+>   that does not exist and are rejected. The board looks healthy because there
+>   is nothing on it to inspect.
+> - **Without `0033`:** every `qa_defects` write is rejected with
+>   `null value in column "item_key" … violates not-null constraint`. QA/QC
+>   results save, then vanish on refresh.
+>
+> Both migrations are idempotent and safe to re-run. Apply them.
 
 ### 4.2 Storage buckets
 
