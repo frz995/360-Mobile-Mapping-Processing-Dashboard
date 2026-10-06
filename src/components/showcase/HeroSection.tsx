@@ -17,11 +17,11 @@ interface HeroSectionProps {
 }
 
 const wordVariant = {
-    hidden: { y: '115%', opacity: 0 },
+    hidden: { y: 16, opacity: 0 },
     show: (i: number) => ({
-        y: '0%',
+        y: 0,
         opacity: 1,
-        transition: { delay: 0.12 + i * 0.06, duration: 0.75, ease: EASE },
+        transition: { delay: 0.12 + i * 0.06, duration: 0.7, ease: EASE },
     }),
 };
 
@@ -39,11 +39,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             data-section-idx={HERO_SECTION}
             className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-start text-center px-2 xs:px-4 sm:px-8 pt-20 sm:pt-24 md:pt-28 lg:pt-32 pb-16 pointer-events-none"
         >
-            {/* Aurora depth field */}
-            <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute left-1/2 top-[20%] -translate-x-1/2 w-[520px] h-[340px] rounded-full bg-sky-500/10 blur-[110px] animate-aurora-a" />
-                <div className="absolute left-[30%] top-[40%] w-[400px] h-[280px] rounded-full bg-indigo-500/10 blur-[120px] animate-aurora-b" />
-            </div>
 
             {/* Headline — centered, gracefully sized and fitted with reliable in-view replay */}
             <motion.div
@@ -54,32 +49,30 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             >
                 <h1
                     aria-label="Mobile Mapping Data, Manage in One Place"
-                    className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-[64px] xl:text-[72px] font-extrabold tracking-tight text-white leading-[1.12] sm:leading-[1.08] drop-shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
+                    className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-[64px] xl:text-[72px] font-extrabold tracking-tight leading-[1.16] sm:leading-[1.12] drop-shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
                 >
                     <span className="block sm:whitespace-nowrap">
                         {['Mobile', 'Mapping', 'Data,', 'Manage', 'in'].map((w, i) => (
-                            <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
-                                <motion.span
-                                    className="inline-block text-white"
-                                    custom={i}
-                                    variants={wordVariant}
-                                >
-                                    {w}
-                                </motion.span>
-                            </span>
+                            <motion.span
+                                key={w}
+                                custom={i}
+                                variants={wordVariant}
+                                className="inline-block mr-[0.24em] last:mr-0 pb-[0.25em] -mb-[0.25em] bg-gradient-to-b from-white via-neutral-100 to-neutral-400 bg-clip-text text-transparent"
+                            >
+                                {w}
+                            </motion.span>
                         ))}
                     </span>
                     <span className="block">
                         {['One', 'Place'].map((w, i) => (
-                            <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
-                                <motion.span
-                                    className="inline-block text-white"
-                                    custom={i + 5}
-                                    variants={wordVariant}
-                                >
-                                    {w}
-                                </motion.span>
-                            </span>
+                            <motion.span
+                                key={w}
+                                custom={i + 5}
+                                variants={wordVariant}
+                                className="inline-block mr-[0.24em] last:mr-0 pb-[0.25em] -mb-[0.25em] bg-gradient-to-b from-white via-neutral-100 to-neutral-400 bg-clip-text text-transparent"
+                            >
+                                {w}
+                            </motion.span>
                         ))}
                     </span>
                 </h1>

@@ -42,28 +42,26 @@ export const OutroSection: React.FC<OutroSectionProps> = ({ modules, onLaunch, o
                 >
                     <span className="block">
                         {['From', 'Survey', 'Capture', 'to', 'Verified'].map((w, i) => (
-                            <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
-                                <motion.span
-                                    className="inline-block bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent"
-                                    custom={i}
-                                    variants={wordVariant}
-                                >
-                                    {w}
-                                </motion.span>
-                            </span>
+                            <motion.span
+                                key={w}
+                                custom={i}
+                                variants={wordVariant}
+                                className="inline-block mr-[0.24em] last:mr-0 pb-[0.2em] -mb-[0.2em] bg-gradient-to-b from-white via-neutral-100 to-neutral-400 bg-clip-text text-transparent"
+                            >
+                                {w}
+                            </motion.span>
                         ))}
                     </span>
                     <span className="block">
                         {['Data'].map((w, i) => (
-                            <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
-                                <motion.span
-                                    className="inline-block bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent"
-                                    custom={i + 5}
-                                    variants={wordVariant}
-                                >
-                                    {w}
-                                </motion.span>
-                            </span>
+                            <motion.span
+                                key={w}
+                                custom={i + 5}
+                                variants={wordVariant}
+                                className="inline-block mr-[0.24em] last:mr-0 pb-[0.2em] -mb-[0.2em] bg-gradient-to-b from-white via-neutral-100 to-neutral-400 bg-clip-text text-transparent"
+                            >
+                                {w}
+                            </motion.span>
                         ))}
                     </span>
                 </h2>

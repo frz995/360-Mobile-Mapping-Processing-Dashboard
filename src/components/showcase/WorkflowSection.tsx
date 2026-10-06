@@ -37,20 +37,19 @@ export const WorkflowSection: React.FC<WorkflowSectionProps> = ({ onJumpTo }) =>
                     className="mt-3 text-3xl sm:text-5xl font-semibold tracking-tight leading-tight"
                 >
                     {['System', 'Architecture', '&', 'Data', 'Lifecycle'].map((w, i) => (
-                        <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
-                            <motion.span
-                                className="inline-block bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent"
-                                custom={i}
-                                variants={wordVariant}
-                            >
-                                {w}
-                            </motion.span>
-                        </span>
+                        <motion.span
+                            key={w}
+                            custom={i}
+                            variants={wordVariant}
+                            className="inline-block mr-[0.24em] last:mr-0 pb-[0.2em] -mb-[0.2em] bg-gradient-to-b from-white via-neutral-100 to-neutral-400 bg-clip-text text-transparent"
+                        >
+                            {w}
+                        </motion.span>
                     ))}
                 </h2>
 
                 <motion.p variants={revealItem} className="mt-3 text-xs sm:text-sm text-neutral-400 max-w-2xl leading-relaxed">
-                    End-to-end live tracking of mobile mapping data—from field acquisition through external 4-station processing monitoring, NAS storage health, multi-cloud bucket release gates, and WebGIS road coverage analysis.
+                    End-to-end live tracking of mobile mapping data, from field acquisition through external 4-station processing monitoring, NAS storage health, multi-cloud bucket release gates, and WebGIS road coverage analysis.
                 </motion.p>
 
                 <motion.div variants={revealItem} className="w-full mt-4">

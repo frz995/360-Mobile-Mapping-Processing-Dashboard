@@ -112,6 +112,10 @@ export interface MapLibreGlobeProps {
   enableScrollZoom?: boolean;
   /** Showcase view mode: 'globe' (full 3D Earth) or 'modules' (hero backdrop). */
   viewMode?: 'globe' | 'modules';
+  /** Whether to show the project pin marker at activeTargetCoord */
+  showActiveMarkerPin?: boolean;
+  /** Custom project pin icon URL */
+  activeMarkerPinUrl?: string;
 }
 
 /**
@@ -301,7 +305,9 @@ export function MapLibreGlobe({
   onActiveMarkerProjected,
   onMarkerClick,
   enableScrollZoom = true,
-  viewMode = 'globe'
+  viewMode = 'globe',
+  showActiveMarkerPin = false,
+  activeMarkerPinUrl = '/Icon%20road%20analysis/pin.png'
 }: MapLibreGlobeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -403,7 +409,8 @@ export function MapLibreGlobe({
       dragPan: true,
       doubleClickZoom: false,
       maxPitch: 70,
-      fadeDuration: 0
+      fadeDuration: 0,
+      reduceMotion: false
     });
     mapRef.current = map;
 
@@ -418,7 +425,7 @@ export function MapLibreGlobe({
         programmaticRef.current = false;
       };
       map.once('moveend', onEnd);
-      map.flyTo({ ...targetPose, duration: 1200, curve: 1.4 });
+      map.flyTo({ ...targetPose, duration: 1200, curve: 1.4, essential: true });
       onZoomRef.current?.(viewModeRef.current === 'globe' ? FULL_GLOBE_ZOOM : INTRO_ZOOM);
     });
 
@@ -506,7 +513,7 @@ export function MapLibreGlobe({
       programmaticRef.current = true;
       try {
         const startPose = viewModeRef.current === 'globe' ? FULL_GLOBE_POSE : REST_POSE;
-        map.flyTo({ ...startPose, duration: INTRO_DURATION_MS, curve: 1.5 });
+        map.flyTo({ ...startPose, duration: INTRO_DURATION_MS, curve: 1.5, essential: true });
       } finally {
         programmaticRef.current = false;
       }
@@ -592,9 +599,9 @@ export function MapLibreGlobe({
           type: 'circle',
           source: 'globe-markers',
           paint: {
-            'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 7, 6, 11],
-            'circle-color': '#4da6ff',
-            'circle-opacity': ['case', ['==', ['get', 'active'], 1], 0.32, 0.18]
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 7, 6, 12],
+            'circle-color': '#1d4ed8',
+            'circle-opacity': ['case', ['==', ['get', 'active'], 1], 0.38, 0.22]
           }
         });
       }
@@ -605,9 +612,9 @@ export function MapLibreGlobe({
           source: 'globe-markers',
           paint: {
             'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 3.5, 6, 6],
-            'circle-color': ['case', ['==', ['get', 'active'], 1], '#9fd0ff', '#4da6ff'],
+            'circle-color': ['case', ['==', ['get', 'active'], 1], '#1e40af', '#1d4ed8'],
             'circle-stroke-color': '#04070d',
-            'circle-stroke-width': 1.5
+            'circle-stroke-width': 1.8
           }
         });
       }
@@ -694,6 +701,9 @@ export function MapLibreGlobe({
 
     if (!hasFocus) {
       if (!hadFocus) return; // Already at resting pose; do nothing
+      // If user is actively interacting (dragging/panning/rotating),
+      // do not hijack the camera or reset to default zoom.
+      if (userActiveRef.current || pointerDownRef.current) return;
       // Release. Fly back out to the resting pose (full globe in 3D Earth, hero limb in modules)
       map.stop();
       inTransitionRef.current = true;
@@ -706,11 +716,37 @@ export function MapLibreGlobe({
       };
       map.once('moveend', onEnd);
       const targetPose = viewModeRef.current === 'globe' ? FULL_GLOBE_POSE : REST_POSE;
-      map.flyTo({ ...targetPose, duration: 1600, curve: 1.42 });
+      map.flyTo({ ...targetPose, duration: 1600, curve: 1.42, essential: true });
       return;
     }
 
-    // Smooth planetary camera flight into project area
+    if (hadFocus) {
+      // 2nd View: Switching project areas while already inspecting.
+      // Do NOT trigger 1st view back — stay with the user's active zoom and camera orientation!
+      map.stop();
+      inTransitionRef.current = true;
+      programmaticRef.current = true;
+      lastInteractionRef.current = performance.now() + 1400;
+      const onEnd = () => {
+        inTransitionRef.current = false;
+        programmaticRef.current = false;
+        lastInteractionRef.current = performance.now();
+        userActiveRef.current = false;
+      };
+      map.once('moveend', onEnd);
+      map.flyTo({
+        center: [focusTarget.lng, focusTarget.lat],
+        zoom: map.getZoom(), // Stay with user zoom behavior!
+        pitch: map.getPitch(),
+        bearing: map.getBearing(),
+        duration: 1200,
+        curve: 1.2,
+        essential: true
+      });
+      return;
+    }
+
+    // 1st View: Initial cinematic camera dive into the project area
     map.stop();
     inTransitionRef.current = true;
     programmaticRef.current = true;
@@ -728,9 +764,167 @@ export function MapLibreGlobe({
       pitch: 45,
       bearing: 0,
       duration: 1800,
-      curve: 1.42
+      curve: 1.42,
+      essential: true
     });
   }, [focusTarget]);
+
+  // --- Active project pin marker ----------------------------------------
+  // Pinned to the 3D globe coordinates with anchor: 'bottom' when the card is active.
+  const activePinMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const activePinElRef = useRef<HTMLElement | null>(null);
+  const activePinCoordRef = useRef(activeTargetCoord);
+  activePinCoordRef.current = activeTargetCoord;
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!showActiveMarkerPin || !isFiniteCoord(activeTargetCoord)) {
+      if (activePinMarkerRef.current) {
+        activePinMarkerRef.current.remove();
+        activePinMarkerRef.current = null;
+        activePinElRef.current = null;
+      }
+      return;
+    }
+
+    // Dynamic repositioning: update existing marker position instantaneously
+    if (activePinMarkerRef.current) {
+      activePinMarkerRef.current.setLngLat([activeTargetCoord.lng, activeTargetCoord.lat]);
+      return;
+    }
+
+    const pinEl = document.createElement('div');
+    pinEl.className = 'project-pin-marker pointer-events-none select-none';
+    pinEl.style.width = '38px';
+    pinEl.style.height = '42px';
+    pinEl.style.display = 'flex';
+    pinEl.style.alignItems = 'flex-end';
+    pinEl.style.justifyContent = 'center';
+    pinEl.style.transition = 'opacity 0.2s ease-out';
+    pinEl.innerHTML = `
+      <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
+        <img
+          src="${activeMarkerPinUrl || '/Icon%20road%20analysis/pin.png'}"
+          alt="Project Location"
+          style="width: 36px; height: 36px; object-fit: contain; filter: drop-shadow(0 4px 10px rgba(220, 38, 38, 0.45)); transform: translateY(-1px);"
+        />
+        <div style="width: 10px; height: 3px; background: rgba(0,0,0,0.6); border-radius: 9999px; filter: blur(0.8px); margin-top: -2px;"></div>
+      </div>
+    `;
+    activePinElRef.current = pinEl;
+
+    const marker = new maplibregl.Marker({
+      element: pinEl,
+      anchor: 'bottom',
+    })
+      .setLngLat([activeTargetCoord.lng, activeTargetCoord.lat])
+      .addTo(map);
+
+    activePinMarkerRef.current = marker;
+
+    // Occlusion check during camera render (hide pin when marker rotates to back side of globe)
+    const checkOcclusion = () => {
+      const coord = activePinCoordRef.current;
+      const el = activePinElRef.current;
+      if (!coord || !isFiniteCoord(coord) || !el) return;
+      const center = map.getCenter();
+      const toRad = Math.PI / 180;
+      const cLatRad = center.lat * toRad;
+      const cLngRad = center.lng * toRad;
+      const mLatRad = coord.lat * toRad;
+      const mLngRad = coord.lng * toRad;
+      const dot = Math.sin(mLatRad) * Math.sin(cLatRad) + Math.cos(mLatRad) * Math.cos(cLatRad) * Math.cos(mLngRad - cLngRad);
+      const isVisible = dot > 0.05;
+      el.style.opacity = isVisible ? '1' : '0';
+    };
+
+    checkOcclusion();
+    map.on('render', checkOcclusion);
+
+    return () => {
+      map.off('render', checkOcclusion);
+      if (activePinMarkerRef.current) {
+        activePinMarkerRef.current.remove();
+        activePinMarkerRef.current = null;
+        activePinElRef.current = null;
+      }
+    };
+  }, [showActiveMarkerPin, activeTargetCoord?.lat, activeTargetCoord?.lng, activeMarkerPinUrl]);
+
+  // --- District Name Labels on Globe ------------------------------------
+  // Mounts sleek tactical badges with the district name anchored to each marker.
+  const labelMarkersRef = useRef<maplibregl.Marker[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Clean up existing label markers
+    labelMarkersRef.current.forEach((m) => m.remove());
+    labelMarkersRef.current = [];
+
+    const activeList = (markers ?? []).filter(
+      (m) => Number.isFinite(m.latitude) && Number.isFinite(m.longitude) && m.label
+    );
+
+    const createdMarkers: Array<{ marker: maplibregl.Marker; el: HTMLElement; lat: number; lng: number }> = [];
+
+    activeList.forEach((m) => {
+      const el = document.createElement('div');
+      el.className = 'globe-district-label pointer-events-auto select-none cursor-pointer';
+      el.style.transform = 'translate(-50%, 14px)';
+      el.style.transition = 'opacity 0.25s ease-out, transform 0.2s ease-out';
+      el.innerHTML = `
+        <div style="background: rgba(4, 7, 15, 0.92); border: 1px solid rgba(29, 78, 216, 0.6); border-radius: 6px; padding: 2px 7px; backdrop-filter: blur(8px); box-shadow: 0 4px 14px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.12); display: flex; align-items: center; gap: 5px;">
+          <span style="width: 5px; height: 5px; border-radius: 9999px; background: #2563eb; box-shadow: 0 0 6px #3b82f6;"></span>
+          <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 700; color: #ffffff; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;">
+            ${m.label}
+          </span>
+        </div>
+      `;
+
+      el.onclick = () => {
+        onClickRef.current?.(m);
+      };
+
+      const mapMarker = new maplibregl.Marker({
+        element: el,
+        anchor: 'center'
+      })
+        .setLngLat([m.longitude, m.latitude])
+        .addTo(map);
+
+      createdMarkers.push({ marker: mapMarker, el, lat: m.latitude, lng: m.longitude });
+      labelMarkersRef.current.push(mapMarker);
+    });
+
+    // Occlusion check on camera render (hide labels on the back side of the Earth)
+    const checkOcclusion = () => {
+      const center = map.getCenter();
+      const toRad = Math.PI / 180;
+      const cLatRad = center.lat * toRad;
+      const cLngRad = center.lng * toRad;
+
+      createdMarkers.forEach(({ el, lat, lng }) => {
+        const mLatRad = lat * toRad;
+        const mLngRad = lng * toRad;
+        const dot = Math.sin(mLatRad) * Math.sin(cLatRad) + Math.cos(mLatRad) * Math.cos(cLatRad) * Math.cos(mLngRad - cLngRad);
+        const isVisible = dot > 0.05;
+        el.style.opacity = isVisible ? '1' : '0';
+        el.style.pointerEvents = isVisible ? 'auto' : 'none';
+      });
+    };
+
+    checkOcclusion();
+    map.on('render', checkOcclusion);
+
+    return () => {
+      map.off('render', checkOcclusion);
+      labelMarkersRef.current.forEach((m) => m.remove());
+      labelMarkersRef.current = [];
+    };
+  }, [markers]);
 
   // --- ViewMode: smooth transition between 3D Earth (full globe) and Modules (default hero) ---
   const prevViewModeRef = useRef(viewMode);
@@ -763,7 +957,8 @@ export function MapLibreGlobe({
         bearing: 0,
         zoom: zoomToCamera(FULL_GLOBE_ZOOM),
         duration: 1600,
-        curve: 1.42
+        curve: 1.42,
+        essential: true
       });
     } else {
       // Transition to modules:
@@ -774,29 +969,33 @@ export function MapLibreGlobe({
         bearing: 0,
         zoom: zoomToCamera(INTRO_ZOOM),
         duration: 1600,
-        curve: 1.42
+        curve: 1.42,
+        essential: true
       });
     }
   }, [viewMode, focusTarget]);
 
   // --- Camera: external zoom scalar -------------------------------------
   // Two-way sync between the showcase's `globeZoom` multiplier and the camera.
-  // Guarded four ways: not during a focus flight, not while the user is actively
-  // orbiting/scrolling, not while any camera move is already in flight, and not
-  // when already at the target.
+  // Guarded: not while camera is transitioning, not while the user is actively
+  // dragging/orbiting, and not when already at the target zoom.
+  const prevExternalZoomRef = useRef<number | null>(null);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || typeof zoom !== 'number' || !Number.isFinite(zoom)) return;
-    if (isFiniteCoord(focusTarget)) return;
     if (userActiveRef.current || inTransitionRef.current) return;
-    // A move already in flight — user gesture, coasting inertia, or our own
-    // previous easeTo — must not be re-targeted.
     if (map.isMoving()) return;
+
+    if (prevExternalZoomRef.current !== null && Math.abs(prevExternalZoomRef.current - zoom) < 0.001) {
+      return;
+    }
+    prevExternalZoomRef.current = zoom;
+
     const target = zoomToCamera(zoom);
     if (Math.abs(map.getZoom() - target) > ZOOM_EPSILON) {
-      map.easeTo({ zoom: target, duration: 700 });
+      map.easeTo({ zoom: target, duration: 400, essential: true });
     }
-  }, [zoom, focusTarget]);
+  }, [zoom]);
 
   // --- Auto-rotate ------------------------------------------------------
   // Spins the planet with north held up by walking the camera west.
@@ -854,7 +1053,14 @@ export function MapLibreGlobe({
         // focus state for the rest.
         const p = map.project([activeTargetCoord.lng, activeTargetCoord.lat]);
         const rect = map.getCanvas().getBoundingClientRect();
-        const inView = p.x >= 0 && p.y >= 0 && p.x <= map.getCanvas().clientWidth && p.y <= map.getCanvas().clientHeight;
+        const center = map.getCenter();
+        const toRad = Math.PI / 180;
+        const cLatRad = center.lat * toRad;
+        const cLngRad = center.lng * toRad;
+        const mLatRad = activeTargetCoord.lat * toRad;
+        const mLngRad = activeTargetCoord.lng * toRad;
+        const dot = Math.sin(mLatRad) * Math.sin(cLatRad) + Math.cos(mLatRad) * Math.cos(cLatRad) * Math.cos(mLngRad - cLngRad);
+        const inView = dot > 0.05 && p.x >= 0 && p.y >= 0 && p.x <= map.getCanvas().clientWidth && p.y <= map.getCanvas().clientHeight;
         cb({ x: p.x + rect.left, y: p.y + rect.top, visible: inView });
       }
       raf = requestAnimationFrame(tick);

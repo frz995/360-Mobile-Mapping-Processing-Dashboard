@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
 import * as maplibregl from 'maplibre-gl';
 import { DISTRICT_METADATA } from '../boundary/districtMetadata';
@@ -416,7 +416,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
     <div
       role="dialog"
       aria-label={`${regionName} Project Area`}
-      className={`relative w-[calc(100vw-24px)] max-w-[240px] sm:w-[320px] sm:max-w-[320px] max-h-[calc(100dvh-220px)] sm:max-h-[calc(100dvh-130px)] overflow-y-auto no-scrollbar rounded-2xl bg-[#090d14]/95 border border-white/15 backdrop-blur-2xl text-white p-1.5 sm:p-2 space-y-0.5 sm:space-y-1 pointer-events-auto select-none ${
+      className={`relative w-[calc(100vw-24px)] max-w-[240px] sm:w-[320px] sm:max-w-[320px] max-h-[calc(100dvh-160px)] sm:max-h-[calc(100dvh-80px)] overflow-y-auto no-scrollbar rounded-2xl bg-[#090d14]/95 border border-white/15 backdrop-blur-2xl text-white p-1.5 sm:p-2 space-y-0.5 sm:space-y-1 pointer-events-auto select-none ${
         closing
           ? 'animate-out fade-out-0 zoom-out-95 ease-in duration-500'
           : 'animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 ease-out duration-500'
@@ -433,7 +433,6 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
       <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-1 sm:pb-1.5">
         <div className="space-y-0.5 min-w-0 text-left">
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-white" />
             <span className="text-[9px] sm:text-[10px] font-mono uppercase tracking-widest text-neutral-400 font-semibold">
               Project Area
             </span>
@@ -487,7 +486,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
 
       {/* Embedded project map (display-only dashboard: boundary outline + survey points) */}
       <div className="rounded-xl bg-[#0e121a] border border-white/10 overflow-hidden shadow-lg text-left">
-        <div className={`relative w-full h-[64px] sm:h-[108px] overflow-hidden ${basemapStyle === 'dark' ? 'bg-[#0b0f16]' : 'bg-[#eceff3]'}`}>
+        <div className={`relative w-full h-[80px] sm:h-[135px] overflow-hidden ${basemapStyle === 'dark' ? 'bg-[#0b0f16]' : 'bg-[#eceff3]'}`}>
           <div ref={mapContainerRef} className="w-full h-full" />
 
           {/* Light / Dark toggle */}
@@ -528,7 +527,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
         </div>
 
         {/* Metrics */}
-        <div className="p-1.5 sm:p-2.5 space-y-1">
+        <div className="p-1.5 sm:p-2.5 pb-3 sm:pb-4 space-y-1.5">
           <div className="flex items-center justify-between">
             <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight leading-snug">
               {regionName} Region · Survey

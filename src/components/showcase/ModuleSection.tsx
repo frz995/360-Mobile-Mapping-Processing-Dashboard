@@ -92,30 +92,26 @@ export const ModuleSection: React.FC<ModuleSectionProps> = ({ mod, index, total,
                         </span>
                     </motion.div>
 
-                    {/* Icon + status — bare icon, hairline divider, plain text
-                        (no icon box, no pill, no dot) */}
-                    <motion.div variants={revealItem} className="flex items-center gap-3">
+                    {/* Module title with icon */}
+                    <motion.div variants={revealItem} className="flex items-center gap-2.5 sm:gap-3">
                         {mod.iconImage ? (
                             <img
                                 src={mod.iconImage}
                                 alt=""
-                                className="icon-white w-6 h-6 object-contain"
+                                className="icon-white w-6 h-6 sm:w-7 sm:h-7 object-contain shrink-0"
                                 loading="lazy"
                             />
                         ) : (
-                            <Icon className="w-[18px] h-[18px] text-neutral-300" />
+                            <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-neutral-300 shrink-0" />
                         )}
-                        <span aria-hidden className="w-px h-4 bg-white/15" />
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                            {mod.statusBadge}
-                        </span>
-                    </motion.div>
-
-                    {/* Title block */}
-                    <motion.div variants={revealItem} className="space-y-2.5">
+                        <span aria-hidden className="w-px h-5 sm:h-6 bg-white/15 shrink-0" />
                         <h2 className="inline-block bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent text-2xl sm:text-3xl xl:text-[2.6rem] font-semibold tracking-tight leading-[1.18] pb-2 -mb-2">
                             {mod.title}
                         </h2>
+                    </motion.div>
+
+                    {/* Subtitle & description block */}
+                    <motion.div variants={revealItem} className="space-y-2.5">
                         <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">
                             {mod.subtitle}
                         </p>

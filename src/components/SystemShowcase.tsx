@@ -529,7 +529,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             workflow: [
                 { step: '01. Create', action: 'New project from a region preset' },
                 { step: '02. Bound', action: 'Commit districts & project boundary' },
-                { step: '03. Activate', action: 'Switch in — all data scoped to the project' }
+                { step: '03. Activate', action: 'Switch in to scope all data to the project' }
             ],
             specs: [
                 { label: 'Region Presets', value: 'CRS · BBOX · Basemap · Equipment' },
@@ -582,7 +582,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             category: 'WebGIS · Published View',
             title: 'WebGIS Dashboard & Data Management',
             subtitle: 'See published survey coverage on the map and keep the masterlist and daily records in order',
-            description: 'The published face of the project. Survey trajectories, subgrid boundaries and frame points render on a MapLibre basemap with a 360° viewer HUD and the Operational Action Center. Behind it, Data Management holds the Subgrid Masterlist, Daily field records and Dataset Recovery — CSV imports map their columns automatically, records publish to WebGIS individually or in bulk, and deletions pass through approval and the recycle bin.',
+            description: 'The published face of the project. Survey trajectories, subgrid boundaries and frame points render on a MapLibre basemap with a 360° viewer HUD and the Operational Action Center. Behind it, Data Management holds the Subgrid Masterlist, Daily field records and Dataset Recovery. CSV imports map their columns automatically, records publish to WebGIS individually or in bulk, and deletions pass through approval and the recycle bin.',
             metricLabel: 'Total Distance Mapped',
             metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}% of target)`,
             statusBadge: 'Published View',
@@ -664,7 +664,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             category: 'Spatial Analysis',
             title: 'Road Analysis & Project Explorer',
             subtitle: 'Compare surveyed coverage against the planned road network and share the results',
-            description: 'Import a road plan from GeoJSON, CSV, KML/KMZ, GPX or zipped archives — decoded off the main thread and clipped to the project districts — then promote it as the baseline. Coverage is traced against the network to expose surveyed roads and gaps. The Project Explorer breaks the area down by Roads, Density, Complexity, Panotrack and Coverage with choropleth classes and operator-defined grids, and results leave as print layouts, 3D Map Studio scenes or password-protected share links.',
+            description: 'Import a road plan from GeoJSON, CSV, KML/KMZ, GPX or zipped archives, decoded off the main thread and clipped to the project districts, then promote it as the baseline. Coverage is traced against the network to expose surveyed roads and gaps. The Project Explorer breaks the area down by Roads, Density, Complexity, Panotrack and Coverage with choropleth classes and operator-defined grids, and results leave as print layouts, 3D Map Studio scenes or password-protected share links.',
             metricLabel: 'Plan Coverage',
             metricValue: `${pctTarget}% of target`,
             statusBadge: 'Coverage Analysis',
@@ -735,7 +735,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     title: 'Print & Share',
                     tag: 'Outputs',
                     description: 'Print layouts preview exactly what the Explorer shows, and public share links can be protected with a password.',
-                    tip: 'Shared maps open read-only — no account required.'
+                    tip: 'Shared maps open read-only with no account required.'
                 }
             ]
         },
@@ -746,7 +746,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             category: 'Production Pipeline',
             title: 'Production Hub',
             subtitle: 'Move every subgrid from stitched intake to WebGIS release through gated stations',
-            description: 'One hub for the whole assembly line. The 4-PC Flight Board tracks each subgrid through PC 1 Privacy Blur, PC 2 PTGui stitching, PC 3 Lightroom enhancement and PC 4 Photoshop nadir patch. Stitched output is paired against its intake, accepted through 360° QA inspection, checked at the Cloud Bucket Gate and only then released to WebGIS — with every move recorded in the Stage History Ledger so any deliverable can be traced back.',
+            description: 'One hub for the whole assembly line. The 4-PC Flight Board tracks each subgrid through PC 1 Privacy Blur, PC 2 PTGui stitching, PC 3 Lightroom enhancement and PC 4 Photoshop nadir patch. Stitched output is paired against its intake, accepted through 360° QA inspection, checked at the Cloud Bucket Gate and only then released to WebGIS, with every move recorded in the Stage History Ledger so any deliverable can be traced back.',
             metricLabel: 'Active Runs',
             metricValue: `${activeJobs} in progress`,
             statusBadge: 'Gated Pipeline',
@@ -816,7 +816,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     y: 21,
                     title: 'Stage History Ledger',
                     tag: 'Event Ledger',
-                    description: 'Append-only record of every stage transition per subgrid — who moved it, when, and from which station.',
+                    description: 'Append-only record of every stage transition per subgrid, detailing who moved it, when, and from which station.',
                     tip: 'Use it to trace any deliverable back to its raw intake.'
                 }
             ]
@@ -828,7 +828,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             category: 'Infrastructure & Storage',
             title: 'PC Monitoring & NAS Storage',
             subtitle: 'Watch every workstation and the NAS that feeds them, and step in remotely',
-            description: 'Live CPU, GPU, RAM and storage metrics for each production PC, with a one-click RDP session or an in-browser remote console that can go full screen. When a station is down, the reason is spelled out — no address configured, or the agent is alive but cannot see its NAS mount. NAS & Daemon browses the working directories, reports capacity per volume and verifies file integrity against the records.',
+            description: 'Live CPU, GPU, RAM and storage metrics for each production PC, with a one-click RDP session or an in-browser remote console that can go full screen. When a station is down, the reason is spelled out: no address configured, or the agent is alive but cannot see its NAS mount. NAS & Daemon browses the working directories, reports capacity per volume and verifies file integrity against the records.',
             metricLabel: 'Workstations',
             metricValue: '4-PC + NAS',
             statusBadge: 'Live Infrastructure',
@@ -862,7 +862,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     y: 35,
                     title: 'Remote Desktop Console',
                     tag: 'Remote Access',
-                    description: 'Download a ready-made .rdp file for a station, or open its desktop in the browser through a secure tunnel — full screen for floor monitoring.',
+                    description: 'Download a ready-made .rdp file for a station, or open its desktop in the browser through a secure tunnel, full screen for floor monitoring.',
                     tip: 'HTTPS deployments need an HTTPS tunnel URL for the browser console.'
                 },
                 {
@@ -872,7 +872,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     title: 'Offline Reason Diagnostics',
                     tag: 'Health',
                     description: 'Distinguishes a station with no address configured from one whose agent is alive but cannot see its NAS mount.',
-                    tip: 'Fix the reason shown — the card recovers on the next pulse.'
+                    tip: 'Fix the reason shown, and the card recovers on the next pulse.'
                 },
                 {
                     id: 'm5-explorer',
@@ -910,7 +910,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             category: 'Insights & Governance',
             title: 'Analytics, Reports & Administration',
             subtitle: 'Measure progress and quality, export formal reports and control who can do what',
-            description: 'Survey Analytics turns the live records into overview, ledger, coverage and quality panels. Reports export Executive, Daily, Subgrid, QA and Lineage reports as print-ready PDFs. Administration manages users and role permissions, approves deletion requests, keeps the audit log and reports system health — so every change to project data is accounted for.',
+            description: 'Survey Analytics turns the live records into overview, ledger, coverage and quality panels. Reports export Executive, Daily, Subgrid, QA and Lineage reports as print-ready PDFs. Administration manages users and role permissions, approves deletion requests, keeps the audit log and reports system health, so every change to project data is accounted for.',
             metricLabel: 'Data Quality',
             metricValue: `${slaPercent}% SLA`,
             statusBadge: 'Governance',
@@ -935,7 +935,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     y: 30,
                     title: 'Analytics Overview',
                     tag: 'Survey Analytics',
-                    description: 'Headline survey performance — distance, frames, runs and publication status — computed from the live records.',
+                    description: 'Headline survey performance covering distance, frames, runs and publication status, computed from the live records.',
                     tip: 'Analytics never modify data; they only read the current records.'
                 },
                 {
@@ -1298,73 +1298,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const [markerProjectedPos, setMarkerProjectedPos] = useState<{ x: number; y: number; visible: boolean } | null>(null);
     const lastProjectedPosRef = useRef<{ x: number; y: number } | null>(null);
 
-    // Measured popup card size (drives the leader-line anchors so the line never
-    // runs past the real card edge / bottom of screen)
-    const [cardSize, setCardSize] = useState<{ w: number; h: number } | null>(null);
-    const cardSizeRef = useRef<HTMLDivElement | null>(null);
-    useEffect(() => {
-        const el = cardSizeRef.current;
-        if (!el || typeof ResizeObserver === 'undefined') return;
-        const ro = new ResizeObserver((entries) => {
-            const r = entries[0]?.contentRect;
-            if (r && Math.round(r.width) > 0 && Math.round(r.height) > 0) {
-                setCardSize({ w: Math.round(r.width), h: Math.round(r.height) });
-            }
-        });
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, [showDistrictPopup]);
-
-    // The globe-mode HUD chrome that the popup card must never cover: the
-    // geodetic telemetry card (bottom-left) and the renderer/zoom controls
-    // (bottom-right). Their real boxes are measured rather than guessed, so the
-    // card lands clear of them at any viewport size.
-    const geodeticCardRef = useRef<HTMLDivElement | null>(null);
-    const globeControlsRef = useRef<HTMLDivElement | null>(null);
-    const topBadgeRef = useRef<HTMLDivElement | null>(null);
-    const [hudRects, setHudRects] = useState<Array<{ left: number; top: number; right: number; bottom: number }>>([]);
-    useEffect(() => {
-        if (viewMode !== 'globe') {
-            setHudRects([]);
-            return;
-        }
-        const measure = () => {
-            const next = [geodeticCardRef.current, globeControlsRef.current, topBadgeRef.current]
-                .filter((n): n is HTMLDivElement => !!n && n.isConnected && n.offsetParent !== null)
-                .map((n) => {
-                    const r = n.getBoundingClientRect();
-                    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
-                })
-                .filter((r) => r.right - r.left > 0 && r.bottom - r.top > 0);
-            setHudRects((prev) =>
-                prev.length === next.length &&
-                    prev.every(
-                        (p, i) =>
-                            Math.abs(p.left - next[i].left) < 1 &&
-                            Math.abs(p.top - next[i].top) < 1 &&
-                            Math.abs(p.right - next[i].right) < 1 &&
-                            Math.abs(p.bottom - next[i].bottom) < 1,
-                    )
-                    ? prev
-                    : next,
-            );
-        };
-        measure();
-        const raf = window.requestAnimationFrame(measure);
-        let ro: ResizeObserver | undefined;
-        if (typeof ResizeObserver !== 'undefined') {
-            ro = new ResizeObserver(measure);
-            [geodeticCardRef.current, globeControlsRef.current, topBadgeRef.current].forEach((n) => {
-                if (n) ro?.observe(n);
-            });
-        }
-        window.addEventListener('resize', measure);
-        return () => {
-            window.cancelAnimationFrame(raf);
-            ro?.disconnect();
-            window.removeEventListener('resize', measure);
-        };
-    }, [viewMode, showDistrictPopup]);
 
     const handleActiveMarkerProjected = useCallback((pos: { x: number; y: number; visible: boolean }) => {
         const last = lastProjectedPosRef.current;
@@ -1374,90 +1307,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         }
     }, []);
 
-    // Calculate responsive popup card and angled leader line coordinates
-    const popupScreenLayout = useMemo(() => {
-        const screenW = typeof window !== 'undefined' ? window.innerWidth : 1200;
-        const screenH = typeof window !== 'undefined' ? window.innerHeight : 800;
-        const cardW = Math.min(cardSize?.w || (isMobile ? 240 : 320), Math.max(190, screenW - 16));
-        const cardH = cardSize?.h || Math.min(isMobile ? 200 : 250, Math.max(isMobile ? 100 : 160, screenH - (isMobile ? 220 : 120)));
-
-        const rawMX = markerProjectedPos ? markerProjectedPos.x : (screenW / 2);
-        const rawMY = markerProjectedPos ? markerProjectedPos.y : (screenH / 2);
-        // Clamp to the viewport so the leader line never draws off-screen / down past the card
-        const mX = Number.isFinite(rawMX) ? Math.min(Math.max(rawMX, 16), screenW - 16) : (screenW / 2);
-        const mY = Number.isFinite(rawMY) ? Math.min(Math.max(rawMY, 16), screenH - 16) : (screenH / 2);
-        const isVis = markerProjectedPos ? markerProjectedPos.visible : true;
-
-        // Keep-clear zones: the top header nav plus the measured HUD chrome
-        // (geodetic card + controls) so the popup never sits on top of them.
-        const TOP_MARGIN = 64;
-        const SIDE_MARGIN = 16;
-        const GAP = 14;
-        const minY = TOP_MARGIN;
-        const maxY = Math.max(minY, screenH - SIDE_MARGIN - cardH);
-        const clampY = (v: number) => Math.min(Math.max(v, minY), maxY);
-        const clampX = (v: number) => Math.min(Math.max(v, SIDE_MARGIN), Math.max(SIDE_MARGIN, screenW - cardW - SIDE_MARGIN));
-
-        const blockers = hudRects.map((r) => ({
-            left: r.left - GAP,
-            top: r.top - GAP,
-            right: r.right + GAP,
-            bottom: r.bottom + GAP,
-        }));
-        const overlapArea = (x: number, y: number) =>
-            blockers.reduce((sum, b) => {
-                const w = Math.min(x + cardW, b.right) - Math.max(x, b.left);
-                const h = Math.min(y + cardH, b.bottom) - Math.max(y, b.top);
-                return sum + (w > 0 && h > 0 ? w * h : 0);
-            }, 0);
-
-        // Candidates in order of preference: right of the marker, left of it,
-        // then above it (which is also the only option once the bottom HUD owns
-        // the whole lower band).
-        const centreY = clampY(mY - cardH / 2);
-        const candidates = [
-            { x: clampX(mX + 46), y: centreY },
-            { x: clampX(mX - 46 - cardW), y: centreY },
-            { x: clampX(mX - cardW / 2), y: clampY(mY - 74 - cardH) },
-        ];
-        const chosen =
-            candidates.find((c) => overlapArea(c.x, c.y) === 0) ||
-            candidates.reduce((best, c) => (overlapArea(c.x, c.y) < overlapArea(best.x, best.y) ? c : best), candidates[0]);
-
-        const cardX = chosen.x;
-        const cardY = chosen.y;
-
-        // Tag the line on the card edge that faces the marker, mid-edge, and
-        // elbow it in with a short dogleg so it reads as a proper callout.
-        const stackedAbove = cardY + cardH <= mY;
-        const stackedBelow = cardY >= mY;
-        const isRight = cardX >= mX;
-        let anchorX: number;
-        let anchorY: number;
-        if (stackedAbove || stackedBelow) {
-            // Card parked above/below the marker → tag the facing horizontal edge.
-            anchorX = cardX + cardW / 2;
-            anchorY = stackedAbove ? cardY + cardH : cardY;
-        } else {
-            anchorX = isRight ? cardX : (cardX + cardW);
-            anchorY = cardY + cardH / 2;
-        }
-
-        const span = Math.min(26, Math.max(12, (stackedAbove || stackedBelow ? Math.abs(anchorY - mY) : Math.abs(anchorX - mX)) * 0.35));
-        const elbowX = (stackedAbove || stackedBelow) ? anchorX : (isRight ? anchorX - span : anchorX + span);
-        const elbowY = stackedAbove ? anchorY + span : (stackedBelow ? anchorY - span : anchorY);
-
-        const leaderPath = `M ${mX.toFixed(1)} ${mY.toFixed(1)} L ${elbowX.toFixed(1)} ${elbowY.toFixed(1)} L ${anchorX.toFixed(1)} ${anchorY.toFixed(1)}`;
-
-        return {
-            cardX,
-            cardY,
-            markerX: mX,
-            markerY: mY,
-            visible: isVis,
-            leaderPath
-        };
-    }, [markerProjectedPos, cardSize, isMobile, hudRects]);
 
     const globeMarkers = useMemo<GlobeMarker[]>(() => {
         // The globe shows ONLY the committed state — a single region pin. District-level
@@ -1508,15 +1357,26 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             lng = projectLocation.longitude;
         }
 
+        if (resolvedDistricts.length > 0) {
+            return resolvedDistricts.map((d) => ({
+                kind: 'district',
+                label: d.name,
+                description: `${d.name}, ${d.state}`,
+                latitude: d.lat,
+                longitude: d.lng,
+                color: '#1d4ed8',
+            }));
+        }
+
         const n = resolvedDistricts.length;
         const description = `${stateName} • ${n} ${n === 1 ? 'district' : 'districts'} committed`;
         return [{
             kind: 'district',
-            label: stateName,
+            label: activeDistrict?.name || stateName,
             description,
             latitude: Number.isFinite(lat) ? lat : 3.8,
             longitude: Number.isFinite(lng) ? lng : 109.5,
-            color: '#ef4444',
+            color: '#1d4ed8',
         }];
     }, [activeDistrict, resolvedDistricts, projectSettings, projectLocation.latitude, projectLocation.longitude]);
 
@@ -1554,9 +1414,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const globeMarkersForMap = useMemo<GlobeMarker[]>(() => {
         return globeMarkers.map((m) => ({
             ...m,
-            active: m.label === activeDistrict.name
+            active: showDistrictPopup && m.label?.toLowerCase() === activeDistrict.name.toLowerCase()
         }));
-    }, [globeMarkers, activeDistrict.name]);
+    }, [globeMarkers, activeDistrict.name, showDistrictPopup]);
 
     // Focus camera directly onto active project location with smooth flight
     const handleFocusProject = useCallback((target?: { lat: number; lng: number } | React.MouseEvent | React.KeyboardEvent) => {
@@ -1612,12 +1472,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         setFlyTarget({
             latitude: d.lat,
             longitude: d.lng,
-            zoom: 1.55,
+            zoom: showDistrictPopup ? globeZoom : SATELLITE_FOCUS_ZOOM,
             timestamp: Date.now(),
         });
         if (Number.isFinite(d.lat) && Number.isFinite(d.lng)) setAtomicGlobeFocus({ lat: d.lat, lng: d.lng });
         setShowDistrictPopup(true);
-    }, [inspectableDistricts, activeDistrict]);
+    }, [inspectableDistricts, activeDistrict, showDistrictPopup, globeZoom]);
 
     // Deselect: close the details card and glide the globe back out to the project overview
     const handleDeselectDistrict = useCallback(() => {
@@ -1682,7 +1542,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         className="absolute pointer-events-none -z-10 select-none flex items-center justify-center transition-transform duration-300 ease-out"
                         style={{
                             transform: showAtomicGlobe
-                                ? `scale(${globeZoom})`
+                                ? viewMode === 'modules'
+                                    ? `translateY(36%) scale(${globeZoom * 1.45})`
+                                    : `scale(${globeZoom})`
                                 : viewMode === 'modules'
                                     ? `translateY(57%) scale(${globeZoom * 1.75})`
                                     : `scale(${globeZoom})`,
@@ -1737,9 +1599,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     zoom={globeZoom}
                                     onZoomChange={setGlobeZoom}
                                     onDragStart={() => {
-                                        // User grabbed the globe — release any fly-to focus so the
-                                        // camera is not fought over by an in-flight easeTo.
-                                        setAtomicGlobeFocus(null);
+                                        // User grabbed the globe — only clear focus if district card is not open,
+                                        // so panning while inspecting a project keeps the camera at the current zoom
+                                        if (!showDistrictPopup) {
+                                            setAtomicGlobeFocus(null);
+                                        }
                                     }}
                                     autoRotate={!viewTransitioning && !showDistrictPopup && (viewMode === 'modules' || autoRotate)}
                                     // Degrees per second — MapLibre's own bearing unit. The
@@ -1747,9 +1611,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     // globe, giving 1.8 deg/s (a 200-second turn) that read as
                                     // a frozen planet next to the vector globe's 103 deg/s.
                                     // 6 was then judged too busy for a backdrop, so this is the
-                                    // calm hero drift: one full turn every ~2.4 minutes.
-                                    rotationSpeed={1.0}
+                                    // calm hero drift: one full turn every ~2.4 minutes (360° / 2.5°/s = 144s).
+                                    rotationSpeed={2.5}
                                     enableScrollZoom={viewMode === 'globe'}
+                                    showActiveMarkerPin={showDistrictPopup}
+                                    activeMarkerPinUrl="/Icon%20road%20analysis/pin.png"
                                     activeMarkerLabel={activeDistrict.name}
                                     onActiveMarkerProjected={handleActiveMarkerProjected}
                                     onMarkerClick={(marker) => {
@@ -1783,7 +1649,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             }
                         >
                             <EarthGlobe
-                                autoRotate={viewMode === 'modules' || (autoRotate && !viewTransitioning)}
+                                autoRotate={viewMode === 'modules' || (autoRotate && !viewTransitioning && !showDistrictPopup)}
                                 autoRotateSpeed={0.8}
                                 centerLatitude={viewMode === 'modules' && !inspectingDistrict ? -26.0 : activeLat}
                                 centerLongitude={viewMode === 'modules' && !inspectingDistrict ? 105.0 : activeLng}
@@ -1801,8 +1667,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 strokeWidth={0.85}
                                 glowColor="rgba(255, 255, 255, 0.18)"
                                 glowIntensity={0.65}
-                                markers={globeMarkers}
-                                activeTargetCoord={{ lat: activeDistrict.lat, lng: activeDistrict.lng }}
+                                markers={globeMarkersForMap}
+                                activeTargetCoord={{ lat: activeLat, lng: activeLng }}
                                 onActiveMarkerProjected={handleActiveMarkerProjected}
                                 onZoomIn={() => handleInspectDistrict()}
                                 onMarkerClick={(marker) => {
@@ -1820,6 +1686,25 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     }
                                 }}
                             />
+                            {/* Project Location Pin marker for vector globe when card is active */}
+                            {showDistrictPopup && markerProjectedPos && markerProjectedPos.visible && !isFlyingIn && (
+                                <div
+                                    className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full transition-opacity duration-300"
+                                    style={{
+                                        left: `${markerProjectedPos.x}px`,
+                                        top: `${markerProjectedPos.y}px`,
+                                    }}
+                                >
+                                    <div className="relative flex flex-col items-center">
+                                        <img
+                                            src="/Icon%20road%20analysis/pin.png"
+                                            alt="Project Location"
+                                            className="w-9 h-9 object-contain drop-shadow-[0_4px_10px_rgba(220,38,38,0.5)] animate-in fade-in zoom-in-75 duration-300"
+                                        />
+                                        <div className="w-2.5 h-1 bg-black/60 rounded-full blur-[0.8px] -mt-0.5" />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </motion.div>
@@ -2021,7 +1906,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         }`}>
                         {/* Top Center Minimal Orientation Badge */}
                         <div className="w-full flex flex-col items-center pt-1 gap-1">
-                            <div ref={topBadgeRef} className="px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-neutral-900/80 backdrop-blur-md border border-white/10 shadow-xl flex items-center gap-1.5 sm:gap-2">
+                            <div className="px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-neutral-900/80 backdrop-blur-md border border-white/10 shadow-xl flex items-center gap-1.5 sm:gap-2">
                                 <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-colors duration-300 ${showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
                                     }`} />
                                 <span className="text-[9px] sm:text-[11px] font-mono uppercase tracking-wider text-neutral-200 font-semibold">
@@ -2041,23 +1926,41 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
                         {/* Bottom Row: Geodetic HUD (Left) & Controls (Right) */}
                         <div className="w-full flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 pb-2">
-                            {/* Geodetic Telemetry Card - Click to focus and display location on 3D globe */}
-                            <div
-                                role="button"
-                                tabIndex={0}
-                                ref={geodeticCardRef}
-                                onClick={() => {
-                                    if (showDistrictPopup) {
-                                        handleDeselectDistrict();
-                                    } else {
-                                        setViewMode('globe');
-                                        if (activeDistrict) {
-                                            handleSelectDistrict(selectedDistrictIdx);
-                                        }
-                                    }
-                                }}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
+                            {/* Left Column Stack: District Popup (above) + Geodetic Telemetry Card (below) */}
+                            <div className="flex flex-col items-start gap-2 max-w-[290px] sm:max-w-[340px] w-full pointer-events-auto">
+                                {/* District / Project Area Card (placed directly above Project Card) */}
+                                {showDistrictPopup && activePopupData && !isFlyingIn && !isZoomedToDistrict && (
+                                    <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                        <DistrictProjectPopup
+                                            data={activePopupData}
+                                            districts={resolvedDistricts.map(d => ({
+                                                id: d.id,
+                                                name: d.name,
+                                                state: d.state,
+                                                lat: d.lat,
+                                                lng: d.lng,
+                                                totalFrames: computedFrames,
+                                                totalPoi: computedPoi,
+                                                surveyMileage: computedDistance,
+                                                pipelineSla: slaPercent,
+                                                subgrids: activePopupData.subgrids,
+                                                trackPoints: activePopupData.trackPoints,
+                                            }))}
+                                            activeDistrictIndex={selectedDistrictIdx}
+                                            onSelectDistrict={(idx) => {
+                                                handleSelectDistrict(idx);
+                                            }}
+                                            onClose={() => handleDeselectDistrict()}
+                                            className="w-full max-h-[min(84vh,700px)]"
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Geodetic Telemetry Card - Click to focus and display location on 3D globe */}
+                                <div
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => {
                                         if (showDistrictPopup) {
                                             handleDeselectDistrict();
                                         } else {
@@ -2066,68 +1969,89 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                                 handleSelectDistrict(selectedDistrictIdx);
                                             }
                                         }
-                                    }
-                                }}
-                                className={`p-2.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 backdrop-blur-xl border text-left max-w-[260px] sm:max-w-[320px] pointer-events-auto shadow-2xl space-y-1 sm:space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none hover:-translate-y-0.5 ${showDistrictPopup
-                                    ? 'border-red-500/70 ring-1 ring-red-500/30 shadow-[0_0_24px_rgba(239,68,68,0.25)]'
-                                    : 'border-white/10 hover:border-red-500/50'
-                                    }`}
-                                title="Click to rotate globe and center on project location (Toggle Panotrack Popup)"
-                            >
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-1.5 sm:gap-2 truncate">
-                                        <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0 transition-colors duration-300 ${showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
-                                            }`} />
-                                        <span className="text-[11px] sm:text-xs font-semibold text-white tracking-wide truncate group-hover:text-red-400 transition-colors">
-                                            {projectLocation.name}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                                        {showDistrictPopup && (
-                                            <span className="text-[9px] sm:text-[10px] font-semibold text-emerald-400/90 uppercase tracking-wider shrink-0">
-                                                Active
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            if (showDistrictPopup) {
+                                                handleDeselectDistrict();
+                                            } else {
+                                                setViewMode('globe');
+                                                if (activeDistrict) {
+                                                    handleSelectDistrict(selectedDistrictIdx);
+                                                }
+                                            }
+                                        }
+                                    }}
+                                    className={`p-2.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 backdrop-blur-xl border text-left w-full max-w-[260px] sm:max-w-[320px] pointer-events-auto shadow-2xl space-y-1 sm:space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none hover:-translate-y-0.5 ${showDistrictPopup
+                                        ? 'border-red-500/70 ring-1 ring-red-500/30 shadow-[0_0_24px_rgba(239,68,68,0.25)]'
+                                        : 'border-white/10 hover:border-red-500/50'
+                                        }`}
+                                    title="Click to rotate globe and center on project location (Toggle Panotrack Popup)"
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5 sm:gap-2 truncate">
+                                            <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0 transition-colors duration-300 ${showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
+                                                }`} />
+                                            <span className="text-[11px] sm:text-xs font-semibold text-white tracking-wide truncate group-hover:text-red-400 transition-colors">
+                                                {projectLocation.name}
                                             </span>
-                                        )}
-                                        <span className={`material-symbols-outlined text-[13px] sm:text-[15px] leading-none transition-colors shrink-0 ${showDistrictPopup ? 'text-red-400' : 'text-neutral-400 group-hover:text-white'
-                                            }`} title="Toggle Panotrack District Popup">
-                                            location_on
-                                        </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                                            {showDistrictPopup && (
+                                                <span className="text-[9px] sm:text-[10px] font-semibold text-emerald-400/90 uppercase tracking-wider shrink-0">
+                                                    Active
+                                                </span>
+                                            )}
+                                            <span className={`material-symbols-outlined text-[13px] sm:text-[15px] leading-none transition-colors shrink-0 ${showDistrictPopup ? 'text-red-400' : 'text-neutral-400 group-hover:text-white'
+                                                }`} title="Toggle Panotrack District Popup">
+                                                location_on
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
-                                <p className="text-[10px] sm:text-[11px] text-neutral-400 font-mono">
-                                    {projectLocation.subtext}
-                                </p>
-                                <div className="pt-1.5 sm:pt-2 border-t border-white/10 flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
-                                    <span>Target Distance</span>
-                                    <span className="text-white font-mono font-semibold">{targetDistance.toLocaleString()} km</span>
-                                </div>
-                                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
-                                    <span>Survey Mileage</span>
-                                    <span className="text-white font-mono font-semibold">{computedDistance.toFixed(1)} km</span>
-                                </div>
-                                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
-                                    <span>State</span>
-                                    <span className="text-white font-mono font-semibold">{activeDistrict?.state || '—'}</span>
-                                </div>
-                                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
-                                    <span>District</span>
-                                    <span className="text-white font-mono font-semibold">{activeDistrict?.name || '—'}</span>
-                                </div>
-                                <div className="hidden sm:flex items-center justify-between text-[11px] text-neutral-400">
-                                    <span>Project Created</span>
-                                    <span className="text-white font-mono font-semibold">{projectCreatedLabel}</span>
+                                    <p className="text-[10px] sm:text-[11px] text-neutral-400 font-mono">
+                                        {projectLocation.subtext}
+                                    </p>
+                                    <div className="pt-1.5 sm:pt-2 border-t border-white/10 flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
+                                        <span>Target Distance</span>
+                                        <span className="text-white font-mono font-semibold">{targetDistance.toLocaleString()} km</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
+                                        <span>Survey Mileage</span>
+                                        <span className="text-white font-mono font-semibold">{computedDistance.toFixed(1)} km</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
+                                        <span>State</span>
+                                        <span className="text-white font-mono font-semibold">{activeDistrict?.state || '—'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
+                                        <span>District</span>
+                                        <span className="text-white font-mono font-semibold">{activeDistrict?.name || '—'}</span>
+                                    </div>
+                                    <div className="hidden sm:flex items-center justify-between text-[11px] text-neutral-400">
+                                        <span>Project Created</span>
+                                        <span className="text-white font-mono font-semibold">{projectCreatedLabel}</span>
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Quick Action Navigation Buttons */}
-                            <div ref={globeControlsRef} className="flex flex-wrap items-center gap-1.5 sm:gap-2 pointer-events-auto">
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pointer-events-auto">
                                 {/* Globe Renderer Choice: Classic Vector Globe ↔ Atomic Point-Cloud Globe */}
                                 <div className="flex items-center bg-neutral-900/80 backdrop-blur-md px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border border-white/10 shadow-md">
                                     <button
                                         onClick={() => {
-                                            setGlobeZoom(showDistrictPopup ? 1.55 : VECTOR_DEFAULT_ZOOM);
-                                            setFlyTarget(null);
                                             setShowAtomicGlobe(false);
+                                            if (showDistrictPopup) {
+                                                setFlyTarget({
+                                                    latitude: activeLat,
+                                                    longitude: activeLng,
+                                                    zoom: globeZoom,
+                                                    timestamp: Date.now(),
+                                                });
+                                            } else {
+                                                setGlobeZoom(VECTOR_DEFAULT_ZOOM);
+                                                setFlyTarget(null);
+                                            }
                                         }}
                                         title="Switch to the classic vector globe"
                                         className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer ${showAtomicGlobe ? 'text-neutral-400 hover:text-white' : 'bg-white/10 text-white'
@@ -2137,18 +2061,17 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     </button>
                                     <button
                                         onClick={() => {
-                                            setGlobeZoom(showDistrictPopup ? SATELLITE_FOCUS_ZOOM : (viewMode === 'globe' ? FULL_GLOBE_ZOOM : INTRO_ZOOM));
-                                            setFlyTarget(null);
                                             setShowAtomicGlobe(true);
+                                            if (!showDistrictPopup) {
+                                                setGlobeZoom(viewMode === 'globe' ? FULL_GLOBE_ZOOM : INTRO_ZOOM);
+                                                setFlyTarget(null);
+                                            }
                                         }}
                                         title="Switch to the satellite globe"
-                                        className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer inline-flex items-center gap-0.5 sm:gap-1 ${showAtomicGlobe ? 'bg-sky-500/80 text-white' : 'text-neutral-400 hover:text-white'
+                                        className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer ${showAtomicGlobe ? 'bg-sky-500/80 text-white' : 'text-neutral-400 hover:text-white'
                                             }`}
                                     >
-                                        <span className="material-symbols-outlined text-[10px] sm:text-[11px] leading-none shrink-0">
-                                            satellite_alt
-                                        </span>
-                                        <span className="leading-none">Satellite</span>
+                                        Satellite
                                     </button>
                                 </div>
 
@@ -2320,80 +2243,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 />
             )}
 
-            {/* 6. Floating 3D Panotrack District HUD Card & SVG Leader Line Overlay (Screen-space 1:1 with EarthGlobe) */}
-            {viewMode === 'globe' && showDistrictPopup && activePopupData && !isFlyingIn && !isZoomedToDistrict && (
-                <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden animate-in fade-in duration-500">
-                    {/* Angled SVG Laser Leader Line connecting marker to card (Monochromatic) */}
-                    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-0">
-                        {/* Fade out the whole leader assembly when the marker is projected off-globe,
-                            so the dashed line never strays off-screen / down past the card */}
-                        <g
-                            opacity={popupScreenLayout.visible ? 1 : 0}
-                            style={{ transition: 'opacity 500ms ease' }}
-                        >
-                            {/* Pulsing beacon ring at marker location */}
-                            <circle
-                                cx={popupScreenLayout.markerX}
-                                cy={popupScreenLayout.markerY}
-                                r={14}
-                                fill="none"
-                                stroke="rgba(255, 255, 255, 0.85)"
-                                strokeWidth={1.5}
-                                className="globe-pulse"
-                            />
-                            <circle
-                                cx={popupScreenLayout.markerX}
-                                cy={popupScreenLayout.markerY}
-                                r={4.5}
-                                fill="#ffffff"
-                            />
-                            {/* Laser path */}
-                            <path
-                                d={popupScreenLayout.leaderPath}
-                                fill="none"
-                                stroke="rgba(255, 255, 255, 0.85)"
-                                strokeWidth={1.5}
-                                strokeDasharray="5 3"
-                                filter="drop-shadow(0 0 4px rgba(255, 255, 255, 0.5))"
-                            />
-                        </g>
-                    </svg>
 
-                    {/* Floating Panotrack District HUD Card */}
-                    <div
-                        ref={cardSizeRef}
-                        className="absolute z-10 pointer-events-auto transition-all duration-200"
-                        style={{
-                            left: `${popupScreenLayout.cardX}px`,
-                            top: `${popupScreenLayout.cardY}px`,
-                        }}
-                    >
-                        <DistrictProjectPopup
-                            data={activePopupData}
-                            districts={resolvedDistricts.map(d => ({
-                                id: d.id,
-                                name: d.name,
-                                state: d.state,
-                                lat: d.lat,
-                                lng: d.lng,
-                                totalFrames: computedFrames,
-                                totalPoi: computedPoi,
-                                surveyMileage: computedDistance,
-                                pipelineSla: slaPercent,
-                                subgrids: activePopupData.subgrids,
-                                trackPoints: activePopupData.trackPoints,
-                            }))}
-                            activeDistrictIndex={selectedDistrictIdx}
-                            onSelectDistrict={(idx) => {
-                                // Switching districts inside the card must NOT move the globe —
-                                // it only re-focuses the popup's map highlight
-                                setSelectedDistrictIdx(idx);
-                            }}
-                            onClose={() => handleDeselectDistrict()}
-                        />
-                    </div>
-                </div>
-            )}
 
             {/* 5. MapLibre GL District Boundary View (Active when zoomed into project district) */}
             {isZoomedToDistrict && activeDistrict && (

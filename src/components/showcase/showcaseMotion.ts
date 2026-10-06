@@ -25,13 +25,13 @@ export const revealGroup: Variants = {
     show: { transition: { staggerChildren: 0.09, delayChildren: 0.04 } },
 };
 
-/** Staggered word-mask headline reveal (used by Hero, Workflow, Outro headlines). */
+/** Staggered word headline reveal (used by Hero, Workflow, Outro headlines). */
 export const wordVariant: Variants = {
-    hidden: { y: '115%', opacity: 0 },
+    hidden: { y: 16, opacity: 0 },
     show: (i: number) => ({
-        y: '0%',
+        y: 0,
         opacity: 1,
-        transition: { delay: 0.12 + i * 0.06, duration: 0.75, ease: EASE },
+        transition: { delay: 0.12 + i * 0.06, duration: 0.7, ease: EASE },
     }),
 };
 
