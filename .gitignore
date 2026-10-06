@@ -42,9 +42,11 @@ worker/_tmp_*.npy
 .wrangler
 .dev.vars
 
-# tsc -b emits these from vite.config.ts (tsconfig.node.json is `composite`
-# with no noEmit). vite.config.ts is the single source of truth; Vite reads it
-# directly, so the generated copies must never be committed or hand-edited.
+# tsc -b emitted a generated vite.config.js/.d.ts into the repo root before
+# tsconfig.node.json was given an outDir under node_modules/.tmp. Ignored here so
+# a stale local artifact can never be committed; nothing is emitted to the root
+# any more, so this is belt-and-braces. vite.config.ts is the single source of
+# truth and Vite reads it directly.
 vite.config.js
 vite.config.d.ts
 tsconfig.node.tsbuildinfo

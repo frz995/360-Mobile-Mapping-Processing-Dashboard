@@ -7,7 +7,11 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
-    "strict": true
+    "strict": true,
+    // vite.config.ts imports src/config/branding.ts, so this project compiles
+    // that file too. `composite` forbids noEmit, so the generated JS/d.ts are
+    // sent to node_modules instead of landing beside the TypeScript sources.
+    "outDir": "node_modules/.tmp/tsconfig-node"
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "src/config/branding.ts"]
 }

@@ -1,4 +1,5 @@
 import React, { useId } from 'react';
+import { branding } from '../../config/branding';
 
 export interface GeoSphereIconProps extends React.SVGProps<SVGSVGElement> {
   size?: number | string;
@@ -12,14 +13,17 @@ export interface GeoSphereFullLogoProps extends GeoSphereIconProps {
    */
   iconOnly?: boolean;
   /**
-   * Color for the "360°" text (defaults to '#FFFFFF' in colorful mode).
+   * Color for the trailing mark (defaults to '#FFFFFF' in colorful mode).
    */
   degreesColor?: string;
 }
 
 /**
- * GeoSphere 360 Standalone Icon Mark.
+ * Standalone Icon Mark — the dual-chevron flight glyph with no text.
  * Ideal for square avatars, badges, mobile collapsed headers, and favicons.
+ *
+ * Text-free by design, so it stays valid under any brand configured through
+ * src/config/branding.ts.
  */
 export const GeoSphereIcon: React.FC<GeoSphereIconProps> = ({
   size = 24,
@@ -107,11 +111,11 @@ export const GeoSphereIcon: React.FC<GeoSphereIconProps> = ({
 };
 
 /**
- * GeoSphere 360 Full Logo.
- * Includes the dynamic flight vector mark and the brand text "GeoSphere 360°".
- * - "GeoSphere" rendered in a grey → white gradient.
+ * Full Logo — flight vector mark plus the branded wordmark.
+ * - Wordmark rendered in a grey → white gradient.
  * - Mark filled white (clean, no outer stroke).
- * - "360°" rendered in crisp white with the degree symbol.
+ * - Trailing accent mark rendered in crisp white via degreesColor.
+ * - Text comes from branding.productName / branding.productMark.
  * - ViewBox: 0 0 820 200 (aspect ratio 4.1:1).
  */
 export const GeoSphereFullLogo: React.FC<GeoSphereFullLogoProps> = ({
@@ -209,7 +213,7 @@ export const GeoSphereFullLogo: React.FC<GeoSphereFullLogoProps> = ({
         />
       </g>
 
-      {/* Integrated Logo Text: "GeoSphere 360°" */}
+      {/* Integrated Logo Text: the branded wordmark plus its accent mark. */}
       <g transform="translate(220, 108)">
         <text
           y="0"
@@ -221,7 +225,7 @@ export const GeoSphereFullLogo: React.FC<GeoSphereFullLogoProps> = ({
           letterSpacing="-1"
         >
           <tspan fill={colorful ? `url(#${textGrad})` : 'currentColor'}>
-            GeoSphere
+            {branding.productName}
           </tspan>
           <tspan
             fontWeight="700"
@@ -229,7 +233,7 @@ export const GeoSphereFullLogo: React.FC<GeoSphereFullLogoProps> = ({
             dx="14"
             fill={colorful ? degreesColor : 'currentColor'}
           >
-            360°
+            {branding.productMark}
           </tspan>
         </text>
       </g>

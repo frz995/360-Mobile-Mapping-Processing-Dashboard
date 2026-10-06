@@ -66,6 +66,18 @@ interface ImportMetaEnv {
   readonly VITE_DATA_QUIET?: string;
   readonly VITE_SENTRY_DSN?: string;
   readonly VITE_ENV_KEYS?: string;
+  /** Brand wordmark shown in the logo lockup. See src/config/branding.ts */
+  readonly VITE_BRAND_NAME?: string;
+  /** Trailing accent mark in the logo. Set to an empty string to omit it. */
+  readonly VITE_BRAND_MARK?: string;
+  /** Canonical origin for canonical/OG/JSON-LD URLs. No trailing slash. */
+  readonly VITE_BRAND_URL?: string;
+  /** Seeded project name for a fresh install (overridable in Admin Settings). */
+  readonly VITE_BRAND_PROJECT_NAME?: string;
+  /** Seeded contract code for a fresh install. */
+  readonly VITE_BRAND_CONTRACT_CODE?: string;
+  /** Seeded client name for a fresh install. */
+  readonly VITE_BRAND_CLIENT_NAME?: string;
 }
 
 interface ImportMeta {

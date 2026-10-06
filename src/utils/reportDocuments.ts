@@ -2,7 +2,7 @@
 // Printable PDF-style report builders for the Reports workspace.
 // Audit-document layout modelled on classic scanner/enterprise report
 // suites: Arial typography, teal numbered sections, an automatic table
-// of contents, dark header-bar tables, CSS bar charts and a GeoSphere
+// of contents, dark header-bar tables, CSS bar charts and a branded
 // wordmark in the document header and footer. No KPI card stacks and
 // no colour pills — every export reads as one cohesive audit document.
 // Independent of the dashboard's executive generator (which stays
@@ -10,6 +10,7 @@
 // =====================================================================
 
 import type { SurveyAnalytics } from './surveyAnalytics';
+import { branding, brandName, brandTitle } from '../config/branding';
 
 export interface ReportMeta {
   operator?: string;
@@ -48,7 +49,7 @@ td, th { font-variant-numeric: tabular-nums; }
 }
 .print-btn:hover { background: #005f6e; }
 
-/* Wordmark logo: GeoSphere dual-chevron flight mark + "GeoSphere 360°" */
+/* Wordmark logo: dual-chevron flight mark + the branded wordmark */
 .logo { display: inline-flex; align-items: center; }
 .logo svg { display: block; }
 
@@ -123,11 +124,13 @@ h1, h2, h3 { page-break-after: avoid; }
 }
 `;
 
-// GeoSphere 360° full brand mark (public/branding/geosphere-full-logo.svg),
-// adapted for white paper: dark-grey chevron flight mark, grey→ink gradient
-// word text and dark "360°" matching the ink tone.
+// Full brand mark (public/branding/geosphere-full-logo.svg), adapted for white
+// paper: dark-grey chevron flight mark, grey→ink gradient word text and a dark
+// trailing mark matching the ink tone. Text is injected, not authored here, so a
+// build configured via VITE_BRAND_* emits its own name.
 function logoSVG(height: number): string {
-  return `<svg height="${height}" viewBox="0 0 820 200" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GeoSphere 360°">
+  const label = esc(brandName());
+  return `<svg height="${height}" viewBox="0 0 820 200" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${label}">
   <defs>
     <linearGradient id="gs-word" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#6b7280"/>
@@ -140,7 +143,7 @@ function logoSVG(height: number): string {
   <path d="M 137 63 L 95 104 C 93.6 132.5, 83.4 161.0, 80 190 C 134.3 174.4, 123.4 106.6, 137 63 Z" fill="#1b2430" opacity="0.8"/>
   <g transform="translate(220, 108)">
     <text y="0" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="78" letter-spacing="-1">
-      <tspan fill="url(#gs-word)">GeoSphere</tspan><tspan font-weight="700" font-size="70" dx="14" fill="#1b2430">360&#176;</tspan>
+      <tspan fill="url(#gs-word)">${esc(branding.productName)}</tspan><tspan font-weight="700" font-size="70" dx="14" fill="#1b2430">${esc(branding.productMark)}</tspan>
     </text>
   </g>
 </svg>`;
@@ -194,7 +197,7 @@ export function renderToc(sections: ReportSection[]): string {
 
 export function reportShell(title: string, subtitle: string, refNo: string, bodyHtml: string, meta?: ReportMeta): string {
   const operator = meta?.operator || 'GIS Engineer';
-  const generatedBy = meta?.generatedBy || 'GeoSphere 360 · Executive Processing Dashboard';
+  const generatedBy = meta?.generatedBy || `${brandTitle()} · Executive Processing Dashboard`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -204,7 +207,7 @@ export function reportShell(title: string, subtitle: string, refNo: string, body
 </head>
 <body>
   <div class="action-bar">
-    <div class="action-bar-title">GeoSphere 360 · Reporting Console</div>
+    <div class="action-bar-title">${esc(brandTitle())} · Reporting Console</div>
     <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
   </div>
 
@@ -212,7 +215,7 @@ export function reportShell(title: string, subtitle: string, refNo: string, body
     <div class="doc-head-left">
       ${logo()}
       <div class="doc-title-block">
-        <div class="org-title">GeoSphere 360 · Mobile Mapping Surveillance</div>
+        <div class="org-title">${esc(brandTitle())} · Mobile Mapping Surveillance</div>
         <h1 class="main-title">${title}</h1>
         <div class="sub-title">${subtitle}</div>
       </div>

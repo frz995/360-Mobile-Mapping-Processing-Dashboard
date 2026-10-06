@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, within, waitFor } from '@testing-library/react';
 import { SystemShowcase } from '../SystemShowcase';
+// Statically imported, so this always holds the DEFAULT branding — the override
+// test below compares against it after vi.resetModules() swaps the registry.
+import { branding } from '../../config/branding';
 
 // tsParticles requires OffscreenCanvas (not available in jsdom) — stub the sparkles background.
 vi.mock('../common/Sparkles', () => ({
@@ -21,6 +24,7 @@ vi.mock('../common/MapLibreGlobe', () => ({
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.resetModules();
 });
 
 describe('SystemShowcase Component', () => {
@@ -310,6 +314,41 @@ describe('SystemShowcase Component', () => {
     });
     expect(within(popup).getByText(/Snapshot 1 of/i)).toBeInTheDocument();
     expect(within(popup).getByAltText(/Project Management screenshot 1/i)).toBeInTheDocument();
+  });
+
+  it('renders the logo lockup from branding, not a hardcoded wordmark', () => {
+    render(<SystemShowcase onEnterDashboard={vi.fn()} />);
+
+    expect(screen.getAllByText(branding.productName).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(branding.productMark).length).toBeGreaterThan(0);
+  });
+
+  it('renders a rebranded lockup when branding is overridden', async () => {
+    // The contract under test is "the lockup follows branding", not how branding
+    // is built from env — that is covered exhaustively in config/branding.test.ts.
+    // Substituting the module keeps this a component test: branding binds
+    // import.meta.env once at load, and vi.stubEnv cannot reach it (vitest 1.6
+    // writes process.env only; import.meta.env is a transform-time snapshot).
+    vi.doMock('../../config/branding', async () => {
+      const actual = await vi.importActual<typeof import('../../config/branding')>(
+        '../../config/branding'
+      );
+      return {
+        ...actual,
+        branding: { ...actual.branding, productName: 'UE Geo', productMark: '' }
+      };
+    });
+    vi.resetModules();
+
+    const { SystemShowcase: Rebranded } = await import('../SystemShowcase');
+    render(<Rebranded onEnterDashboard={vi.fn()} />);
+
+    expect(screen.getAllByText('UE Geo').length).toBeGreaterThan(0);
+    // With the mark omitted, the default '360°' must not survive anywhere.
+    expect(screen.queryByText('360°')).not.toBeInTheDocument();
+
+    vi.doUnmock('../../config/branding');
+    vi.resetModules();
   });
 });
 

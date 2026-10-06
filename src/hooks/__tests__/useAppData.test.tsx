@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, waitFor } from '@testing-library/react'
 import * as React from 'react'
 import { useAppData } from '../useAppData'
+import { branding } from '../../config/branding'
 
 // Mock the whole Supabase service: we do not want any real network/DB touches
 // in jsdom. Provide a scripted `supabase` client and controlled model fns.
 const db = vi.hoisted(() => {
   const qaRows: any[] = [
-    { subgrid: 'SURVEY_A', qa_status: 'flagged', defect_count: 2, defect_flags: { blur: true } },
-    { subgrid: 'survey_a', qa_status: 'passed', defect_count: 0, defect_flags: {} }
+    { subgrid: 'N93E70', qa_status: 'flagged', defect_count: 2, defect_flags: { blur: true } },
+    { subgrid: 'n93e70', qa_status: 'passed', defect_count: 0, defect_flags: {} }
   ]
   return {
     qaRows,
@@ -72,8 +73,8 @@ describe('useAppData derived-state hydration', () => {
   beforeEach(() => {
     db.qaRows.length = 0
     db.qaRows.push(
-      { subgrid: 'SURVEY_A', qa_status: 'flagged', defect_count: 2, defect_flags: { blur: true } },
-      { subgrid: 'survey_a', qa_status: 'passed', defect_count: 0, defect_flags: {} }
+      { subgrid: 'N93E70', qa_status: 'flagged', defect_count: 2, defect_flags: { blur: true } },
+      { subgrid: 'n93e70', qa_status: 'passed', defect_count: 0, defect_flags: {} }
     )
     db.daily = []
     db.batches = []
@@ -114,12 +115,12 @@ describe('useAppData derived-state hydration', () => {
   })
 
   it('does not apply a subgrid-wide qa_defects tally to a run with no run-scoped count', async () => {
-    // db.qaRows holds one flagged row for SURVEY_A. Nothing in dailyData is
+    // db.qaRows holds one flagged row for N93E70. Nothing in dailyData is
     // run-scoped for it, so the count must not bleed in from the subgrid total.
     db.daily = [
       {
         id: 'd-leak',
-        subgrid: 'SURVEY_A',
+        subgrid: 'N93E70',
         date: '2026-01-01',
         imagesProcessed: 1000,
         imagesTotal: 1000
@@ -152,7 +153,7 @@ describe('useAppData derived-state hydration', () => {
     db.daily = [
       {
         id: 'd-3',
-        subgrid: 'SURVEY_A',
+        subgrid: 'N93E70',
         date: '2026-01-01',
         imagesProcessed: 500,
         imagesTotal: 500,
@@ -163,7 +164,7 @@ describe('useAppData derived-state hydration', () => {
       {
         id: 'b-1',
         batchName: 'A1',
-        subgrid: 'SURVEY_A',
+        subgrid: 'N93E70',
         imagesTotal: 500
       }
     ]
@@ -179,7 +180,7 @@ describe('useAppData derived-state hydration', () => {
     db.daily = [
       {
         id: 'd-0frames',
-        subgrid: 'SURVEY_A',
+        subgrid: 'N93E70',
         date: '2026-01-01',
         imagesProcessed: 0,
         poiCount: 100,
@@ -197,8 +198,8 @@ describe('useAppData derived-state hydration', () => {
   })
 
   it('hydrates QAQC audit runs directly from Supabase cloud database', async () => {
-    // Use a real subgrid code: extractSubgridName('SURVEY_A') truncates to
-    // 'SURVEY', which does not match its own audit-cache key.
+    // Use a real subgrid code: extractSubgridName on an underscored fixture
+    // truncates at the separator, which does not match its own audit-cache key.
     db.auditRuns = {
       N93E70_default: {
         subgrid: 'N93E70',
@@ -273,6 +274,18 @@ describe('useAppData derived-state hydration', () => {
     expect(unaudited.qaqcStatus).toBeUndefined()
 
     db.auditRuns = {}
+  })
+
+  it('seeds project name, contract code and client name from branding when project_settings has no row', async () => {
+    // fetchProjectSettingsFromSupabase is mocked to null, i.e. a fresh install
+    // where nobody has opened Admin Settings yet. The seeds must be the branded
+    // defaults, not literals baked into the hook.
+    const { result } = await renderHookResult()
+
+    const settings = result()?.projectSettings
+    expect(settings.projectName).toBe(branding.defaultProjectName)
+    expect(settings.contractCode).toBe(branding.defaultContractCode)
+    expect(settings.clientName).toBe(branding.defaultClientName)
   })
 })
 

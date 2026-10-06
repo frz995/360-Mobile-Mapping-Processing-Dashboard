@@ -16,6 +16,7 @@ import { resolveRunDefectCount, buildQaqcStatus } from '../utils/defectCounts';
 import { getActiveProjectId } from '../services/projectContext';
 import { buildDefaultProjectBoundary } from '../components/boundary/malaysiaDistricts';
 import { STORAGE_BUCKET_DEFAULT, STORAGE_PATH_PREFIX_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../config/defaults';
+import { branding } from '../config/branding';
 import { getImagesProcessedCount, getPOICount, applyBatchLogOverrides } from '../utils/dashboardData';
 import type { QAQCAuditRunRecord } from '../types/admin';
 import type { DailyTimeSeries, BatchLog, NotificationItem, AuditLogItem } from '../types/dashboard';
@@ -26,9 +27,13 @@ export interface QAFlagState {
   isLocked: boolean;
 }
 
+// Seeds only. Admin Settings writes projectName / contractCode / clientName to
+// project_settings, which takes precedence — so a reseller overwrites these on
+// first run without a rebuild. Branding only decides what an untouched install
+// looks like before anyone has logged in.
 const DEFAULT_PROJECT_SETTINGS = {
-  projectName: '360 Mobile Mapping — Spatial Operations Division',
-  contractCode: 'MMS-2026-GEO-01',
+  projectName: branding.defaultProjectName,
+  contractCode: branding.defaultContractCode,
   // First-open / guest footprint: the committed default production boundary
   // (Johor — Segamat + Tangkak). Real project scopes override it on sign-in.
   projectBoundary: buildDefaultProjectBoundary(),
@@ -41,7 +46,7 @@ const DEFAULT_PROJECT_SETTINGS = {
   defaultEquipment: 'MMS',
   leadPic: '',
   regionZone: 'Central Operations Region',
-  clientName: 'Spatial Asset Operations',
+  clientName: branding.defaultClientName,
   // Database & Image Fetching Settings
   databaseProvider: 'supabase_cloud',
   storageProvider: 'supabase',

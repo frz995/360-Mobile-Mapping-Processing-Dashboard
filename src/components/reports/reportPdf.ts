@@ -1,6 +1,6 @@
 // Executive PDF report generated from the map dashboard action centre.
-// Shares the audit-document shell (TOC, Arial, teal sections, GeoSphere
-// brand mark) with the Reports workspace via utils/reportDocuments.
+// Shares the audit-document shell (TOC, Arial, teal sections, branded
+// wordmark) with the Reports workspace via utils/reportDocuments.
 
 import { getPOICount, getImagesProcessedCount } from '../../utils/dashboardData';
 import { extractSubgridName } from '../../utils/subgrid';
@@ -14,6 +14,7 @@ import {
   esc,
   type ReportSection
 } from '../../utils/reportDocuments';
+import { brandTitle } from '../../config/branding';
 
 export interface ProjectSettingsLike {
   targetKm?: number;
@@ -235,7 +236,7 @@ export function buildExecutivePdfHtml(input: ExecutivePdfReportInput): string {
     renderToc(sections) + renderSections(sections),
     {
       operator: projectSettings?.engineerName || operatorUser,
-      generatedBy: 'GeoSphere 360 · Executive Processing Dashboard',
+      generatedBy: `${brandTitle()} · Executive Processing Dashboard`,
       contractCode,
       classification: 'CONFIDENTIAL',
       autoPrint: true

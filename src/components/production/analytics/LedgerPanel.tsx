@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import type { SurveyAnalytics } from '../../../utils/surveyAnalytics';
 import { openPrintableReport, buildExecutiveReportHtml } from '../../../utils/reportDocuments';
+import { brandTitle } from '../../../config/branding';
 
 interface LedgerPanelProps {
   analytics: SurveyAnalytics;
@@ -84,7 +85,7 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
 
   const handleExportPdf = () => {
     const html = buildExecutiveReportHtml(analytics);
-    openPrintableReport('GeoSphere 360 Executive Progress Report', html);
+    openPrintableReport(`${brandTitle()} Executive Progress Report`, html);
   };
 
   return (
