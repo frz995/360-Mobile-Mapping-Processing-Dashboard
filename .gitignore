@@ -51,6 +51,11 @@ vite.config.js
 vite.config.d.ts
 tsconfig.node.tsbuildinfo
 
+# Generated from supabase/migrations by scripts/bootstrap-migrations.mjs.
+# The migrations are the source of truth; regenerate with `npm run
+# migrations:bootstrap` rather than editing or committing the output.
+supabase/bootstrap.sql
+
 # Local scratch & temporary notes
 scratch/
 git clone supabase.txt
