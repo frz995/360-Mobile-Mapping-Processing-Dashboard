@@ -16,6 +16,7 @@ vi.mock('../common/MapLibreGlobe', () => ({
   MapLibreGlobe: () => <div data-testid="maplibre-globe-mock" />,
   INTRO_ZOOM: 2.41,
   SATELLITE_FOCUS_ZOOM: 2.69,
+  FULL_GLOBE_ZOOM: 1.85,
 }));
 
 afterEach(() => {

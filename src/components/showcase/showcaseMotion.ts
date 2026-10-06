@@ -95,7 +95,7 @@ export function globePoseFor(
     vh: number,
     globeMode: boolean
 ): GlobePose {
-    if (globeMode) return { x: 0, y: vh * 0.08, scale: 1, opacity: 1 };
+    if (globeMode) return { x: 0, y: 0, scale: 1, opacity: 1 };
     if (section === HERO_SECTION) {
         return isMobile
             ? { x: 0, y: vh * 0.08, scale: 1.72, opacity: 0.7 }

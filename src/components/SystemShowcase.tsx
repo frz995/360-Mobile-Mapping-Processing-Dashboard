@@ -19,7 +19,7 @@ const useMediaQuery = (query: string): boolean => {
 };
 import {
     Compass,
-        Database,
+    Database,
     ArrowRight,
     Cpu,
     Shield,
@@ -34,7 +34,7 @@ import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { StarsBackground } from './common/StarsBackground';
 import { GeoSphereFullLogo } from './common/GeoSphereLogo';
 import { EarthGlobe } from './common/EarthGlobe';
-import { MapLibreGlobe, SATELLITE_FOCUS_ZOOM, INTRO_ZOOM } from './common/MapLibreGlobe';
+import { MapLibreGlobe, SATELLITE_FOCUS_ZOOM, INTRO_ZOOM, FULL_GLOBE_ZOOM } from './common/MapLibreGlobe';
 import type { GlobeMarker } from './common/EarthGlobe';
 import { ProjectBoundaryMap } from './common/ProjectBoundaryMap';
 import { DISTRICT_METADATA } from './boundary/districtMetadata';
@@ -57,6 +57,8 @@ import { HERO_SECTION, globePoseFor, globeFitScale, springGlide } from './showca
 
 // Shared showcase types live in ./showcase/types — re-exported for compatibility.
 export type { SectionHotspot, SystemModule, WorkflowStep };
+
+const VECTOR_DEFAULT_ZOOM = 1.05;
 
 /** Fallback so a WebGL/tile/runtime hiccup inside the MapLibre globe can never
  *  leave the showcase blank — errors degrade back to the vector SVG EarthGlobe.
@@ -295,6 +297,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const [atomicGlobeFocus, setAtomicGlobeFocus] = useState<{ lat: number; lng: number } | null>(null);
     const [isZoomedToDistrict, setIsZoomedToDistrict] = useState(false);
     const [isFlyingIn, setIsFlyingIn] = useState(false);
+    const [showDistrictPopup, setShowDistrictPopup] = useState(false);
     // Seeded from the satellite globe's hero pose so the HUD percentage, the
     // atmospheric glow and the camera all agree on what "at rest" means before
     // the intro dive reports its first zoom.
@@ -310,14 +313,44 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const prevViewModeRef = useRef(viewMode);
     useEffect(() => {
         if (prevViewModeRef.current !== viewMode) {
+            const prev = prevViewModeRef.current;
             prevViewModeRef.current = viewMode;
             if (viewMode === 'globe') {
                 setViewTransitioning(true);
-                const t = window.setTimeout(() => setViewTransitioning(false), 850);
+                // Switching to 3D Earth:
+                const targetZoom = showAtomicGlobe ? FULL_GLOBE_ZOOM : VECTOR_DEFAULT_ZOOM;
+                setGlobePan({ x: 0, y: 0 });
+                // Only reset camera to overview if no district is currently focused
+                if (!showDistrictPopup && !atomicGlobeFocus) {
+                    setGlobeZoom(targetZoom);
+                    setFlyTarget({
+                        latitude: 3.8,
+                        longitude: 109.5,
+                        zoom: targetZoom,
+                        timestamp: Date.now(),
+                    });
+                }
+                const t = window.setTimeout(() => setViewTransitioning(false), 1600);
+                return () => window.clearTimeout(t);
+            } else if (prev === 'globe') {
+                // Clicking back to modules:
+                setViewTransitioning(true);
+                const returnZoom = showAtomicGlobe ? INTRO_ZOOM : VECTOR_DEFAULT_ZOOM;
+                setGlobeZoom(returnZoom);
+                setGlobePan({ x: 0, y: 0 });
+                setAtomicGlobeFocus(null);
+                setShowDistrictPopup(false);
+                setFlyTarget({
+                    latitude: showAtomicGlobe ? 12.0 : -26.0,
+                    longitude: 105.0,
+                    zoom: returnZoom,
+                    timestamp: Date.now(),
+                });
+                const t = window.setTimeout(() => setViewTransitioning(false), 1600);
                 return () => window.clearTimeout(t);
             }
         }
-    }, [viewMode]);
+    }, [viewMode, showAtomicGlobe, showDistrictPopup, atomicGlobeFocus]);
 
     // Defer mounting the title tsParticles canvas until the view-switch transition has
     // settled, so its one-time engine load + particle spawn doesn't stall the crossfade.
@@ -400,15 +433,14 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         const apply = () => {
             const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
             const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
-            const pose = globePoseFor(activeSection, isMobile, vw, vh, viewMode === 'globe');
+            const isGlobeMode = viewMode === 'globe';
+            const pose = globePoseFor(activeSection, isMobile, vw, vh, isGlobeMode);
             poseX.set(pose.x);
             poseY.set(pose.y);
-            // The satellite globe must stay full-bleed at every viewport size, so
-            // it sizes by `globeFitScale` and ignores the vector globe's
-            // per-section scale — that choreography was shrinking the satellite
-            // canvas to 70% on module sections, which read as the globe zooming
-            // out. Parallax offset and opacity still apply to both.
-            poseScale.set(showAtomicGlobe ? globeFitScale(vw, vh) : pose.scale);
+            // In 3D Earth (globe mode), both satellite and vector globes stand back at scale 1.0.
+            // In modules mode, both satellite and vector use full-bleed fit scaling.
+            const scale = isGlobeMode ? 1.0 : globeFitScale(vw, vh);
+            poseScale.set(scale);
             poseOpacity.set(pose.opacity);
         };
         apply();
@@ -479,7 +511,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         ? new Date(activeProject.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         : '—';
 
-const SYSTEM_MODULES: SystemModule[] = [
+    const SYSTEM_MODULES: SystemModule[] = [
         // MODULE 1: PROJECT MANAGEMENT  → workspace `project`
         {
             id: 'project',
@@ -1120,7 +1152,6 @@ const SYSTEM_MODULES: SystemModule[] = [
 
     const [selectedDistrictIdx, setSelectedDistrictIdx] = useState(0);
     const [showProjectPicker, setShowProjectPicker] = useState(false);
-    const [showDistrictPopup, setShowDistrictPopup] = useState(false);
     // Real MultiPolygon district geometries load eagerly in the background; flip this
     // flag when they arrive so the committed boundary can be rebuilt with true shapes.
     const [districtGeomReady, setDistrictGeomReady] = useState(false);
@@ -1307,13 +1338,13 @@ const SYSTEM_MODULES: SystemModule[] = [
                 .filter((r) => r.right - r.left > 0 && r.bottom - r.top > 0);
             setHudRects((prev) =>
                 prev.length === next.length &&
-                prev.every(
-                    (p, i) =>
-                        Math.abs(p.left - next[i].left) < 1 &&
-                        Math.abs(p.top - next[i].top) < 1 &&
-                        Math.abs(p.right - next[i].right) < 1 &&
-                        Math.abs(p.bottom - next[i].bottom) < 1,
-                )
+                    prev.every(
+                        (p, i) =>
+                            Math.abs(p.left - next[i].left) < 1 &&
+                            Math.abs(p.top - next[i].top) < 1 &&
+                            Math.abs(p.right - next[i].right) < 1 &&
+                            Math.abs(p.bottom - next[i].bottom) < 1,
+                    )
                     ? prev
                     : next,
             );
@@ -1641,7 +1672,7 @@ const SYSTEM_MODULES: SystemModule[] = [
                         y: globeY,
                         scale: globeScale,
                         opacity: globeOpacity,
-                        ...(showAtomicGlobe
+                        ...(showAtomicGlobe || viewMode === 'globe'
                             ? {}
                             : { rotateX: globeTilt, transformPerspective: 1600 })
                     }}
@@ -1650,16 +1681,19 @@ const SYSTEM_MODULES: SystemModule[] = [
                     <div
                         className="absolute pointer-events-none -z-10 select-none flex items-center justify-center transition-transform duration-300 ease-out"
                         style={{
-                            transform: `scale(${globeZoom})`,
+                            transform: showAtomicGlobe
+                                ? `scale(${globeZoom})`
+                                : viewMode === 'modules'
+                                    ? `translateY(57%) scale(${globeZoom * 1.75})`
+                                    : `scale(${globeZoom})`,
                             opacity: Math.min(1, Math.max(0.4, globeZoom / 1.05)),
                         }}
                         aria-hidden="true"
                     >
                         {/* Outer ambient aura */}
                         <div
-                            className={`w-[min(115vw,880px)] h-[min(115vw,880px)] rounded-full blur-[100px] transition-all duration-700 ${
-                                showDistrictPopup ? 'opacity-15' : showAtomicGlobe ? 'opacity-25' : 'opacity-45'
-                            }`}
+                            className={`w-[min(115vw,880px)] h-[min(115vw,880px)] rounded-full blur-[100px] transition-all duration-700 ${showDistrictPopup ? 'opacity-15' : showAtomicGlobe ? 'opacity-25' : 'opacity-45'
+                                }`}
                             style={{
                                 background: showAtomicGlobe
                                     ? 'radial-gradient(circle, rgba(14, 165, 233, 0.12) 0%, rgba(30, 64, 175, 0.06) 40%, transparent 70%)'
@@ -1668,9 +1702,8 @@ const SYSTEM_MODULES: SystemModule[] = [
                         />
                         {/* Core ethereal rim glow */}
                         <div
-                            className={`absolute w-[min(85vw,640px)] h-[min(85vw,640px)] rounded-full blur-[65px] transition-all duration-700 ${
-                                showDistrictPopup ? 'opacity-20' : showAtomicGlobe ? 'opacity-35' : 'opacity-65'
-                            }`}
+                            className={`absolute w-[min(85vw,640px)] h-[min(85vw,640px)] rounded-full blur-[65px] transition-all duration-700 ${showDistrictPopup ? 'opacity-20' : showAtomicGlobe ? 'opacity-35' : 'opacity-65'
+                                }`}
                             style={{
                                 background: showAtomicGlobe
                                     ? 'radial-gradient(circle, rgba(56, 189, 248, 0.20) 0%, rgba(14, 165, 233, 0.10) 36%, rgba(30, 64, 175, 0.04) 60%, transparent 70%)'
@@ -1679,9 +1712,8 @@ const SYSTEM_MODULES: SystemModule[] = [
                         />
                         {/* Subtle inner highlight center bloom */}
                         <div
-                            className={`absolute w-[min(50vw,400px)] h-[min(50vw,400px)] rounded-full blur-[45px] transition-all duration-700 ${
-                                showDistrictPopup ? 'opacity-10' : showAtomicGlobe ? 'opacity-28' : 'opacity-40'
-                            }`}
+                            className={`absolute w-[min(50vw,400px)] h-[min(50vw,400px)] rounded-full blur-[45px] transition-all duration-700 ${showDistrictPopup ? 'opacity-10' : showAtomicGlobe ? 'opacity-28' : 'opacity-40'
+                                }`}
                             style={{
                                 background: showAtomicGlobe
                                     ? 'radial-gradient(circle, rgba(56, 189, 248, 0.28) 0%, rgba(14, 165, 233, 0.14) 45%, rgba(30, 64, 175, 0.04) 70%, transparent 80%)'
@@ -1692,58 +1724,69 @@ const SYSTEM_MODULES: SystemModule[] = [
 
                     {showAtomicGlobe ? (
                         <div className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isFlyingIn
-                                ? 'scale-[1.7] opacity-0 blur-[2px]'
-                                : 'scale-100 opacity-100'
+                            ? 'scale-[1.7] opacity-0 blur-[2px]'
+                            : 'scale-100 opacity-100'
                             }`}>
                             <GlobeRenderBoundary markers={globeMarkers}>
-                            <MapLibreGlobe
-                                markers={globeMarkersForMap}
-                                className="w-full h-full"
-                                focusTarget={atomicGlobeFocus}
-                                activeTargetCoord={{ lat: activeLat, lng: activeLng }}
-                                zoom={globeZoom}
-                                onZoomChange={setGlobeZoom}
-                                onDragStart={() => {
-                                    // User grabbed the globe — release any fly-to focus so the
-                                    // camera is not fought over by an in-flight easeTo.
-                                    setAtomicGlobeFocus(null);
-                                }}
-                                autoRotate={viewMode === 'modules' || (autoRotate && !viewTransitioning)}
-                                // Degrees per second — MapLibre's own bearing unit. The
-                                // previous 0.06 was multiplied by a stray 30 inside the
-                                // globe, giving 1.8 deg/s (a 200-second turn) that read as
-                                // a frozen planet next to the vector globe's 103 deg/s.
-                                // 6 was then judged too busy for a backdrop, so this is the
-                                // calm hero drift: one full turn every ~2.4 minutes.
-                                rotationSpeed={1.0}
-                                enableScrollZoom={viewMode === 'globe'}
-                                activeMarkerLabel={activeDistrict.name}
-                                onActiveMarkerProjected={handleActiveMarkerProjected}
-                                onMarkerClick={(marker) => {
-                                    const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
-                                    if (idx >= 0) {
-                                        if (showDistrictPopup && idx === selectedDistrictIdx) {
-                                            handleDeselectDistrict();
-                                        } else {
-                                            handleSelectDistrict(idx);
+                                <MapLibreGlobe
+                                    markers={globeMarkersForMap}
+                                    className="w-full h-full"
+                                    viewMode={viewMode}
+                                    focusTarget={atomicGlobeFocus}
+                                    activeTargetCoord={{ lat: activeLat, lng: activeLng }}
+                                    zoom={globeZoom}
+                                    onZoomChange={setGlobeZoom}
+                                    onDragStart={() => {
+                                        // User grabbed the globe — release any fly-to focus so the
+                                        // camera is not fought over by an in-flight easeTo.
+                                        setAtomicGlobeFocus(null);
+                                    }}
+                                    autoRotate={!viewTransitioning && !showDistrictPopup && (viewMode === 'modules' || autoRotate)}
+                                    // Degrees per second — MapLibre's own bearing unit. The
+                                    // previous 0.06 was multiplied by a stray 30 inside the
+                                    // globe, giving 1.8 deg/s (a 200-second turn) that read as
+                                    // a frozen planet next to the vector globe's 103 deg/s.
+                                    // 6 was then judged too busy for a backdrop, so this is the
+                                    // calm hero drift: one full turn every ~2.4 minutes.
+                                    rotationSpeed={1.0}
+                                    enableScrollZoom={viewMode === 'globe'}
+                                    activeMarkerLabel={activeDistrict.name}
+                                    onActiveMarkerProjected={handleActiveMarkerProjected}
+                                    onMarkerClick={(marker) => {
+                                        const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
+                                        if (idx >= 0) {
+                                            if (showDistrictPopup && idx === selectedDistrictIdx) {
+                                                handleDeselectDistrict();
+                                            } else {
+                                                handleSelectDistrict(idx);
+                                            }
+                                        } else if (Number.isFinite(marker.latitude) && Number.isFinite(marker.longitude)) {
+                                            handleFocusProject({ lat: marker.latitude, lng: marker.longitude });
                                         }
-                                    } else if (Number.isFinite(marker.latitude) && Number.isFinite(marker.longitude)) {
-                                        handleFocusProject({ lat: marker.latitude, lng: marker.longitude });
-                                    }
-                                }}
-                            />
+                                    }}
+                                />
                             </GlobeRenderBoundary>
                         </div>
                     ) : (
-                        <div className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isFlyingIn
+                        <div
+                            className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isFlyingIn
                                 ? 'scale-[2.5] opacity-0 blur-[2px]'
                                 : 'scale-100 opacity-100'
-                            }`}>
+                                }`}
+                            style={
+                                viewMode === 'modules'
+                                    ? {
+                                        transform: 'translateY(66%) scale(2.15)',
+                                        transformOrigin: 'center center',
+                                    }
+                                    : undefined
+                            }
+                        >
                             <EarthGlobe
                                 autoRotate={viewMode === 'modules' || (autoRotate && !viewTransitioning)}
                                 autoRotateSpeed={0.8}
-                                centerLatitude={activeLat}
-                                centerLongitude={activeLng}
+                                centerLatitude={viewMode === 'modules' && !inspectingDistrict ? -26.0 : activeLat}
+                                centerLongitude={viewMode === 'modules' && !inspectingDistrict ? 105.0 : activeLng}
                                 flyTo={flyTarget || undefined}
                                 enableDrag={true}
                                 enableZoom={true}
@@ -1889,8 +1932,8 @@ const SYSTEM_MODULES: SystemModule[] = [
                                 key={mod.id}
                                 onClick={() => handleModuleChange(idx)}
                                 className={`relative text-[11px] 2xl:text-xs font-medium transition-colors cursor-pointer py-1 whitespace-nowrap ${activeIndex === idx && viewMode === 'modules'
-                                        ? 'text-white font-semibold'
-                                        : 'text-neutral-400 hover:text-white'
+                                    ? 'text-white font-semibold'
+                                    : 'text-neutral-400 hover:text-white'
                                     }`}
                             >
                                 {mod.title.split('&')[0].trim()}
@@ -1917,8 +1960,8 @@ const SYSTEM_MODULES: SystemModule[] = [
                             <button
                                 onClick={() => setViewMode('globe')}
                                 className={`relative py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 ${viewMode === 'globe'
-                                        ? 'text-white font-semibold'
-                                        : 'text-neutral-400 hover:text-white'
+                                    ? 'text-white font-semibold'
+                                    : 'text-neutral-400 hover:text-white'
                                     }`}
                             >
                                 <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">public</span>
@@ -1935,8 +1978,8 @@ const SYSTEM_MODULES: SystemModule[] = [
                             <button
                                 onClick={() => setViewMode('modules')}
                                 className={`relative py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 ${viewMode === 'modules'
-                                        ? 'text-white font-semibold'
-                                        : 'text-neutral-400 hover:text-white'
+                                    ? 'text-white font-semibold'
+                                    : 'text-neutral-400 hover:text-white'
                                     }`}
                             >
                                 <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">grid_view</span>
@@ -2004,26 +2047,30 @@ const SYSTEM_MODULES: SystemModule[] = [
                                 tabIndex={0}
                                 ref={geodeticCardRef}
                                 onClick={() => {
-                                    setViewMode('globe');
                                     if (showDistrictPopup) {
                                         handleDeselectDistrict();
-                                    } else if (activeDistrict) {
-                                        handleSelectDistrict(selectedDistrictIdx);
-                                    }
-                                }}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
+                                    } else {
                                         setViewMode('globe');
-                                        if (showDistrictPopup) {
-                                            handleDeselectDistrict();
-                                        } else if (activeDistrict) {
+                                        if (activeDistrict) {
                                             handleSelectDistrict(selectedDistrictIdx);
                                         }
                                     }
                                 }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        if (showDistrictPopup) {
+                                            handleDeselectDistrict();
+                                        } else {
+                                            setViewMode('globe');
+                                            if (activeDistrict) {
+                                                handleSelectDistrict(selectedDistrictIdx);
+                                            }
+                                        }
+                                    }
+                                }}
                                 className={`p-2.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 backdrop-blur-xl border text-left max-w-[260px] sm:max-w-[320px] pointer-events-auto shadow-2xl space-y-1 sm:space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none hover:-translate-y-0.5 ${showDistrictPopup
-                                        ? 'border-red-500/70 ring-1 ring-red-500/30 shadow-[0_0_24px_rgba(239,68,68,0.25)]'
-                                        : 'border-white/10 hover:border-red-500/50'
+                                    ? 'border-red-500/70 ring-1 ring-red-500/30 shadow-[0_0_24px_rgba(239,68,68,0.25)]'
+                                    : 'border-white/10 hover:border-red-500/50'
                                     }`}
                                 title="Click to rotate globe and center on project location (Toggle Panotrack Popup)"
                             >
@@ -2078,14 +2125,7 @@ const SYSTEM_MODULES: SystemModule[] = [
                                 <div className="flex items-center bg-neutral-900/80 backdrop-blur-md px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border border-white/10 shadow-md">
                                     <button
                                         onClick={() => {
-                                            // `globeZoom` is one shared 1.0-at-rest multiplier that
-                                            // both renderers translate internally, so switching renderer
-                                            // has to hand the new one ITS rest value: focused district
-                                            // if the popup is open, otherwise the resting pose.
-                                            // The vector globe rests at 1.05 and focuses via
-                                            // flyTarget.zoom (1.55); the satellite globe's rest value is
-                                            // the hero pose and its focus value comes from the renderer.
-                                            setGlobeZoom(showDistrictPopup ? 1.55 : 1.05);
+                                            setGlobeZoom(showDistrictPopup ? 1.55 : VECTOR_DEFAULT_ZOOM);
                                             setFlyTarget(null);
                                             setShowAtomicGlobe(false);
                                         }}
@@ -2097,11 +2137,7 @@ const SYSTEM_MODULES: SystemModule[] = [
                                     </button>
                                     <button
                                         onClick={() => {
-                                            // Same contract as the Vector button: focused district
-                                            // if the popup is open, else the satellite globe's own
-                                            // resting pose. Both values come from the renderer so
-                                            // they cannot drift away from what it actually flies to.
-                                            setGlobeZoom(showDistrictPopup ? SATELLITE_FOCUS_ZOOM : INTRO_ZOOM);
+                                            setGlobeZoom(showDistrictPopup ? SATELLITE_FOCUS_ZOOM : (viewMode === 'globe' ? FULL_GLOBE_ZOOM : INTRO_ZOOM));
                                             setFlyTarget(null);
                                             setShowAtomicGlobe(true);
                                         }}
@@ -2135,9 +2171,15 @@ const SYSTEM_MODULES: SystemModule[] = [
                                     >
                                         +
                                     </button>
-                                    {(Math.abs(globeZoom - 1.0) > 0.05 || globePan.x !== 0 || globePan.y !== 0) && (
+                                    {(Math.abs(globeZoom - (showAtomicGlobe ? (viewMode === 'globe' ? FULL_GLOBE_ZOOM : INTRO_ZOOM) : VECTOR_DEFAULT_ZOOM)) > 0.05 || globePan.x !== 0 || globePan.y !== 0) && (
                                         <button
-                                            onClick={() => { setGlobeZoom(showAtomicGlobe ? INTRO_ZOOM : 1.05); setGlobePan({ x: 0, y: 0 }); setAtomicGlobeFocus(null); setFlyTarget(null); }}
+                                            onClick={() => {
+                                                const defaultZ = showAtomicGlobe ? (viewMode === 'globe' ? FULL_GLOBE_ZOOM : INTRO_ZOOM) : VECTOR_DEFAULT_ZOOM;
+                                                setGlobeZoom(defaultZ);
+                                                setGlobePan({ x: 0, y: 0 });
+                                                setAtomicGlobeFocus(null);
+                                                setFlyTarget(null);
+                                            }}
                                             title="Reset View (Double-click)"
                                             className="ml-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] rounded-md bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-colors cursor-pointer"
                                         >
@@ -2189,8 +2231,8 @@ const SYSTEM_MODULES: SystemModule[] = [
                                                         handleFocusProject({ lat: d.lat, lng: d.lng });
                                                     }}
                                                     className={`w-full px-2.5 py-2 rounded-xl text-left text-xs flex items-center justify-between transition-colors cursor-pointer ${idx === selectedDistrictIdx
-                                                            ? 'bg-red-500/20 text-white font-semibold'
-                                                            : 'text-neutral-300 hover:bg-white/10 hover:text-white'
+                                                        ? 'bg-red-500/20 text-white font-semibold'
+                                                        : 'text-neutral-300 hover:bg-white/10 hover:text-white'
                                                         }`}
                                                 >
                                                     <div className="flex items-center gap-2 truncate">

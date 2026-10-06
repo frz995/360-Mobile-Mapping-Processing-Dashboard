@@ -110,6 +110,8 @@ export interface MapLibreGlobeProps {
    * unambiguous and never conflicts with the page scroller.
    */
   enableScrollZoom?: boolean;
+  /** Showcase view mode: 'globe' (full 3D Earth) or 'modules' (hero backdrop). */
+  viewMode?: 'globe' | 'modules';
 }
 
 /**
@@ -130,11 +132,10 @@ const FOCUS_CAMERA_ZOOM = 4.6;
 
 /**
  * How long the camera must stay quiet before the map is treated as idle again.
- * Long enough to outlast drag inertia: `dragend` fires when the pointer is
- * released, but the globe keeps coasting and emitting `rotateend` for a few
- * hundred ms after. See the idle watchdog in the map-construction effect.
+ * Gives the user time to pan, rotate, or flick-drag repeatedly without the
+ * auto-rotate loop fighting the gesture.
  */
-const USER_IDLE_MS = 320;
+const USER_IDLE_MS = 1500;
 
 /**
  * Tolerance for treating the camera as already at the requested zoom.
@@ -193,7 +194,7 @@ export const INTRO_ZOOM = 2.41;
 /** Shared centre for every pose: over southern Indochina / South China Sea. */
 const POSE_CENTER: [number, number] = [105.0, 12.0];
 
-/** Where the globe rests, and where the focus release returns to. */
+/** Where the globe rests, and where the focus release returns to in modules mode. */
 const REST_POSE = {
   center: POSE_CENTER,
   zoom: zoomToCamera(INTRO_ZOOM),
@@ -201,17 +202,21 @@ const REST_POSE = {
   bearing: 0
 };
 
+/** Full 3D Earth resting pose (Option A: nadir flat view at pitch 0, full globe in frame). */
+export const FULL_GLOBE_ZOOM = 1.85;
+export const FULL_GLOBE_PITCH = 0;
+export const FULL_GLOBE_POSE = {
+  center: POSE_CENTER,
+  zoom: zoomToCamera(FULL_GLOBE_ZOOM),
+  pitch: FULL_GLOBE_PITCH,
+  bearing: 0
+};
+
 /**
  * Where the intro dive starts.
- * Matches REST_POSE so the showcase opens immediately on Pic 1's exact view.
  */
-function introStartPose() {
-  return {
-    center: POSE_CENTER,
-    zoom: zoomToCamera(INTRO_ZOOM),
-    pitch: REST_PITCH,
-    bearing: 0
-  };
+function introStartPose(mode: 'globe' | 'modules' = 'modules') {
+  return mode === 'globe' ? FULL_GLOBE_POSE : REST_POSE;
 }
 
 /** How long the landing-page intro dive takes. */
@@ -295,7 +300,8 @@ export function MapLibreGlobe({
   activeMarkerLabel = null,
   onActiveMarkerProjected,
   onMarkerClick,
-  enableScrollZoom = true
+  enableScrollZoom = true,
+  viewMode = 'globe'
 }: MapLibreGlobeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -304,6 +310,9 @@ export function MapLibreGlobe({
   const onZoomRef = useRef(onZoomChange);
   const onClickRef = useRef(onMarkerClick);
   const markersRef = useRef<GlobeMarker[]>(markers ?? []);
+  const viewModeRef = useRef(viewMode);
+  const pointerDownRef = useRef(false);
+  const lastInteractionRef = useRef(0);
   /** True while the user is driving the camera, to suppress programmatic eases. */
   const userActiveRef = useRef(false);
   /** The single re-armed idle timer behind `userActiveRef`. See the map effect. */
@@ -314,6 +323,8 @@ export function MapLibreGlobe({
    * construction effect and the auto-rotate loop.
    */
   const programmaticRef = useRef(false);
+  /** True while the camera is animating between view modes or flying to a focus target. */
+  const inTransitionRef = useRef(false);
   /**
    * Read inside the construct-once effect. Held in a ref so the map constructor
    * does not need it as a dependency (and therefore is not rebuilt when the
@@ -327,6 +338,44 @@ export function MapLibreGlobe({
   useEffect(() => { onZoomRef.current = onZoomChange; }, [onZoomChange]);
   useEffect(() => { onClickRef.current = onMarkerClick; }, [onMarkerClick]);
   useEffect(() => { markersRef.current = markers ?? []; }, [markers]);
+  useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+
+  // Pointer event listeners on the container so user grab/click immediately
+  // pauses auto-rotation before MapLibre's drag threshold is reached.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onPointerDown = () => {
+      pointerDownRef.current = true;
+      userActiveRef.current = true;
+      lastInteractionRef.current = performance.now();
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+    };
+    const onPointerUp = () => {
+      pointerDownRef.current = false;
+      lastInteractionRef.current = performance.now();
+      if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = window.setTimeout(() => {
+        if (!pointerDownRef.current) {
+          userActiveRef.current = false;
+        }
+        idleTimerRef.current = null;
+      }, USER_IDLE_MS);
+    };
+
+    el.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      el.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, []);
 
   // --- Map construction -------------------------------------------------
   useEffect(() => {
@@ -336,7 +385,7 @@ export function MapLibreGlobe({
     // the resting pose once the style is ready, so the showcase opens on an
     // approach rather than a globe that is simply already there. Constructing at
     // the final pose instead would show a jump-cut on every load.
-    const start = introStartPose();
+    const start = introStartPose(viewModeRef.current);
 
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -358,16 +407,19 @@ export function MapLibreGlobe({
     });
     mapRef.current = map;
 
-    // Double-click resets camera to resting pose (Pic 1 exact view)
+    // Double-click resets camera to resting pose (Full globe in 3D Earth, Pic 1 in modules)
     map.on('dblclick', (e) => {
       e.preventDefault();
       programmaticRef.current = true;
-      try {
-        map.easeTo({ ...REST_POSE, duration: 900 });
-      } finally {
+      inTransitionRef.current = true;
+      const targetPose = viewModeRef.current === 'globe' ? FULL_GLOBE_POSE : REST_POSE;
+      const onEnd = () => {
+        inTransitionRef.current = false;
         programmaticRef.current = false;
-      }
-      onZoomRef.current?.(INTRO_ZOOM);
+      };
+      map.once('moveend', onEnd);
+      map.flyTo({ ...targetPose, duration: 1200, curve: 1.4 });
+      onZoomRef.current?.(viewModeRef.current === 'globe' ? FULL_GLOBE_ZOOM : INTRO_ZOOM);
     });
 
     // Projection is declared in `globeStyle()` as `projection: { type: 'globe' }`
@@ -416,27 +468,31 @@ export function MapLibreGlobe({
     const markUserActive = () => {
       if (programmaticRef.current) return;
       userActiveRef.current = true;
+      lastInteractionRef.current = performance.now();
       if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
     };
     const markUserIdle = () => {
-      // Same reasoning as `markUserActive`: the auto-rotate loop's own
-      // `jumpTo` fires `rotateend` every frame, so honouring it here would churn
-      // a clearTimeout/setTimeout pair 60 times a second to re-arm a timer that
-      // is already irrelevant.
       if (programmaticRef.current) return;
+      lastInteractionRef.current = performance.now();
       if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
       idleTimerRef.current = window.setTimeout(() => {
-        userActiveRef.current = false;
+        if (!pointerDownRef.current) {
+          userActiveRef.current = false;
+        }
         idleTimerRef.current = null;
       }, USER_IDLE_MS);
     };
     map.on('zoomstart', markUserActive);
     map.on('rotatestart', markUserActive);
     map.on('dragstart', markUserActive);
+    map.on('movestart', markUserActive);
+    map.on('pitchstart', markUserActive);
     map.on('zoomend', markUserIdle);
     map.on('rotateend', markUserIdle);
     map.on('dragend', markUserIdle);
+    map.on('moveend', markUserIdle);
+    map.on('pitchend', markUserIdle);
 
     // Intro dive. Held until 'load' so the raster tiles for the destination
     // tileset exist before the camera starts moving; flying into an unloaded
@@ -449,7 +505,8 @@ export function MapLibreGlobe({
     const runIntro = () => {
       programmaticRef.current = true;
       try {
-        map.flyTo({ ...REST_POSE, duration: INTRO_DURATION_MS, curve: 1.5 });
+        const startPose = viewModeRef.current === 'globe' ? FULL_GLOBE_POSE : REST_POSE;
+        map.flyTo({ ...startPose, duration: INTRO_DURATION_MS, curve: 1.5 });
       } finally {
         programmaticRef.current = false;
       }
@@ -624,40 +681,103 @@ export function MapLibreGlobe({
   }, [markers]);
 
   // --- Camera: focus / release -----------------------------------------
-  // Focus flies to the district; clearing the target flies back to the showcase's
-  // resting pose. Both directions use the same easing so the tour reads
-  // symmetrically.
+  // Focus flies smoothly to the district; clearing the target flies back out to
+  // the showcase's resting pose along an orbital flight curve.
+  const prevFocusTargetRef = useRef<typeof focusTarget>(null);
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (!isFiniteCoord(focusTarget)) {
-      // Release. Ease back out to the resting pose — the low-orbit limb framing
-      // the whole showcase is composed around — rather than to a flat
-      // whole-globe overview, which used to yank the page out of its framing.
+    const hadFocus = isFiniteCoord(prevFocusTargetRef.current);
+    const hasFocus = isFiniteCoord(focusTarget);
+    prevFocusTargetRef.current = focusTarget;
+
+    if (!hasFocus) {
+      if (!hadFocus) return; // Already at resting pose; do nothing
+      // Release. Fly back out to the resting pose (full globe in 3D Earth, hero limb in modules)
+      map.stop();
+      inTransitionRef.current = true;
       programmaticRef.current = true;
-      try {
-        map.easeTo({ ...REST_POSE, duration: 1400 });
-      } finally {
+      lastInteractionRef.current = performance.now() + 1800;
+      const onEnd = () => {
+        inTransitionRef.current = false;
         programmaticRef.current = false;
-      }
+        lastInteractionRef.current = performance.now();
+      };
+      map.once('moveend', onEnd);
+      const targetPose = viewModeRef.current === 'globe' ? FULL_GLOBE_POSE : REST_POSE;
+      map.flyTo({ ...targetPose, duration: 1600, curve: 1.42 });
       return;
     }
 
+    // Smooth planetary camera flight into project area
+    map.stop();
+    inTransitionRef.current = true;
     programmaticRef.current = true;
-    try {
-      map.easeTo({
-        center: [focusTarget.lng, focusTarget.lat],
-        zoom: FOCUS_CAMERA_ZOOM,
-        pitch: 45,
-        bearing: 0,
-        duration: 1500
-      });
-    } finally {
+    lastInteractionRef.current = performance.now() + 2000;
+    const onEnd = () => {
+      inTransitionRef.current = false;
       programmaticRef.current = false;
-    }
-    userActiveRef.current = false;
+      lastInteractionRef.current = performance.now();
+      userActiveRef.current = false;
+    };
+    map.once('moveend', onEnd);
+    map.flyTo({
+      center: [focusTarget.lng, focusTarget.lat],
+      zoom: FOCUS_CAMERA_ZOOM,
+      pitch: 45,
+      bearing: 0,
+      duration: 1800,
+      curve: 1.42
+    });
   }, [focusTarget]);
+
+  // --- ViewMode: smooth transition between 3D Earth (full globe) and Modules (default hero) ---
+  const prevViewModeRef = useRef(viewMode);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (prevViewModeRef.current === viewMode) return;
+    prevViewModeRef.current = viewMode;
+
+    if (isFiniteCoord(focusTarget)) return;
+
+    map.stop();
+    inTransitionRef.current = true;
+    programmaticRef.current = true;
+    lastInteractionRef.current = performance.now() + 1800;
+
+    const onEnd = () => {
+      inTransitionRef.current = false;
+      programmaticRef.current = false;
+      lastInteractionRef.current = performance.now();
+    };
+    map.once('moveend', onEnd);
+
+    if (viewMode === 'globe') {
+      // Transition to 3D Earth:
+      // Smoothly flies back and zooms out to full globe view (pitch 0 nadir view)
+      map.flyTo({
+        center: [109.5, 3.8],
+        pitch: FULL_GLOBE_PITCH,
+        bearing: 0,
+        zoom: zoomToCamera(FULL_GLOBE_ZOOM),
+        duration: 1600,
+        curve: 1.42
+      });
+    } else {
+      // Transition to modules:
+      // Smoothly swoops back to default hero view satellite globe
+      map.flyTo({
+        center: POSE_CENTER,
+        pitch: REST_PITCH,
+        bearing: 0,
+        zoom: zoomToCamera(INTRO_ZOOM),
+        duration: 1600,
+        curve: 1.42
+      });
+    }
+  }, [viewMode, focusTarget]);
 
   // --- Camera: external zoom scalar -------------------------------------
   // Two-way sync between the showcase's `globeZoom` multiplier and the camera.
@@ -668,12 +788,9 @@ export function MapLibreGlobe({
     const map = mapRef.current;
     if (!map || typeof zoom !== 'number' || !Number.isFinite(zoom)) return;
     if (isFiniteCoord(focusTarget)) return;
-    if (userActiveRef.current) return;
+    if (userActiveRef.current || inTransitionRef.current) return;
     // A move already in flight — user gesture, coasting inertia, or our own
-    // previous easeTo — must not be re-targeted. `easeTo` re-anchors from the
-    // current position rather than the original target, so re-issuing it each
-    // time the reported zoom trickles in restarts the animation every frame:
-    // the camera creeps toward the goal and visibly never arrives.
+    // previous easeTo — must not be re-targeted.
     if (map.isMoving()) return;
     const target = zoomToCamera(zoom);
     if (Math.abs(map.getZoom() - target) > ZOOM_EPSILON) {
@@ -682,12 +799,9 @@ export function MapLibreGlobe({
   }, [zoom, focusTarget]);
 
   // --- Auto-rotate ------------------------------------------------------
-  // Spins the planet with north held up by walking the camera west, matching the
-  // vector globe's `lambda` sweep exactly (see the derivation below). An earlier
-  // version raised `bearing` instead to keep the camera pinned over the active
-  // district, but bearing rotates the image about the camera axis, which sweeps
-  // the terrain the opposite way to the vector globe.
-  // Suppressed while the user is dragging/zooming so a grab wins immediately.
+  // Spins the planet with north held up by walking the camera west.
+  // Pauses seamlessly during user drag, pan, rotate, or zoom gestures,
+  // without fighting user latitude/pitch coordinates.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -697,54 +811,23 @@ export function MapLibreGlobe({
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
-      if (autoRotate && !userActiveRef.current && !map.isMoving() && !isFiniteCoord(focusTarget)) {
-        // Spin by walking the camera WESTWARD, not by raising `bearing`.
-        //
-        // The vector globe does `lambda -= autoRotateSpeed * dt` where `lambda`
-        // is the camera longitude (`projectPoint` builds `dLng = lng - lambda`,
-        // so the sub-camera meridian is exactly `lambda`). Decreasing it moves
-        // the camera west with north held up, which slides surface features
-        // RIGHTWARD across the visible disc.
-        //
-        // `bearing` is the other axis entirely: it rotates the rendered image
-        // about the camera axis while pinning the camera over the same surface
-        // point. Raising it swings features counter-clockwise, i.e. the
-        // opposite sweep from the vector globe. Verified numerically against
-        // `projectPoint`: at lambda 0 -> -1, the point (lng 0, lat 0) moves from
-        // sx = cx to sx = cx + radius*sin(1deg), so the vector globe's terrain
-        // travels east across the screen.
-        //
-        // So the satellite globe now drifts `center.lng` west at the same rate,
-        // which reproduces the vector globe's motion and keeps north up. The
-        // active district does drift across the disc and round to the back, but
-        // `onActiveMarkerProjected` already reports its position and occlusion
-        // every frame, so the HUD leader line follows it — the same behaviour the
-        // vector globe has always had.
-        //
-        // `rotationSpeed` is DEGREES PER SECOND of longitude. It used to carry a
-        // stray `* 30`, which turned the showcase's nominal 0.06 into 1.8 deg/s
-        // — one full turn every 200 seconds. The vector globe's
-        // `autoRotateSpeed` is radians/second (~103 deg/s), so the two renderers
-        // were ~57x apart in apparent speed.
+      const isInteracting =
+        pointerDownRef.current ||
+        userActiveRef.current ||
+        inTransitionRef.current ||
+        map.isMoving() ||
+        now - lastInteractionRef.current < USER_IDLE_MS ||
+        isFiniteCoord(focusTarget);
+
+      if (autoRotate && !isInteracting) {
         const center = map.getCenter();
         // Wrap so a long-lived session cannot drift the camera toward +/-180 and
         // lose float precision in the transform.
         const lng = ((((center.lng - rotationSpeed * dt) + 540) % 360) - 180);
-        // Ease pitch and latitude back to the resting pose's framing, so an idle globe
-        // smoothly settles into the intended framing while turning gracefully.
-        const restPitch = REST_POSE.pitch;
-        const pitch = map.getPitch();
-        const pitchStep = (restPitch - pitch) * Math.min(1, dt * 1.5);
-        const restLat = REST_POSE.center[1];
-        const latStep = (restLat - center.lat) * Math.min(1, dt * 1.0);
-        const nextLat = Math.abs(latStep) < 0.005 ? restLat : center.lat + latStep;
         programmaticRef.current = true;
         try {
-          map.jumpTo(
-            Math.abs(pitchStep) < 0.01
-              ? { center: [lng, nextLat] }
-              : { center: [lng, nextLat], pitch: pitch + pitchStep }
-          );
+          // Advance longitude only — do NOT overwrite user latitude or pitch!
+          map.jumpTo({ center: [lng, center.lat] });
         } finally {
           programmaticRef.current = false;
         }
