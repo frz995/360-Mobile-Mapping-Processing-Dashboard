@@ -66,11 +66,14 @@ dev-smoke.log
 implementation_plan*.md
 .agents/
 
-# docs/ is excluded wholesale, EXCEPT the client-facing setup documentation,
-# which ships with the repo. `docs/*` (not `docs/`) is required here: git cannot
-# re-include a file whose parent directory is excluded.
+# docs/ is excluded wholesale, EXCEPT the documentation that has to ship with
+# the repo: the client-facing setup guide, and the deployment-topology note a
+# reseller reads before committing to a build per client. `docs/*` (not `docs/`)
+# is required here: git cannot re-include a file whose parent directory is
+# excluded.
 docs/*
 !docs/Production Setup/
+!docs/Deployment-Topology.md
 
 doc/
 *.docx
