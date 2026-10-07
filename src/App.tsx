@@ -39,6 +39,7 @@ import { WriteFailureBanner } from './components/common/WriteFailureBanner';
 import { WorkspaceErrorBoundary } from './components/common/WorkspaceErrorBoundary';
 import { GeoSphereIcon } from './components/common/GeoSphereLogo';
 import { translate } from './lib/i18n';
+import { reportWriteFailure } from './lib/writeFailures';
 import { APP_VERSION } from './config/defaults';
 import { ProjectOnboarding, type GateStage } from './components/ProjectOnboarding';
 import { isLightTheme, resolveThemeKey } from './components/ThemeSelector';
@@ -61,6 +62,38 @@ import {
   type UserProject,
   type ProjectDraft
 } from './services/projects';
+
+/**
+ * Post a message to an embedded map frame, tolerating a frame that has gone
+ * away.
+ *
+ * WHY THIS EXISTS
+ *
+ * `postMessage` into a detached or cross-origin iframe throws. Every map sync
+ * in this file — staged data, camera, filters, bbox toggles — is a
+ * convenience broadcast to a frame that re-reads state whenever it next boots.
+ * A throw there means the frame detached mid-flight, which costs nothing: it
+ * will request the same state again on remount.
+ *
+ * These were nine separate bare `catch (e) { }` blocks. Concentrating the
+ * reasoning in one place is what makes them safe to read rather than merely
+ * short: a reviewer can check one function instead of nine call sites.
+ */
+function postToMapFrame(frame: HTMLIFrameElement | null | undefined, message: unknown): void {
+  try {
+    frame?.contentWindow?.postMessage(message, '*');
+  } catch (postErr) {
+    // Genuinely best-effort: the frame detached before this broadcast landed.
+    console.warn('Map frame message not delivered (frame detached):', postErr);
+  }
+}
+
+/** Broadcast one message to every embedded map iframe on the page. */
+function postToMapFrames(message: unknown): void {
+  document.querySelectorAll<HTMLIFrameElement>('iframe').forEach((frame) => {
+    postToMapFrame(frame, message);
+  });
+}
 
 const AdminSettingsView = React.lazy(() => import('./components/AdminSettingsView').then(m => ({ default: m.AdminSettingsView })));
 const OperationalActionCenter = React.lazy(() => import('./components/OperationalActionCenter').then(m => ({ default: m.OperationalActionCenter })));
@@ -297,7 +330,12 @@ export default function App() {
       });
       localStorage.setItem('app_read_audit_ids', JSON.stringify(Array.from(currentRead)));
       localStorage.setItem('app_last_read_audit_time', Date.now().toString());
-    } catch (_) { }
+    } catch (auditCacheErr) {
+      // Best-effort local mirror of read state. `read` is a database column and
+      // is updated by the caller; a failed cache write only costs a repeat
+      // badge on next load, never lost data.
+      console.warn('Audit read cache not written:', auditCacheErr);
+    }
     setAuditLogs(old => old.map(a => ({ ...a, read: true })));
   }, [auditLogs]);
 
@@ -311,7 +349,11 @@ export default function App() {
       });
       localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
       localStorage.setItem('app_last_read_notif_time', Date.now().toString());
-    } catch (_) { }
+    } catch (notifCacheErr) {
+      // Best-effort local mirror of read state; `read` lives in the database.
+      // A failed cache write costs a repeat badge, no data.
+      console.warn('Notification read cache not written:', notifCacheErr);
+    }
     setNotifications(old => old.map(n => ({ ...n, read: true })));
   }, [notifications]);
 
@@ -325,7 +367,10 @@ export default function App() {
       });
       localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
       localStorage.setItem('app_cleared_notif_time', Date.now().toString());
-    } catch (_) { }
+    } catch (clearCacheErr) {
+      // Best-effort; same reasoning as the read-state caches above.
+      console.warn('Notification clear cache not written:', clearCacheErr);
+    }
     setNotifications([]);
   }, [notifications]);
 
@@ -509,7 +554,12 @@ export default function App() {
     document.documentElement.classList.toggle('light-mode', isLightTheme(currentTheme));
     try {
       localStorage.setItem('app_dashboard_theme', currentTheme);
-    } catch { }
+    } catch (themeCacheErr) {
+      // Best-effort: the theme is already applied to the DOM above and the
+      // project record in the database is authoritative. This cache only
+      // shortens the next boot; failing to write it is not worth surfacing.
+      console.warn('Theme preference cache not written:', themeCacheErr);
+    }
 
     // Restore style widget custom properties from localStorage
     const radiusMap: Record<string, string> = { sharp: '4px', default: '12px', rounded: '16px', pill: '24px' };
@@ -587,7 +637,12 @@ export default function App() {
     // Cache guest session in sessionStorage for persistent tab-reload support
     try {
       sessionStorage.setItem('geosphere360_guest_session', JSON.stringify(guestSession));
-    } catch { /* storage unavailable — non-fatal */ }
+    } catch (guestCacheErr) {
+      // Best-effort: the guest session is also restored from sessionStorage on
+      // boot, so a failed cache write only costs reload continuity within this
+      // tab. Nothing durable depends on it.
+      console.warn('Guest session not cached:', guestCacheErr);
+    }
 
     // Prevent triggerGate useEffect from re-triggering duplicate timers
     gateTriggeredRef.current = 'guest';
@@ -618,14 +673,29 @@ export default function App() {
     try {
       const userKey = resolveUserStorageKey(authSession, authSession?.isGuest);
       clearActiveProjectId(userKey);
-    } catch { /* ignore */ }
+    } catch (projectScopeErr) {
+      // Best-effort local pointer to the last active project. The project
+      // itself lives in the database and is unaffected, so a failure here costs
+      // a re-selection on next sign-in and nothing durable.
+      console.warn('Active project pointer not cleared:', projectScopeErr);
+    }
     try {
       sessionStorage.removeItem('geosphere360_guest_session');
-    } catch { /* ignore */ }
+    } catch (guestSessionErr) {
+      // Best-effort: clearing a stale guest-session blob. The in-memory session
+      // is nulled regardless, so the user is signed out either way.
+      console.warn('Guest session cache not cleared:', guestSessionErr);
+    }
     gateTriggeredRef.current = null;
     try {
       await supabase.auth.signOut();
-    } catch (e) { }
+    } catch (signOutErr) {
+      // Sign-out is idempotent and the local session is cleared immediately
+      // below regardless. A network failure here means the remote session may
+      // survive, but that is the sign-in flow's problem to recover, and this
+      // user is explicitly leaving. Not worth blocking the transition.
+      console.warn('Remote sign-out did not complete:', signOutErr);
+    }
     setAuthSession(null);
     setShowLanding(true);
     setProjectGate('idle');
@@ -688,7 +758,13 @@ export default function App() {
               setAuthLoading(false);
               return;
             }
-          } catch { /* ignore */ }
+          } catch (guestParseErr) {
+            // Best-effort: a corrupt or stale guest-session blob. The fallback
+            // below sends the user to the landing page, which is correct for a
+            // guest whose session is no longer readable. Auth itself is
+            // unaffected — this is a convenience cache, not the session.
+            console.warn('Guest session cache not parsed:', guestParseErr);
+          }
         }
         setAuthSession(null);
         setShowLanding(true);  // Guest / unauthenticated user returns to Landing
@@ -773,7 +849,12 @@ export default function App() {
       try {
         const reqs = await fetchDeletionRequestsFromSupabase();
         if (!disposed) setPendingApprovalCount(reqs.filter((r) => r.status === 'Pending').length);
-      } catch { /* badge refresh is best-effort */ }
+      } catch (badgeErr) {
+        // Best-effort: this only drives the pending-approval badge count, which
+        // the approvals workspace re-reads on open. A failure here must not
+        // break the effect's subscription lifecycle.
+        console.warn('Deletion approval count not refreshed:', badgeErr);
+      }
     };
     refresh();
     const id = window.setInterval(refresh, 10000);
@@ -1009,7 +1090,11 @@ export default function App() {
       document.documentElement.classList.toggle('light-mode', isLightTheme(projectTheme));
       try {
         localStorage.setItem('app_dashboard_theme', projectTheme);
-      } catch { }
+      } catch (projectThemeErr) {
+        // Best-effort; the DOM is already themed and the project's stored
+        // scope is authoritative, same as the manual theme toggle above.
+        console.warn('Project theme cache not written:', projectThemeErr);
+      }
       window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: projectTheme }));
     }
   }, [activeProject, setProjectSettings]);
@@ -1089,14 +1174,27 @@ export default function App() {
     goToWorkspace('project');
   }, [activeProject, authSession, isGuestUser, addNotification, goToWorkspace]);
 
+  // One place to record that the first-run tour has been seen or dismissed.
+  // `tourFirstRunSeen` gates the auto-suggest only; a failed write means the
+  // suggest reappears next login, which is a cosmetic repeat, not data loss.
+  const markTourSeen = useCallback((): void => {
+    try {
+      localStorage.setItem('tourFirstRunSeen', '1');
+    } catch (tourFlagErr) {
+      console.warn('Tour first-run flag not written:', tourFlagErr);
+    }
+  }, []);
+
   useEffect(() => {
     if (!authSession || authLoading || isGuestUser) return;
     try {
       if (localStorage.getItem('tourFirstRunSeen')) return;
       const t = window.setTimeout(() => setTourFirstRunOpen(true), 1400);
       return () => window.clearTimeout(t);
-    } catch {
-      // localStorage unavailable — skip the auto-suggest
+    } catch (tourReadErr) {
+      // localStorage unavailable — skip the auto-suggest rather than show it
+      // on every page load for a user who has already dismissed it.
+      console.warn('Tour first-run flag not read:', tourReadErr);
     }
   }, [authSession, authLoading, isGuestUser]);
 
@@ -1766,7 +1864,12 @@ export default function App() {
         statusFilters: { ...filters, selected: true },
         showPanotrackData: layerVisible
       }, '*');
-    } catch (err) { }
+    } catch (filterPostErr) {
+      // Cross-frame message to the inspection map. A detached or cross-origin
+      // frame throws here; the map re-syncs on its own next mount, so losing
+      // one filter push costs nothing durable.
+      console.warn('Trajectory filter not forwarded to map:', filterPostErr);
+    }
   }, []);
 
   // Restore the operator's trajectory filter once the iframe finishes booting.
@@ -1905,14 +2008,7 @@ export default function App() {
     setActivePanoramaUrl('');
     setInspectorSubgrid('');
     setInspectorCoords({ lat: 0, lng: 0 });
-    try {
-      const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
-      iframes.forEach((f) => {
-        f.contentWindow?.postMessage({ type: 'MAP_POINT_DESELECTED' }, '*');
-      });
-    } catch (err) {
-      // ignore cross-frame messaging errors
-    }
+    postToMapFrames({ type: 'MAP_POINT_DESELECTED' });
   };
 
   const [isQAQCRunnerModalOpen, setIsQAQCRunnerModalOpen] = useState<boolean>(false);
@@ -2261,7 +2357,19 @@ export default function App() {
                 updated_at: new Date().toISOString()
               }).ilike('subgrid', normSg.replace(/\s+/g, '_'))
             ).catch(() => { });
-          } catch (_) { }
+          } catch (stagingErr) {
+            // A real write that was being lost entirely. The in-memory row is
+            // already updated optimistically above, so the operator sees the
+            // new QA/QC status either way — which is precisely why this must be
+            // surfaced instead of dropped: only this banner distinguishes
+            // "saved" from "not saved".
+            reportWriteFailure(
+              'app.staging_qaqc_rollup',
+              `QA/QC status — ${normSg}`,
+              stagingErr instanceof Error ? stagingErr.message : String(stagingErr),
+              'warning'
+            );
+          }
         }
       }
     });
@@ -2351,33 +2459,23 @@ export default function App() {
           }
 
           // Broadcast MAP_POINT_SELECTED with resolved image_url to all viewer iframes
-          const iframes = document.querySelectorAll('iframe');
-          iframes.forEach(f => {
-            try {
-              f.contentWindow?.postMessage({
-                type: 'MAP_POINT_SELECTED',
-                point: {
-                  ...pt,
-                  image_url: imageUrl || pt.image_url
-                }
-              }, '*');
-            } catch (err) { }
+          postToMapFrames({
+            type: 'MAP_POINT_SELECTED',
+            point: {
+              ...pt,
+              image_url: imageUrl || pt.image_url
+            }
           });
         }
       } else if (e.data?.type === 'CAMERA_ROTATED' && e.data?.source === 'viewer') {
         const yawVal = Math.round((e.data.yaw ?? 0) * 100) / 100;
 
         // Broadcast CAMERA_ROTATED immediately at 60fps to all map iframes for zero-lag sonar rotation
-        const mapIframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
-        mapIframes.forEach(f => {
-          try {
-            f.contentWindow?.postMessage({
-              type: 'CAMERA_ROTATED',
-              source: 'parent',
-              yaw: e.data.yaw,
-              pitch: e.data.pitch
-            }, '*');
-          } catch (err) { }
+        postToMapFrames({
+          type: 'CAMERA_ROTATED',
+          source: 'parent',
+          yaw: e.data.yaw,
+          pitch: e.data.pitch
         });
 
         // Publish live heading to the store (HUD reads it without re-rendering App).
@@ -2489,31 +2587,26 @@ export default function App() {
         // letting the map fit a single stray point.
         const subgridPoints = framableSubgridPoints(formattedSubgridData, nextSubgrid);
 
-        const iframes = document.querySelectorAll('iframe');
-        iframes.forEach(f => {
-          try {
-            f.contentWindow?.postMessage({
-              type: 'SET_MAP_VIEW_STATE',
-              viewMode: 'SUBGRID',
-              subgrid: nextSubgrid,
-              date: nextDate || '',
-              runId: null,
-              points: subgridPoints
-            }, '*');
-            f.contentWindow?.postMessage({
-              type: 'FILTER_SUBGRID',
-              subgrid: nextSubgrid,
-              date: nextDate || '',
-              isSingleRun: false,
-              runId: null
-            }, '*');
-            f.contentWindow?.postMessage({
-              type: 'SET_STAGED_DATA',
-              stagedItems: formattedSubgridData,
-              isSingleRun: false,
-              runId: null
-            }, '*');
-          } catch (e) { }
+        postToMapFrames({
+          type: 'SET_MAP_VIEW_STATE',
+          viewMode: 'SUBGRID',
+          subgrid: nextSubgrid,
+          date: nextDate || '',
+          runId: null,
+          points: subgridPoints
+        });
+        postToMapFrames({
+          type: 'FILTER_SUBGRID',
+          subgrid: nextSubgrid,
+          date: nextDate || '',
+          isSingleRun: false,
+          runId: null
+        });
+        postToMapFrames({
+          type: 'SET_STAGED_DATA',
+          stagedItems: formattedSubgridData,
+          isSingleRun: false,
+          runId: null
         });
         return nextSubgrid;
       } else {
@@ -2528,32 +2621,27 @@ export default function App() {
           };
         });
 
-        const iframes = document.querySelectorAll('iframe');
-        iframes.forEach(f => {
-          try {
-            const allPoints = dailyData.flatMap(d => (d.panoramas && d.panoramas.length > 0 ? d.panoramas : (d.points || [])));
-            f.contentWindow?.postMessage({
-              type: 'SET_MAP_VIEW_STATE',
-              viewMode: 'ALL',
-              subgrid: '',
-              date: '',
-              runId: null,
-              points: allPoints
-            }, '*');
-            f.contentWindow?.postMessage({
-              type: 'FILTER_SUBGRID',
-              subgrid: '',
-              date: '',
-              isSingleRun: false,
-              runId: null
-            }, '*');
-            f.contentWindow?.postMessage({
-              type: 'SET_STAGED_DATA',
-              stagedItems: formattedAll,
-              isSingleRun: false,
-              runId: null
-            }, '*');
-          } catch (e) { }
+        const allPoints = dailyData.flatMap(d => (d.panoramas && d.panoramas.length > 0 ? d.panoramas : (d.points || [])));
+        postToMapFrames({
+          type: 'SET_MAP_VIEW_STATE',
+          viewMode: 'ALL',
+          subgrid: '',
+          date: '',
+          runId: null,
+          points: allPoints
+        });
+        postToMapFrames({
+          type: 'FILTER_SUBGRID',
+          subgrid: '',
+          date: '',
+          isSingleRun: false,
+          runId: null
+        });
+        postToMapFrames({
+          type: 'SET_STAGED_DATA',
+          stagedItems: formattedAll,
+          isSingleRun: false,
+          runId: null
         });
       }
 
@@ -2571,35 +2659,30 @@ export default function App() {
       setSelectedSubgridFilter(null);
       setSelectedDateFilter(null);
 
-      const iframes = document.querySelectorAll('iframe');
-      iframes.forEach(f => {
-        try {
-          const allPoints = dailyData.flatMap(d => (d.panoramas && d.panoramas.length > 0 ? d.panoramas : (d.points || [])));
-          f.contentWindow?.postMessage({
-            type: 'SET_MAP_VIEW_STATE',
-            viewMode: 'ALL',
-            subgrid: '',
-            date: '',
-            runId: null,
-            points: allPoints
-          }, '*');
-          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false }, '*');
-          const formattedAll = dailyData.map(d => {
-            const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
-            return {
-              ...d,
-              isPublished: isPub,
-              status: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
-              opacity: isPub ? 1.0 : 0.7,
-              statusColor: isPub ? '#10b981' : '#f59e0b'
-            };
-          });
-          f.contentWindow?.postMessage({
-            type: 'SET_STAGED_DATA',
-            stagedItems: formattedAll,
-            isSingleRun: false
-          }, '*');
-        } catch (e) { }
+      const allPoints = dailyData.flatMap(d => (d.panoramas && d.panoramas.length > 0 ? d.panoramas : (d.points || [])));
+      postToMapFrames({
+        type: 'SET_MAP_VIEW_STATE',
+        viewMode: 'ALL',
+        subgrid: '',
+        date: '',
+        runId: null,
+        points: allPoints
+      });
+      postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false });
+      const formattedAll = dailyData.map(d => {
+        const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
+        return {
+          ...d,
+          isPublished: isPub,
+          status: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
+          opacity: isPub ? 1.0 : 0.7,
+          statusColor: isPub ? '#10b981' : '#f59e0b'
+        };
+      });
+      postToMapFrames({
+        type: 'SET_STAGED_DATA',
+        stagedItems: formattedAll,
+        isSingleRun: false
       });
       return;
     }
@@ -2658,36 +2741,31 @@ export default function App() {
       })
     };
 
-    const iframes = document.querySelectorAll('iframe');
-    iframes.forEach(f => {
-      try {
-        // Send DIRECT single-payload view state to all map iframes (Zero point bleed)
-        f.contentWindow?.postMessage({
-          type: 'SET_MAP_VIEW_STATE',
-          viewMode: 'SINGLE_RUN',
-          subgrid: daily.subgrid,
-          runId: rowId,
-          date: daily.date || '',
-          points: formattedItem.panoramas
-        }, '*');
+    // Send DIRECT single-payload view state to all map iframes (Zero point bleed)
+    postToMapFrames({
+      type: 'SET_MAP_VIEW_STATE',
+      viewMode: 'SINGLE_RUN',
+      subgrid: daily.subgrid,
+      runId: rowId,
+      date: daily.date || '',
+      points: formattedItem.panoramas
+    });
 
-        // Send single-run filter
-        f.contentWindow?.postMessage({
-          type: 'FILTER_SUBGRID',
-          subgrid: daily.subgrid,
-          date: daily.date || '',
-          runId: rowId,
-          isSingleRun: true
-        }, '*');
+    // Send single-run filter
+    postToMapFrames({
+      type: 'FILTER_SUBGRID',
+      subgrid: daily.subgrid,
+      date: daily.date || '',
+      runId: rowId,
+      isSingleRun: true
+    });
 
-        // Send ONLY this single run's formatted panoramas to the map
-        f.contentWindow?.postMessage({
-          type: 'SET_STAGED_DATA',
-          stagedItems: [formattedItem],
-          isSingleRun: true,
-          runId: rowId
-        }, '*');
-      } catch (e) { }
+    // Send ONLY this single run's formatted panoramas to the map
+    postToMapFrames({
+      type: 'SET_STAGED_DATA',
+      stagedItems: [formattedItem],
+      isSingleRun: true,
+      runId: rowId
     });
   };
 
@@ -3089,12 +3167,7 @@ export default function App() {
                             onClick={() => {
                               const next = !isDrawingBBox;
                               setIsDrawingBBox(next);
-                              const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
-                              iframes.forEach(f => {
-                                try {
-                                  f.contentWindow?.postMessage({ type: 'TOGGLE_BBOX_DRAW', isDrawing: next }, '*');
-                                } catch (err) { }
-                              });
+                              postToMapFrames({ type: 'TOGGLE_BBOX_DRAW', isDrawing: next });
                             }}
                             className={`px-2 sm:px-3 py-1 text-[10px] sm:text-[11px] font-medium rounded-lg border transition-all uppercase tracking-tight flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap ${isDrawingBBox
                               ? 'bg-card border-slate-400 text-text-base'
@@ -3286,12 +3359,7 @@ export default function App() {
                                       setSelectedDailyRunId(null);
                                       setSelectedSubgridFilter(null);
                                       setSelectedDateFilter(null);
-                                      const iframes = document.querySelectorAll('iframe');
-                                      iframes.forEach(f => {
-                                        try {
-                                          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false, runId: null }, '*');
-                                        } catch (_) { }
-                                      });
+postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false, runId: null });
                                     } else if (selectedSubgridFilter) {
                                       toggleSubgridFilter(selectedSubgridFilter);
                                     }
@@ -3669,12 +3737,7 @@ export default function App() {
                                           yaw: yawDeg,
                                           pitch: pitchDeg
                                         };
-                                        const mapIframe = inspectionMapIframeRef.current;
-                                        if (mapIframe?.contentWindow) {
-                                          try {
-                                            mapIframe.contentWindow.postMessage(cameraMsg, '*');
-                                          } catch (_) { }
-                                        }
+                                        postToMapFrame(inspectionMapIframeRef.current, cameraMsg);
                                       }}
                                       className="w-full h-full"
                                     />
@@ -3779,32 +3842,9 @@ export default function App() {
                                       dashboardPsvRef.current?.setPosition({ yaw: nextBearing });
                                     }
 
-                                    const iframes = document.querySelectorAll('iframe');
-                                    iframes.forEach((f) => {
-                                      try {
-                                        f.contentWindow?.postMessage(
-                                          {
-                                            type: 'SET_PANORAMA',
-                                            point: pointPayload
-                                          },
-                                          '*'
-                                        );
-                                        f.contentWindow?.postMessage(
-                                          {
-                                            type: 'MAP_POINT_SELECTED',
-                                            point: pointPayload
-                                          },
-                                          '*'
-                                        );
-                                        f.contentWindow?.postMessage(
-                                          {
-                                            type: 'SET_CAMERA_HEADING',
-                                            heading: nextBearing
-                                          },
-                                          '*'
-                                        );
-                                      } catch (e) { }
-                                    });
+                                    postToMapFrames({ type: 'SET_PANORAMA', point: pointPayload });
+                                    postToMapFrames({ type: 'MAP_POINT_SELECTED', point: pointPayload });
+                                    postToMapFrames({ type: 'SET_CAMERA_HEADING', heading: nextBearing });
                                   }}
                                   onZoomIn={() => dashboardPsvRef.current?.zoomIn()}
                                   onZoomOut={() => dashboardPsvRef.current?.zoomOut()}
@@ -4175,12 +4215,12 @@ export default function App() {
           tourFirstRunOpen={tourFirstRunOpen}
           onDismissFirstRun={() => {
             setTourFirstRunOpen(false);
-            try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ }
+            markTourSeen();
           }}
           onStartTour={() => {
             setTourFirstRunOpen(false);
             setTourStep(1);
-            try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ }
+            markTourSeen();
           }}
           isHelpGuideOpen={isHelpGuideOpen}
         />
