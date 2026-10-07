@@ -164,7 +164,12 @@ export function useAppData() {
             localStorage.removeItem('app_qaqc_audit_cache_v2');
             localStorage.removeItem('geosphere_staged_daily_cache_v1');
           }
-        } catch (_) { }
+        } catch (legacyPurgeErr) {
+          // Best-effort: purging superseded local caches. If this fails the
+          // caches are merely not cleared on this boot; nothing depends on them
+          // and no data is at risk. Deliberately not reported as a failure.
+          console.warn('Legacy cache purge skipped:', legacyPurgeErr);
+        }
 
         // Process Cloud QAQC Audit Runs directly from Supabase (Single Source of Truth)
         let cloudAuditMap: Record<string, QAQCAuditRunRecord> = {};
@@ -221,12 +226,15 @@ export function useAppData() {
             const qaqcStatus = buildQaqcStatus({
               defectCount: finalDefects,
               isPublished: isPub,
-              hasAudit: Boolean(cachedAudit) || finalDefects > 0,
+              hasAudit: Boolean(cachedAudit) || (finalDefects !== null && finalDefects > 0),
               existing: d.qaqcStatus
             });
 
             return {
               ...d,
+              // `null` (unknown) is carried through deliberately. Writing 0 here
+              // would claim the run was clean when the defect table was simply
+              // unreadable — migration 0032.
               defectCount: finalDefects,
               imagesDefected: finalDefects,
               ...(qaqcStatus ? { qaqcStatus } : {})
@@ -257,11 +265,14 @@ export function useAppData() {
             const qaqcStatus = b.qaqcStatus || buildQaqcStatus({
               defectCount: finalDefects,
               isPublished: false,
-              hasAudit: Boolean(cachedAudit) || finalDefects > 0
+              hasAudit: Boolean(cachedAudit) || (finalDefects !== null && finalDefects > 0)
             }) || undefined;
 
             return {
               ...bWithOverrides,
+              // `null` survives as unknown. A masterlist row aggregates its runs,
+              // so an unreadable source makes the aggregate unknown too rather
+              // than a sum that silently ignores the runs it could not measure.
               defects: finalDefects,
               ...(qaqcStatus ? { qaqcStatus } : {})
             };
@@ -289,7 +300,12 @@ export function useAppData() {
           try {
             readAuditSet = new Set(JSON.parse(localStorage.getItem('app_read_audit_ids') || '[]'));
             lastReadAuditTime = Number(localStorage.getItem('app_last_read_audit_time') || '0');
-          } catch (_) { }
+          } catch (auditCacheErr) {
+            // Best-effort, same reasoning as the notification cache above:
+            // `read` comes from the database and the local markers only add a
+            // "seen since" grace. A bad cache costs a repeat badge, no data.
+            console.warn('Audit read cache not read:', auditCacheErr);
+          }
 
           setAuditLogs(prev => {
             return dbAuditLogs.value.map((a: any) => {
@@ -317,7 +333,13 @@ export function useAppData() {
             readNotifSet = new Set(JSON.parse(localStorage.getItem('app_read_notif_ids') || '[]'));
             lastReadNotifTime = Number(localStorage.getItem('app_last_read_notif_time') || '0');
             clearedNotifTime = Number(localStorage.getItem('app_cleared_notif_time') || '0');
-          } catch (_) { }
+          } catch (notifCacheErr) {
+            // Best-effort: this is a stale-cache purge for notification read
+            // markers. Supabase is the source of truth for those (read below),
+            // so a corrupt or unavailable localStorage must not block boot.
+            // Safe to ignore: losing the cache only re-notifies, never loses data.
+            console.warn('Notification read cache not read:', notifCacheErr);
+          }
 
           setNotifications(prev => {
             return dbNotifications.value

@@ -230,8 +230,18 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     const qaDefectsPerSubgrid = new Map<string, number>();
     const knownDefectFilenames = new Set<string>();
     const knownDefectsList: any[] = [];
+    // Whether the `qa_defects` read actually succeeded. Without this the two
+    // outcomes below are indistinguishable: on a database missing `run_id`
+    // (pre-0032) the select throws, both maps stay empty, and every survey run
+    // reported 0 defects — a number the board renders as a healthy tally.
+    let qaDefectsReadable = true;
+    let qaDefectsError: string | null = null;
     try {
-      const { data: qdRows } = await scoped(supabase.from('qa_defects').select('point_id, filename, item_key, subgrid, run_id, qa_status, defect_flags, defect_count, defect_type, is_resolved'));
+      const { data: qdRows, error: qdErr } = await scoped(supabase.from('qa_defects').select('point_id, filename, item_key, subgrid, run_id, qa_status, defect_flags, defect_count, defect_type, is_resolved'));
+      if (qdErr) {
+        qaDefectsReadable = false;
+        qaDefectsError = qdErr.message;
+      }
       if (qdRows && qdRows.length > 0) {
         qdRows.forEach((r: any) => {
           const fn = (r.point_id || r.filename || r.item_key || '').split('/').pop()?.toUpperCase().trim();
@@ -254,11 +264,30 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           }
         });
       }
-    } catch (_) { }
+    } catch (defectsReadErr: unknown) {
+      qaDefectsReadable = false;
+      qaDefectsError = defectsReadErr instanceof Error ? defectsReadErr.message : String(defectsReadErr);
+    }
+
+    if (!qaDefectsReadable) {
+      // A read, not a write, so it does not belong in the write-failure banner.
+      // It is logged loudly because the consequence is a wrong number on the
+      // board rather than an obvious error.
+      console.warn(
+        '[datasets] qa_defects unreadable — defect counts for this load are UNKNOWN, not zero:',
+        qaDefectsError
+      );
+    }
 
     // Resolve the defect tally for one run: its own rows win; the subgrid-level
     // tally is only used when the run has no run-scoped rows at all.
-    const defectsForRun = (normSubgrid: string, runKey: string): number => {
+    //
+    // Returns `null` — UNKNOWN — when the `qa_defects` table could not be read
+    // at all. `0` and `null` are different claims: `0` means the table was read
+    // and this run has no flagged rows, `null` means nobody knows. Collapsing
+    // them into `0` is migration 0032.
+    const defectsForRun = (normSubgrid: string, runKey: string): number | null => {
+      if (!qaDefectsReadable) return null;
       const own = qaDefectsPerRun.get(`${normSubgrid}_${runKey}`);
       if (typeof own === 'number') return own;
       return qaDefectsPerSubgrid.get(normSubgrid) || 0;
@@ -456,15 +485,20 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       const defects = resolveRunDefectCount({
         subgrid: normSubgrid,
         runId,
-        fromRunRows: runDefects || null,
+        // `runDefects ?? null`, not `runDefects || null`: a run genuinely
+        // carrying zero defects must stay 0, because `present()` treats 0 as a
+        // real answer and lets it win over coarser sources. `||` turned every
+        // clean run into "absent" and let it inherit the subgrid-wide total.
+        fromRunRows: runDefects ?? null,
         fromRunAudit: cachedDefectCount,
         fromSubgridRows: typeof g.recordDefects === 'number' ? g.recordDefects : null,
-        ceiling: Math.max(poiCount, finalImageCount)
+        ceiling: Math.max(poiCount, finalImageCount),
+        defectsUnreadable: runDefects === null
       });
       const qaqcStatus = buildQaqcStatus({
         defectCount: defects,
         isPublished: true,
-        hasAudit: Boolean(cachedAudit) || defects > 0
+        hasAudit: Boolean(cachedAudit) || (defects !== null && defects > 0)
       });
 
       let dateFormatted = g.dateStr;
@@ -686,16 +720,17 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const finalDefectCount = resolveRunDefectCount({
             subgrid: normSg,
             runId,
-            fromRunRows: runDefects || null,
+            fromRunRows: runDefects ?? null,
             fromRunAudit: cachedDefectCount,
             fromSubgridRows: typeof g.defectCount === 'number' ? g.defectCount : null,
-            ceiling: Math.max(explicitPoi, finalImgCount)
+            ceiling: Math.max(explicitPoi, finalImgCount),
+            defectsUnreadable: runDefects === null
           });
           const isPub = g.status === 'yes';
           const qaqcStatus = buildQaqcStatus({
             defectCount: finalDefectCount,
             isPublished: isPub,
-            hasAudit: Boolean(cachedAudit) || finalDefectCount > 0
+            hasAudit: Boolean(cachedAudit) || (finalDefectCount !== null && finalDefectCount > 0)
           });
 
           dailyData.push({
@@ -875,9 +910,10 @@ export async function publishToSupabase(record: {
   images?: number;
   imagesProcessed?: number;
   poiCount?: number;
-  defects?: number;
-  defectCount?: number;
-  imagesDefected?: number;
+  /** `null` = unknown (unreadable source); a publish must not record it as 0. */
+  defects?: number | null;
+  defectCount?: number | null;
+  imagesDefected?: number | null;
   kmProcessed?: number;
   captureEquipment?: string;
   publishToWebGIS?: string;
@@ -1030,7 +1066,8 @@ export async function saveToStagingSupabase(record: {
   images?: number;
   imagesProcessed?: number;
   poiCount?: number;
-  defects?: number;
+  /** `null` = unknown (unreadable source); must not be persisted as 0. */
+  defects?: number | null;
   kmProcessed?: number;
   captureEquipment?: string;
   pic?: string;
@@ -1123,7 +1160,9 @@ export async function saveToStagingSupabase(record: {
         km_processed: record.kmProcessed || 0,
         poi_count: record.poiCount || rawList.length,
         images_processed: record.imagesProcessed || rawList.length,
-        defect_count: typeof record.defects === 'number' ? record.defects : 0,
+        // `null` is written as SQL NULL, not 0. A `? : 0` here would persist a
+        // clean bill of health for a run whose defects were never measured.
+        defect_count: typeof record.defects === 'number' ? record.defects : null,
         capture_equipment: record.captureEquipment || p.captureEquipment || 'MMS',
         status: record.publishToWebGIS || 'In Process',
         is_fallback_coord: !hasRealLon || !hasRealLat,

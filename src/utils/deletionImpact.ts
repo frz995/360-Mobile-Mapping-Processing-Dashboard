@@ -41,8 +41,9 @@ export interface BatchLogLike {
   availableImagesCount?: number;
   availableFilenames?: string[];
   poiCount?: number;
-  defects?: number;
-  defectCount?: number;
+  /** `null` = unreadable source, not zero. See `BatchLog['defects']`. */
+  defects?: number | null;
+  defectCount?: number | null;
   kmProcessed?: number;
   publishToWebGIS?: string;
   isSyncedWithSupabase?: boolean;

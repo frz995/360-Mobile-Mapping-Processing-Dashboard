@@ -39,6 +39,26 @@ export interface DefectCountSources {
 
   /** Frame/POI ceiling for this run; a defect count can never exceed it. */
   ceiling?: number | null;
+
+  /**
+   * Set when the `qa_defects` source could not be READ at all — the select
+   * failed, so no row-level count exists for any run.
+   *
+   * WHY THIS IS NEEDED
+   *
+   * `fromRunRows: null` already means two different things: "this run has no
+   * run-scoped rows" (a real answer, fall through to the next source) and
+   * "the table was unreadable" (no answer at all). The precedence chain cannot
+   * tell them apart, so an unreadable table silently fell to the final `?? 0`
+   * and the board rendered "0 defects" — migration 0032, which shipped to a
+   * pilot-bound client.
+   *
+   * With this flag set, a row-level count is not merely absent, it is
+   * unknowable, and the function returns `null` rather than a number. The
+   * audit-summary source is still honoured: it comes from a different table
+   * that may have been read successfully.
+   */
+  defectsUnreadable?: boolean;
 }
 
 function present(n: number | null | undefined): number | null {
@@ -61,12 +81,16 @@ function present(n: number | null | undefined): number | null {
  * The result is clamped to `ceiling` when one is known, which is what stops a
  * 0-frame run from advertising a defect count it could never have produced.
  */
-export function resolveRunDefectCount(sources: DefectCountSources): number {
+export function resolveRunDefectCount(sources: DefectCountSources): number | null {
   const count =
     present(sources.fromRunRows) ??
     present(sources.fromRunAudit) ??
-    present(sources.fromSubgridRows) ??
-    0;
+    present(sources.fromSubgridRows);
+
+  // Reached only when no source supplied a count. With an unreadable
+  // `qa_defects` table, the final `?? 0` used to be a fabricated answer: it
+  // claimed a clean run nobody had measured. Say "unknown" instead.
+  if (count === null) return sources.defectsUnreadable ? null : 0;
 
   const ceiling = positive(sources.ceiling);
   return ceiling === null ? count : Math.min(count, ceiling);
@@ -79,7 +103,12 @@ function positive(n: number | null | undefined): number | null {
 export type QaqcVerdict = 'verified' | 'flagged' | 'ready' | 'flagged_staging';
 
 export interface QaqcStatusInput {
-  defectCount: number;
+  /**
+   * `null` means the count is UNKNOWN — the `qa_defects` table could not be
+   * read. It must not be coerced to 0: a board that cannot compute a tally has
+   * to say so rather than report a clean run.
+   */
+  defectCount: number | null;
   isPublished: boolean;
   /** True when a persisted audit summary exists for this run. */
   hasAudit: boolean;
@@ -95,6 +124,13 @@ export interface QaqcStatusInput {
  */
 export function buildQaqcStatus({ defectCount, isPublished, hasAudit, existing }: QaqcStatusInput): string | undefined {
   const plural = defectCount === 1 ? '' : 's';
+
+  // Unknown is a distinct verdict from every pass/fail state. It is not a
+  // failure and it is not a clean bill of health, so it gets its own label and
+  // short-circuits ahead of both. Precedent: `TransportDiagnosis` in
+  // src/config/transport.ts separates 'unreachable' from 'disabled' rather than
+  // collapsing them.
+  if (defectCount === null) return 'QAQC Unverified (could not read defect data)';
 
   if (hasAudit) {
     if (isPublished) {

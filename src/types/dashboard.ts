@@ -63,7 +63,12 @@ export interface BatchLog {
   poiCount?: number;
   availableImagesCount?: number;
   availableFilenames?: string[];
-  defects: number;
+  /**
+   * `null` means the count is UNKNOWN — the `qa_defects` table could not be
+   * read. Consumers must render that as "unknown", never as 0; coercing it to
+   * 0 reports a clean run that was never measured (migration 0032).
+   */
+  defects: number | null;
   kmProcessed: number;
   status: 'Complete' | 'Ongoing';
   captureEquipment?: 'MMS' | 'Backpack' | 'Drone' | string;

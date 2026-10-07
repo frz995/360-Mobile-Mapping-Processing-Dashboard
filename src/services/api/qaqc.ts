@@ -11,6 +11,8 @@ import { saveAuditLogToSupabase } from './admin';
 export const WRITE_OPS = {
   auditRun: 'qaqc.audit_run',
   defectRow: 'qaqc.defect_row',
+  panoramaRollup: 'qaqc.panorama_rollup',
+  auditLog: 'qaqc.audit_log',
   defectResolve: 'qaqc.defect_resolve',
   defectBatch: 'qaqc.defect_batch'
 } as const;
@@ -45,6 +47,15 @@ export async function updateDefectStatusInSupabase(
     const qaDefectsTable = settings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || DATABASE_TABLE_DEFAULTS.qaDefectsTable;
 
     // 1. Update panoramas table (by exact/matched filename or subgrid prefix)
+    //
+    // A PostgREST builder is thenable: `await query` RESOLVES with
+    // `{ data, error }` and does not throw on a rejected write. The previous
+    // `try { await query } catch { console.warn }` therefore never saw a
+    // rejection at all — the catch was dead code, and the function went on to
+    // return `{ success: true }` with the panoramas rollup silently unwritten.
+    // `error` has to be inspected explicitly.
+    // Deliberately isolated: a failure here must not stop the durable
+    // `qa_defects` write below, which is the authoritative record.
     try {
       let query = supabase.from(panoramasTable).update({
         defect_count: defectCount,
@@ -57,9 +68,27 @@ export async function updateDefectStatusInSupabase(
       } else {
         query = query.ilike('filename', `${cleanKey}%`);
       }
-      await query;
+
+      const { error: panoramaErr } = await query;
+      if (panoramaErr) {
+        console.warn('Supabase panoramas update notice (non-fatal):', panoramaErr.message);
+        reportWriteFailure(
+          WRITE_OPS.panoramaRollup,
+          `Panorama rollup — ${cleanKey}`,
+          panoramaErr.message,
+          'warning'
+        );
+      } else {
+        reportWriteSuccess(WRITE_OPS.panoramaRollup);
+      }
     } catch (panoramaError: any) {
       console.warn('Supabase panoramas update notice (non-fatal):', panoramaError?.message);
+      reportWriteFailure(
+        WRITE_OPS.panoramaRollup,
+        `Panorama rollup — ${cleanKey}`,
+        panoramaError?.message || String(panoramaError),
+        'warning'
+      );
     }
 
     // 2. Upsert into qa_defects table for persistent QA logging per item
@@ -115,7 +144,15 @@ export async function updateDefectStatusInSupabase(
 
     return { success: true, message: `Synced QA status for ${cleanKey} in Supabase` };
   } catch (err) {
+    // Reached only for a malformed query or a thrown network error, not for a
+    // plain rejection. It still has to reach the operator: the promise settled
+    // with success while one or both writes above failed.
     console.warn('Supabase defect update error:', err);
+    reportWriteFailure(
+      WRITE_OPS.defectRow,
+      'QA defect record',
+      err instanceof Error ? err.message : String(err)
+    );
     return { success: false, message: (err as Error).message };
   }
 }
@@ -243,7 +280,14 @@ export async function saveQaAuditRunToSupabase(
     reportWriteSuccess(WRITE_OPS.auditRun);
     return true;
   } catch (err) {
+    // A throw here bypasses the `error` check above, so without this the audit
+    // summary could fail without ever reaching the banner.
     console.warn('saveQaAuditRunToSupabase catch:', err);
+    reportWriteFailure(
+      WRITE_OPS.auditRun,
+      'QA/QC audit summary',
+      err instanceof Error ? err.message : String(err)
+    );
     return false;
   }
 }
@@ -394,11 +438,27 @@ export async function resolveQADefectInSupabase(
       details: `Defect on node ${pointId} in subgrid ${cleanSub} marked as resolved/dismissed by ${resolvedBy || 'Operator'}.`,
       user: resolvedBy || 'Operator',
       status: 'success'
-    }).catch(() => { });
+    }).catch((logErr: unknown) => {
+      // The dismissal itself already committed above, so this is genuinely
+      // best-effort — but it was a bare `.catch(() => {})`, which discarded the
+      // error entirely. An audit log that never wrote is exactly the kind of
+      // gap this plan exists to close, so it is surfaced at warning severity.
+      reportWriteFailure(
+        WRITE_OPS.auditLog,
+        `Audit log — ${pointId}`,
+        logErr instanceof Error ? logErr.message : String(logErr),
+        'warning'
+      );
+    });
 
     return true;
   } catch (err) {
     console.warn('resolveQADefectInSupabase catch:', err);
+    reportWriteFailure(
+      WRITE_OPS.defectResolve,
+      'Defect dismissal',
+      err instanceof Error ? err.message : String(err)
+    );
     return false;
   }
 }
