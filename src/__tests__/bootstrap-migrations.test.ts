@@ -30,10 +30,24 @@ const report = analyse(migrations)
 
 describe('migration files load and parse', () => {
   it('loads every migration except the security test script', () => {
-    // 33 files on disk, 0011 excluded because it asserts on a schema that does
+    // 34 files on disk, 0011 excluded because it asserts on a schema that does
     // not exist yet and is run separately after install.
-    expect(migrations).toHaveLength(32)
+    //
+    // The count is an assertion, not a snapshot: adding a migration surfaces
+    // here as a one-line diff rather than as a silently unvalidated install.
+    // v27 section 3 updated this from 32 to 33 for migration 0034.
+    expect(migrations).toHaveLength(33)
     expect(migrations.some((m) => m.name.startsWith('0011'))).toBe(false)
+  })
+
+  it('includes the metadata filename table from 0034', () => {
+    // Asserted by name so that dropping or renaming the migration fails loudly
+    // rather than leaving the panel with three permanently "not captured at
+    // import" rows.
+    const m0034 = migrations.find((x) => x.name.startsWith('0034'))
+    expect(m0034).toBeDefined()
+    const creates = new Set(m0034!.statements.flatMap((s) => [...s.creates]))
+    expect(creates).toContain('public.survey_metadata_filenames')
   })
 
   it('loads them in filename order', () => {

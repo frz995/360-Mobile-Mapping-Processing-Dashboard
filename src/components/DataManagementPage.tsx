@@ -78,6 +78,8 @@ import {
 } from '../utils/dashboardData';
 import { getItemId } from '../utils/items';
 import type { PanoramaItem, DailyTimeSeries, BatchLog, NotificationItem, AuditLogItem } from '../types/dashboard';
+import { saveSurveyMetadataFilenames } from '../services/api/surveyMetadata';
+import { reportWriteFailure } from '../lib/writeFailures';
 import {
   findItem,
   updateItem,
@@ -1292,6 +1294,44 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         updatedDraft.push(newImp);
       }
     });
+
+    // 1b. Persist the metadata filename set per run (migration 0034).
+    //
+    // This is the LAST moment the CSV's rows exist — they are component state
+    // and are cleared when the dialog closes. Without this, the panel's
+    // Duplicate / Invalid filename / Metadata mismatch rows can only ever read
+    // "not captured at import" for every run, because `csv_file_name` stores the
+    // CSV's NAME and not its rows.
+    //
+    // Fire-and-forget with an explicit failure surface: the import itself has
+    // already been validated and committed to local state, so aborting it here
+    // would lose good data to a persistence problem.
+    const metadataWrites = imported.map(async (newImp) => {
+      try {
+        const written = await saveSurveyMetadataFilenames(
+          newImp.subgrid,
+          newImp.id ?? null,
+          newImp.csvFileName ?? null,
+          (newImp.panoramas ?? []).map(p => p.filename).filter((fn): fn is string => Boolean(fn))
+        );
+        if (written === 0 && (newImp.panoramas ?? []).length > 0) {
+          reportWriteFailure(
+            'survey.metadata_filenames',
+            `Metadata filenames — ${newImp.subgrid}`,
+            'No metadata filenames were persisted for this run.',
+            'warning'
+          );
+        }
+      } catch (metaErr) {
+        reportWriteFailure(
+          'survey.metadata_filenames',
+          `Metadata filenames — ${newImp.subgrid}`,
+          metaErr instanceof Error ? metaErr.message : String(metaErr),
+          'warning'
+        );
+      }
+    });
+    void Promise.all(metadataWrites);
 
     const updatedBatchLogs = reconcileBatchLogs(updatedDraft, batchLogs);    // 2. INSTANT UI UPDATE & Local Cache
     setDraftDailyData(updatedDraft);
