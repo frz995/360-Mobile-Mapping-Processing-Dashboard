@@ -52,6 +52,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -182,18 +183,45 @@ export function splitStatements(sql) {
 }
 
 /**
- * Blank out string literals, quoted identifiers and dollar-quoted bodies,
- * preserving length and line structure so offsets still line up.
+ * Blank out string literals, quoted identifiers, dollar-quoted bodies and SQL
+ * comments, preserving length and line structure so offsets still line up.
  *
  * Without this, relation detection matches prose inside literals: the policy
  * name `"Allow authenticated update on panoramas"` reads as an UPDATE of a
  * table called `on`. Masking first is what makes the regexes below trustworthy.
+ *
+ * Comments are masked for the same reason, and the cost of not doing so is
+ * concrete rather than theoretical. A commented-out
+ * `-- CREATE TABLE public.old_thing (id uuid);` would register `public.old_thing`
+ * as a relation this set CREATES, and a later statement reaching for that name
+ * would then be treated as in-order when it is not. That is precisely the
+ * order defect this module exists to detect, hidden by a line of prose. No
+ * migration in the set currently has such a line; the masking is here so the
+ * guarantee survives the next one that does.
  */
 export function maskLiterals(stmt) {
   let out = '';
   let i = 0;
   while (i < stmt.length) {
     const rest = stmt.slice(i);
+
+    // `-- ...` to end of line.
+    if (rest.startsWith('--')) {
+      const nl = stmt.indexOf('\n', i);
+      const stop = nl === -1 ? stmt.length : nl;
+      out += stmt.slice(i, stop).replace(/[^\n]/g, ' ');
+      i = stop;
+      continue;
+    }
+
+    // `/* ... */`, which may span lines.
+    if (rest.startsWith('/*')) {
+      const close = stmt.indexOf('*/', i + 2);
+      const stop = close === -1 ? stmt.length : close + 2;
+      out += stmt.slice(i, stop).replace(/[^\n]/g, ' ');
+      i = stop;
+      continue;
+    }
 
     if (rest[0] === "'" || rest[0] === '"') {
       const quote = rest[0];
@@ -630,7 +658,16 @@ async function main() {
 
   let pg;
   try {
-    pg = (await import('pg')).default;
+    // Loaded through createRequire rather than a bare `import('pg')`. `pg` is
+    // deliberately NOT a project dependency — the SQL Editor path needs no
+    // credentials and no install, which is what makes self-installing work — so
+    // a static specifier makes every bundler that analyses this file fail to
+    // load it at all, including Vitest via
+    // src/__tests__/bootstrap-migrations.test.ts. createRequire is a Node API
+    // and is resolved at run time, so an absent `pg` throws here and is handled
+    // by the catch below rather than at module load.
+    const require = createRequire(import.meta.url);
+    pg = require('pg');
   } catch {
     console.error(
       'Direct mode needs the `pg` package, which is not installed.\n\n' +
