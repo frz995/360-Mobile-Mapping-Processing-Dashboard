@@ -45,7 +45,10 @@ export const InterModuleConnectors: React.FC<InterModuleConnectorsProps> = ({
         if (!wrap) return;
 
         const wrapRect = wrap.getBoundingClientRect();
-        if (wrapRect.width === 0) return;
+        if (wrapRect.width < 1024) {
+            setPaths([]);
+            return;
+        }
 
         const newPaths: ConnectorPath[] = [];
 
@@ -129,7 +132,7 @@ export const InterModuleConnectors: React.FC<InterModuleConnectorsProps> = ({
 
     return (
         <svg
-            className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-visible"
+            className="hidden lg:block absolute inset-0 w-full h-full pointer-events-none z-10 overflow-visible"
             aria-hidden="true"
         >
             {paths.map((p) => (

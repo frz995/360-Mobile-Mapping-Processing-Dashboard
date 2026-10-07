@@ -96,23 +96,28 @@ export function globePoseFor(
     globeMode: boolean
 ): GlobePose {
     if (globeMode) return { x: 0, y: 0, scale: 1, opacity: 1 };
+    if (isMobile) {
+        // On mobile portrait screens, anchor the backdrop globe full-bleed (no X/Y translation)
+        // so the WebGL map canvas never pulls away from the screen boundaries or exposes cutoffs.
+        if (section === HERO_SECTION) {
+            return { x: 0, y: 0, scale: 1, opacity: 0.7 };
+        }
+        if (section === WORKFLOW_SECTION) {
+            return { x: 0, y: 0, scale: 1, opacity: 0.25 };
+        }
+        if (section === OUTRO_SECTION) {
+            return { x: 0, y: 0, scale: 1, opacity: 0.38 };
+        }
+        return { x: 0, y: 0, scale: 1, opacity: 0.26 };
+    }
     if (section === HERO_SECTION) {
-        return isMobile
-            ? { x: 0, y: vh * 0.08, scale: 1.72, opacity: 0.7 }
-            : { x: 0, y: vh * 0.18, scale: 1, opacity: 0.95 };
+        return { x: 0, y: vh * 0.18, scale: 1, opacity: 0.95 };
     }
     if (section === WORKFLOW_SECTION) {
-        return isMobile
-            ? { x: 0, y: 0, scale: 0.95, opacity: 0.25 }
-            : { x: 0, y: 0, scale: 1.05, opacity: 0.38 };
+        return { x: 0, y: 0, scale: 1.05, opacity: 0.38 };
     }
     if (section === OUTRO_SECTION) {
-        return isMobile
-            ? { x: 0, y: 0, scale: 0.9, opacity: 0.38 }
-            : { x: 0, y: 0, scale: 1.04, opacity: 0.58 };
-    }
-    if (isMobile) {
-        return { x: 0, y: -vh * 0.16, scale: 1, opacity: 0.26 };
+        return { x: 0, y: 0, scale: 1.04, opacity: 0.58 };
     }
     const side = section % 2 === 0 ? -1 : 1;
     return {

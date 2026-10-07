@@ -37,21 +37,26 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     return (
         <section
             data-section-idx={HERO_SECTION}
-            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-start text-center px-2 xs:px-4 sm:px-8 pt-20 sm:pt-24 md:pt-28 lg:pt-32 pb-16 pointer-events-none"
+            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-center sm:justify-start text-center px-6 xs:px-7 sm:px-8 pt-16 pb-24 sm:pt-[12vh] sm:pb-20 lg:pt-[13vh] pointer-events-none"
         >
 
-            {/* Headline — centered, gracefully sized and fitted with reliable in-view replay */}
+            {/* Headline — on PC sits in the dark sky above the Earth limb; centered on mobile */}
             <motion.div
                 initial="hidden"
                 whileInView="show"
                 viewport={{ once: false, amount: 0.15 }}
                 className="relative z-10 w-full max-w-xl sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto px-1 sm:px-2"
             >
+                {/* Soft readability scrim behind the text block */}
+                <div
+                    aria-hidden
+                    className="absolute -inset-x-6 -inset-y-6 sm:-inset-x-16 sm:-inset-y-10 -z-10 rounded-[50%] bg-black/35 blur-3xl pointer-events-none"
+                />
                 <h1
                     aria-label="Mobile Mapping Data, Manage in One Place"
                     className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-[64px] xl:text-[72px] font-extrabold tracking-tight leading-[1.16] sm:leading-[1.12] drop-shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
                 >
-                    <span className="block sm:whitespace-nowrap">
+                    <span className="block md:whitespace-nowrap">
                         {['Mobile', 'Mapping', 'Data,', 'Manage', 'in'].map((w, i) => (
                             <motion.span
                                 key={w}
@@ -63,7 +68,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                             </motion.span>
                         ))}
                     </span>
-                    <span className="block">
+                    <span className="block md:whitespace-nowrap">
                         {['One', 'Place'].map((w, i) => (
                             <motion.span
                                 key={w}
@@ -77,6 +82,34 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     </span>
                 </h1>
 
+                {/* Sparkles emitter line — divider between title and subtitle */}
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.65, duration: 0.9 }}
+                    className="relative w-full max-w-xs sm:max-w-md mx-auto h-5 sm:h-7 mt-4 sm:mt-6"
+                >
+                    <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
+                    <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-[2px] w-1/4" />
+                    <div aria-hidden className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-64 h-32 pointer-events-none">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-32 h-10 rounded-full bg-sky-400/25 blur-xl" />
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-48 h-16 rounded-full bg-sky-500/10 blur-2xl" />
+                    </div>
+                    {sparklesReady && (
+                        <div className="absolute inset-0 w-full h-full [mask-image:radial-gradient(ellipse_48%_175%_at_50%_0%,black_42%,transparent_78%)]">
+                            <SparklesCore
+                                id="tsparticlesfullpage"
+                                background="transparent"
+                                minSize={0.4}
+                                maxSize={1}
+                                particleDensity={900}
+                                className="w-full h-full"
+                                particleColor="#FFFFFF"
+                            />
+                        </div>
+                    )}
+                </motion.div>
+
                 <motion.p
                     variants={{
                         hidden: { opacity: 0, y: 14 },
@@ -86,38 +119,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                             transition: { delay: 0.45, duration: 0.75, ease: EASE },
                         },
                     }}
-                    className="mt-4 sm:mt-5 text-sm sm:text-base md:text-lg lg:text-xl font-normal tracking-wide text-neutral-200/90 max-w-xl sm:max-w-2xl lg:max-w-3xl mx-auto text-balance drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]"
+                    className="text-sm sm:text-base md:text-lg lg:text-xl font-normal tracking-wide text-neutral-100 max-w-xl sm:max-w-2xl lg:max-w-3xl mx-auto text-balance [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_16px_rgba(0,0,0,0.7)]"
                 >
                     A practical workspace for mobile mapping operations.
                 </motion.p>
-            </motion.div>
-
-            {/* Sparkles emitter line */}
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.65, duration: 0.9 }}
-                className="relative z-10 w-full max-w-xs sm:max-w-md mx-auto h-6 sm:h-8 my-1.5 sm:my-2"
-            >
-                <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
-                <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-[2px] w-1/4" />
-                <div aria-hidden className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-64 h-32 pointer-events-none">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-32 h-10 rounded-full bg-sky-400/25 blur-xl" />
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-48 h-16 rounded-full bg-sky-500/10 blur-2xl" />
-                </div>
-                {sparklesReady && (
-                    <div className="absolute inset-0 w-full h-full [mask-image:radial-gradient(ellipse_48%_175%_at_50%_0%,black_42%,transparent_78%)]">
-                        <SparklesCore
-                            id="tsparticlesfullpage"
-                            background="transparent"
-                            minSize={0.4}
-                            maxSize={1}
-                            particleDensity={900}
-                            className="w-full h-full"
-                            particleColor="#FFFFFF"
-                        />
-                    </div>
-                )}
             </motion.div>
 
             {/* CTAs */}
@@ -126,7 +131,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.8, duration: 0.75, ease: EASE }}
                 id="hero-cta-group"
-                className="relative z-10 flex flex-row flex-wrap items-center justify-center gap-3 sm:gap-4 mt-1.5 sm:mt-2.5 pointer-events-auto"
+                className="relative z-10 flex flex-row flex-wrap items-center justify-center gap-3 sm:gap-4 mt-6 sm:mt-8 pointer-events-auto"
             >
                 <MagneticWrap>
                     <HoverBorderGradient

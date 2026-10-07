@@ -16,7 +16,7 @@ export const WorkflowSection: React.FC<WorkflowSectionProps> = ({ onJumpTo }) =>
     return (
         <section
             data-section-idx={WORKFLOW_SECTION}
-            className="relative min-h-screen min-h-dvh-safe snap-start flex flex-col items-center justify-start sm:justify-center text-center px-4 sm:px-6 lg:px-8 pt-20 xs:pt-24 sm:py-12 pb-12"
+            className="relative min-h-screen min-h-dvh-safe snap-start flex flex-col items-center justify-start sm:justify-center text-center px-6 sm:px-8 lg:px-10 pt-20 xs:pt-24 sm:py-12 pb-12"
         >
             <motion.div
                 variants={revealGroup}

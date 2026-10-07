@@ -20,7 +20,7 @@ export const OutroSection: React.FC<OutroSectionProps> = ({ modules, onLaunch, o
     return (
         <section
             data-section-idx={OUTRO_SECTION}
-            className="relative min-h-85dvh-safe snap-start flex flex-col items-center justify-center text-center px-4 sm:px-8 py-20"
+            className="relative min-h-85dvh-safe snap-start flex flex-col items-center justify-center text-center px-6 sm:px-8 py-20"
         >
             <motion.div
                 variants={revealGroup}

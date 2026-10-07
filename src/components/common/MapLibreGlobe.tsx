@@ -539,6 +539,20 @@ export function MapLibreGlobe({
     };
   }, []);
 
+  // Resize observer to keep the WebGL canvas in sync with container layout changes
+  // (e.g. mobile URL bar collapse/expand, orientation changes, view switches).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (mapRef.current) {
+        mapRef.current.resize();
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // Scroll-zoom ownership is view-dependent, but the map is constructed once,
   // so the handler has to be re-synced when the showcase changes view.
   useEffect(() => {
@@ -1076,7 +1090,7 @@ export function MapLibreGlobe({
           Imagery is displayed; the native control is suppressed because it
           collides with the showcase HUD, so it is rendered here instead.
           Built as JSX rather than innerHTML — no HTML injection surface. */}
-      <div className="absolute bottom-0 right-0 z-10 px-1.5 py-0.5 text-[9px] leading-none text-text-muted/70 bg-app/40 backdrop-blur-sm rounded-tl-sm pointer-events-none [&_a]:text-text-muted [&_a]:underline">
+      <div className="absolute bottom-0 right-0 z-10 px-1.5 py-0.5 pb-[max(0.2rem,env(safe-area-inset-bottom))] pr-[max(0.375rem,env(safe-area-inset-right))] text-[9px] leading-none text-text-muted/70 bg-app/40 backdrop-blur-sm rounded-tl-sm pointer-events-none [&_a]:text-text-muted [&_a]:underline">
         Imagery &copy;{' '}
         <a href="https://www.esri.com/" target="_blank" rel="noreferrer">Esri</a>, Maxar, Earthstar Geographics
       </div>

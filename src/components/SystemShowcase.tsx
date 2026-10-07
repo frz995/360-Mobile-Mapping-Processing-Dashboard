@@ -437,9 +437,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             const pose = globePoseFor(activeSection, isMobile, vw, vh, isGlobeMode);
             poseX.set(pose.x);
             poseY.set(pose.y);
-            // In 3D Earth (globe mode), both satellite and vector globes stand back at scale 1.0.
-            // In modules mode, both satellite and vector use full-bleed fit scaling.
-            const scale = isGlobeMode ? 1.0 : globeFitScale(vw, vh);
+            // In 3D Earth (globe mode) or on mobile screens, keep the globe at scale 1.0 full-bleed.
+            // In desktop modules mode, both satellite and vector use full-bleed fit scaling.
+            const scale = isGlobeMode || isMobile ? 1.0 : globeFitScale(vw, vh);
             poseScale.set(scale);
             poseOpacity.set(pose.opacity);
         };

@@ -28,7 +28,7 @@ export const ModuleSection: React.FC<ModuleSectionProps> = ({ mod, index, total,
     return (
         <section
             data-section-idx={index}
-            className="relative min-h-dvh-safe snap-start flex items-center px-4 sm:px-8 lg:px-14 py-16 sm:py-20"
+            className="relative min-h-dvh-safe snap-start flex items-center px-6 sm:px-8 lg:px-14 py-16 sm:py-20"
         >
             {/* Ghost section numeral */}
             <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
