@@ -91,9 +91,15 @@ expect(screen.getAllByText(/Frame inventory not verified/).length).toBeGreaterTh
     const mismatchRow = screen.getByText('Metadata mismatch').closest('tr');
     expect(mismatchRow?.textContent).toContain('Not captured at import')
 
-    // And the two computable ones still report real numbers.
-    expect(screen.getByText('Duplicate').closest('tr')?.textContent).toMatch(/\d/)
-    expect(screen.getByText('Invalid filename').closest('tr')?.textContent).toMatch(/\d/)
+    // And the two computable ones still report real numbers rather than
+    // borrowing Metadata mismatch's excuse.
+    const dupRow = screen.getByText('Duplicate').closest('tr')!
+    const invalidRow = screen.getByText('Invalid filename').closest('tr')!
+    expect(dupRow.textContent).not.toContain('Not captured at import')
+    expect(invalidRow.textContent).not.toContain('Not captured at import')
+    // Measured zero, so the glyph stands in for the digit and still reads "0".
+    expect(dupRow.querySelector('[aria-label="0"]')).toBeTruthy()
+    expect(invalidRow.querySelector('[aria-label="0"]')).toBeTruthy()
   })
 
   it('blames the bucket contents rather than connectivity for an unlisted run', () => {
@@ -116,9 +122,12 @@ expect(screen.getAllByText(/Frame inventory not verified/).length).toBeGreaterTh
       })
     )
     expect(screen.queryByText(/Frame inventory not verified/)).toBeNull()
-    // A measured clean run genuinely reads 0, which is different from unknown.
-    const missingCell = screen.getByText('Missing').closest('tr')?.querySelector('td:last-child')
-    expect(missingCell?.textContent).toBe('0')
+    // A measured clean run genuinely reads zero, which is different from
+    // unknown. The digit is suppressed in favour of a glyph, so assert on the
+    // label the glyph carries rather than on text content.
+    const missingRow = screen.getByText('Missing').closest('tr')
+    expect(missingRow?.querySelector('[aria-label="0"]')).toBeTruthy()
+    expect(missingRow?.textContent).not.toContain('Frame inventory not verified')
   })
 
   it('flags that Expected minus Found understates the real gap when orphans exist', () => {
@@ -167,12 +176,83 @@ expect(screen.getAllByText(/Frame inventory not verified/).length).toBeGreaterTh
     // 12 + 7 + 23 do not add to the shortfall. If the panel did not say so, a
     // reader would assume they partition it.
     renderPanel(subject())
-    expect(screen.getByText(/not part of the Expected − Found arithmetic/i)).toBeTruthy()
+    expect(screen.getByText(/not part of the Expected minus Found arithmetic/i)).toBeTruthy()
+  })
+
+  it('uses no em dashes or middots in its own text', () => {
+    // They read as a rule or a separator in this typeface and make a phrase
+    // look like two fragments. Rendered copy only; comments are irrelevant.
+    const { container } = renderPanel(subject())
+    const rendered = container.textContent ?? ''
+    expect(rendered).not.toMatch(/[—–·]/g)
+  })
+
+  it('puts the subgrid beneath a fixed heading, not inside a dashed title', () => {
+    render(
+      <SurveyIntegrityPanel
+        isOpen
+        onClose={() => {}}
+        title="Survey Integrity"
+        subtitle="N93E70"
+        detail="25 Sept 2026, 20260925.csv"
+        reports={buildReports([subject()])}
+      />
+    )
+
+    // Heading is exactly the fixed phrase; the subgrid is a separate line.
+    expect(screen.getByText('Survey Integrity')).toBeTruthy()
+    const header = screen.getByText('Survey Integrity').parentElement!.parentElement!
+    expect(header.textContent).toContain('N93E70')
+    expect(header.textContent).toContain('25 Sept 2026')
+  })
+
+  it('renders a measured zero as a glyph, not the digit', () => {
+    renderPanel(
+      subject({
+        recordedFilenames: ['N93E70-0001.jpg'],
+        verifiedFilenames: ['N93E70-0001.jpg'],
+        bucketFilenames: ['N93E70-0001.jpg']
+      })
+    )
+
+    // Zero is still zero — the glyph carries an accessible label saying so, and
+    // a list-bearing row stays clickable. Only the digit is suppressed, so a
+    // clean row stops competing visually with a count that needs attention.
+    const zeroCell = screen.getAllByLabelText('0')
+    expect(zeroCell.length).toBeGreaterThan(0)
+    // And it is NOT the unknown treatment.
+    expect(screen.queryByText(/Frame inventory not verified/)).toBeNull()
   })
 
   it('propagates provenance so the figures are traceable', () => {
     renderPanel(subject())
     expect(screen.getAllByText(/migration 0034/).length).toBeGreaterThan(0)
+  })
+
+  it('renders "% linked" instead of "received" on progress bar', () => {
+    renderPanel(
+      subject({
+        recordedFilenames: ['N93E70-0001.jpg', 'N93E70-0002.jpg'],
+        verifiedFilenames: ['N93E70-0001.jpg'],
+        bucketFilenames: ['N93E70-0001.jpg']
+      })
+    )
+    expect(document.body.textContent).toContain('50% linked')
+    expect(document.body.textContent).not.toContain('received')
+  })
+
+  it('renders "100% linked" and green callout line when all frames are verified and clean', () => {
+    renderPanel(
+      subject({
+        recordedFilenames: ['N93E70-0001.jpg', 'N93E70-0002.jpg'],
+        verifiedFilenames: ['N93E70-0001.jpg', 'N93E70-0002.jpg'],
+        bucketFilenames: ['N93E70-0001.jpg', 'N93E70-0002.jpg']
+      })
+    )
+    expect(document.body.textContent).toContain('100% linked')
+    expect(document.body.textContent).toContain('All 2 expected frames verified and linked')
+    // Green accent border is applied
+    expect(document.body.querySelector('.border-emerald-500')).toBeTruthy()
   })
 })
 

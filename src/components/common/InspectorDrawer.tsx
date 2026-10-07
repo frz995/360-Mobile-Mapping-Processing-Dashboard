@@ -18,6 +18,8 @@ export interface InspectorDrawerProps {
   onClose: () => void;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
+  /** Secondary line beneath the subtitle — a date, a count, a source note. */
+  detail?: React.ReactNode;
   badge?: React.ReactNode;
   headerActions?: React.ReactNode;
   footer?: React.ReactNode;
@@ -65,6 +67,7 @@ export const InspectorDrawer: React.FC<InspectorDrawerProps> = ({
   onClose,
   title,
   subtitle,
+  detail,
   badge,
   headerActions,
   footer,
@@ -184,6 +187,11 @@ export const InspectorDrawer: React.FC<InspectorDrawerProps> = ({
                   {subtitle && (
                     <p className="text-[11px] sm:text-xs text-text-muted mt-0.5 truncate">
                       {subtitle}
+                    </p>
+                  )}
+                  {detail && (
+                    <p className="text-[10px] sm:text-[11px] text-text-muted/80 mt-0.5 truncate">
+                      {detail}
                     </p>
                   )}
                 </div>

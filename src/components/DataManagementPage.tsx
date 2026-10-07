@@ -450,7 +450,10 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
   const [integrityPanel, setIntegrityPanel] = useState<{
     isOpen: boolean;
     title: string;
+    /** Shown directly beneath the title — the subgrid name. */
     subtitle?: string;
+    /** Secondary line, below the subgrid. */
+    detail?: string;
     subjects: IntegritySubject[];
   } | null>(null);
 
@@ -1712,8 +1715,11 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
     setIntegrityPanel({
       isOpen: true,
-      title: `Survey Integrity — ${(extractSubgridName(row.subgrid) || row.subgrid || 'Run').toUpperCase()}`,
-      subtitle: `${formatDisplayDate(row.date)}${row.csvFileName ? ` · ${row.csvFileName}` : ''}`,
+      // Fixed heading; the subgrid sits on its own line beneath it. Interleaving
+      // it into the title with a dash read as one run-on phrase.
+      title: 'Survey Integrity',
+      subtitle: (extractSubgridName(row.subgrid) || row.subgrid || 'Run').toUpperCase(),
+      detail: [formatDisplayDate(row.date), row.csvFileName].filter(Boolean).join(', '),
       subjects: [
         {
           runId: row.id ?? null,
@@ -1762,8 +1768,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
     setIntegrityPanel({
       isOpen: true,
-      title: `Survey Integrity — ${sg}`,
-      subtitle: `${subjects.length} run${subjects.length === 1 ? '' : 's'} · ${formatDisplayDate(row.date)}`,
+      title: 'Survey Integrity',
+      subtitle: sg,
+      detail: `${subjects.length} run${subjects.length === 1 ? '' : 's'}, ${formatDisplayDate(row.date)}`,
       subjects
     });
   }, [draftDailyData]);
@@ -4094,6 +4101,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
               onClose={() => setIntegrityPanel(null)}
               title={integrityPanel.title}
               subtitle={integrityPanel.subtitle}
+              detail={integrityPanel.detail}
               reports={buildReports(integrityPanel.subjects)}
             />
           )}
