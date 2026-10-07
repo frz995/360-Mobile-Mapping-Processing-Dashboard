@@ -79,6 +79,8 @@ import {
 import { getItemId } from '../utils/items';
 import type { PanoramaItem, DailyTimeSeries, BatchLog, NotificationItem, AuditLogItem } from '../types/dashboard';
 import { saveSurveyMetadataFilenames } from '../services/api/surveyMetadata';
+import { SurveyIntegrityPanel, buildReports } from './SurveyIntegrityPanel';
+import type { IntegritySubject } from '../utils/surveyIntegrity';
 import { reportWriteFailure } from '../lib/writeFailures';
 import {
   findItem,
@@ -441,6 +443,15 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     baseFilename?: string;
     availableFilenames?: string[];
     expectedFilenames?: string[];
+  } | null>(null);
+
+  // Survey integrity drawer (v27 §4). Holds the subjects rather than a computed
+  // report so the panel re-derives when the rows behind it change.
+  const [integrityPanel, setIntegrityPanel] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle?: string;
+    subjects: IntegritySubject[];
   } | null>(null);
 
   // Daily Data Column Filters state
@@ -1679,6 +1690,83 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
   // Supabase publishing states
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [publishMessage, setPublishMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // -------------------------------------------------------------------
+  // Survey integrity (v27 §4)
+  //
+  // Turns a row into an `IntegritySubject`. Two facts have to survive the trip
+  // intact or the panel reports fiction:
+  //
+  //   - `availableFilenames` is the PRESENT subset. The missing set is the
+  //     difference, and is derived inside `surveyIntegrity.ts` rather than
+  //     passed in, because only that module has both halves.
+  //   - `imagesStorageVerified` must travel with them. Without it an empty
+  //     `availableFilenames` is indistinguishable from an unreachable bucket,
+  //     and the panel would report a confirmed zero for a connectivity failure.
+  // -------------------------------------------------------------------
+  const openIntegrityForDaily = useCallback((row: DailyTimeSeries) => {
+    const panoramas = row.panoramas ?? [];
+    const recordedFilenames = panoramas
+      .map((p) => p.filename)
+      .filter((fn): fn is string => Boolean(fn));
+
+    setIntegrityPanel({
+      isOpen: true,
+      title: `Survey Integrity — ${(extractSubgridName(row.subgrid) || row.subgrid || 'Run').toUpperCase()}`,
+      subtitle: `${formatDisplayDate(row.date)}${row.csvFileName ? ` · ${row.csvFileName}` : ''}`,
+      subjects: [
+        {
+          runId: row.id ?? null,
+          subgrid: (extractSubgridName(row.subgrid) || row.subgrid || '').toUpperCase().trim(),
+          date: row.date,
+          recordedFilenames,
+          verifiedFilenames: row.availableFilenames ?? [],
+          // Absent means the loader never set it — treated as NOT verified, so
+          // an unverified run shows "unknown" rather than a confident figure.
+          inventoryVerified: (row as { imagesStorageVerified?: boolean }).imagesStorageVerified === true,
+          metadataFilenames: null,
+          bucketFilenames: null
+        }
+      ]
+    });
+  }, []);
+
+  const openIntegrityForBatch = useCallback((row: BatchLog) => {
+    // A subgrid aggregates its runs, so the panel is fed one subject per child.
+    // Aggregating here rather than summing counts keeps the panel's identities
+    // intact across the union.
+    const sg = (extractSubgridName(row.subgrid || row.imageFilename) || row.subgrid || '')
+      .toUpperCase()
+      .trim();
+    const children = draftDailyData.filter(
+      (d) => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === sg
+    );
+
+    const subjects: IntegritySubject[] = (
+      children.length > 0
+        ? children
+        : ([row as unknown as DailyTimeSeries] as DailyTimeSeries[])
+    ).map((child) => {
+      const panoramas = child.panoramas ?? [];
+      return {
+        runId: child.id ?? null,
+        subgrid: sg,
+        date: child.date,
+        recordedFilenames: panoramas.map((p) => p.filename).filter((fn): fn is string => Boolean(fn)),
+        verifiedFilenames: child.availableFilenames ?? [],
+        inventoryVerified: (child as { imagesStorageVerified?: boolean }).imagesStorageVerified === true,
+        metadataFilenames: null,
+        bucketFilenames: null
+      };
+    });
+
+    setIntegrityPanel({
+      isOpen: true,
+      title: `Survey Integrity — ${sg}`,
+      subtitle: `${subjects.length} run${subjects.length === 1 ? '' : 's'} · ${formatDisplayDate(row.date)}`,
+      subjects
+    });
+  }, [draftDailyData]);
 
   const handlePublishRecord = async (item: BatchLog | DailyTimeSeries) => {
     const id = getItemId(item);
@@ -3388,7 +3476,18 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                     className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                   />
                                 </td>
-                                <td className="px-4 py-3.5 text-xs text-text-base whitespace-nowrap font-medium">{formatDisplayDate(batch.date)}</td>
+                                <td className="px-4 py-3.5 text-xs text-text-base whitespace-nowrap font-medium">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openIntegrityForBatch(batch);
+                                    }}
+                                    className="text-text-base hover:text-sky-300 hover:underline cursor-pointer inline-flex items-center gap-1.5"
+                                    title="Click for survey integrity detail"
+                                  >
+                                    {formatDisplayDate(batch.date)}
+                                  </button>
+                                </td>
                                 <td className="px-4 py-3.5 text-xs text-text-base font-bold whitespace-nowrap">{batch.grid}</td>
                                 <td className="px-4 py-3.5 text-xs font-bold text-text-base whitespace-nowrap flex items-center gap-2">
                                   <span>{batchSubgrid}</span>
@@ -3421,7 +3520,21 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                   </button>
                                 </td>
                                 <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
-                                  {batch.defects || 0}
+                                  {/* `batch.defects` is `number | null`, where null
+                                      means the `qa_defects` table could not be read
+                                      (migration 0032). The previous `|| 0` rendered
+                                      that as a confident zero — a clean run nobody
+                                      measured. Rendered as "unknown" instead. */}
+                                  {batch.defects === null || batch.defects === undefined ? (
+                                    <span
+                                      className="text-text-muted italic"
+                                      title="Defect count could not be read — qa_defects was unreachable. Migration 0032."
+                                    >
+                                      unknown
+                                    </span>
+                                  ) : (
+                                    batch.defects
+                                  )}
                                 </td>
                                 <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
                                   {(batch.pic && batch.pic.trim().toLowerCase() !== 'unassigned') ? batch.pic : (activeAuthUserName || 'Admin')}
@@ -3521,7 +3634,18 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                     className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                   />
                                 </td>
-                                <td className="px-4 py-3.5 text-xs text-text-base whitespace-nowrap font-medium">{formatDisplayDate(daily.date)}</td>
+                                <td className="px-4 py-3.5 text-xs text-text-base whitespace-nowrap font-medium">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openIntegrityForDaily(daily);
+                                    }}
+                                    className="text-text-base hover:text-sky-300 hover:underline cursor-pointer inline-flex items-center gap-1.5"
+                                    title="Click for survey integrity detail"
+                                  >
+                                    {formatDisplayDate(daily.date)}
+                                  </button>
+                                </td>
                                 <td className="px-4 py-3.5 text-xs text-text-base font-bold whitespace-nowrap">{daily.grid}</td>
                                 <td className="px-4 py-3.5 text-xs font-bold text-text-base whitespace-nowrap flex items-center gap-2">
                                   <span>{dailySubgrid}</span>
@@ -3559,7 +3683,22 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                   {daily.captureEquipment || 'MMS'}
                                 </td>
                                 <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
-                                  {daily.imagesDefected || daily.defectCount || 0}
+                                  {/* Same `|| 0` trap as the batch row. `null` means
+                                      the defect table was unreadable, which is not
+                                      the same claim as zero defects. */}
+                                  {(() => {
+                                    const d = daily.imagesDefected ?? daily.defectCount;
+                                    return d === null || d === undefined ? (
+                                      <span
+                                        className="text-text-muted italic"
+                                        title="Defect count could not be read — qa_defects was unreachable. Migration 0032."
+                                      >
+                                        unknown
+                                      </span>
+                                    ) : (
+                                      d
+                                    );
+                                  })()}
                                 </td>
                                 <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
                                   {(daily.pic && daily.pic.trim().toLowerCase() !== 'unassigned')
@@ -3941,6 +4080,17 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
               availableFilenames={qcModal.availableFilenames}
               expectedFilenames={qcModal.expectedFilenames}
               onClose={() => setQcModal(null)}
+            />
+          )}
+
+          {/* Survey Integrity drawer (v27 §4) */}
+          {integrityPanel && integrityPanel.isOpen && (
+            <SurveyIntegrityPanel
+              isOpen
+              onClose={() => setIntegrityPanel(null)}
+              title={integrityPanel.title}
+              subtitle={integrityPanel.subtitle}
+              reports={buildReports(integrityPanel.subjects)}
             />
           )}
 

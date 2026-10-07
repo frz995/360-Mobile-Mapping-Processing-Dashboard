@@ -15,16 +15,18 @@
     "Updated for v27 section 2: surveyIntegrity.ts uses non-null assertions on",
     "figures it has already proven non-null on the line above. Warnings 1240 -> 1247.",
     "Updated for v27 section 3: DataManagementPage +40 for the metadata write,",
-    "and one more non-null assertion in the bootstrap test. Warnings 1247 -> 1248."
+    "and one more non-null assertion in the bootstrap test. Warnings 1247 -> 1248.",
+    "Updated for v27 section 4: DataManagementPage +150 for the two integrity",
+    "openers and the null-safe defect cells. Warnings 1248 -> 1250."
   ],
 
   "lint": {
     "_scope": "eslint src vitest.config.ts, ESLINT_USE_FLAT_CONFIG=true, flat config eslint.config.mjs",
     "errors": 0,
-    "warnings": 1248,
+    "warnings": 1250,
     "byRule": {
-      "@typescript-eslint/no-explicit-any": 1024,
-      "@typescript-eslint/no-non-null-assertion": 145,
+      "@typescript-eslint/no-explicit-any": 1025,
+      "@typescript-eslint/no-non-null-assertion": 146,
       "react-hooks/exhaustive-deps": 70,
       "@typescript-eslint/no-unused-vars": 8,
       "react-hooks/rules-of-hooks": 1
@@ -46,7 +48,7 @@
 
   "fileSizeBudgets": {
     "_why": "Fails on exceedance only. These are physical line counts, which run ~8% higher than PowerShell's Measure-Object -Line because that cmdlet skips blank lines. Covers every file at or above 800 lines. Raising a budget is a deliberate act: the diff is the record that the god files are growing.",
-    "src/components/DataManagementPage.tsx": 4872,
+    "src/components/DataManagementPage.tsx": 5022,
     "src/components/RoadAnalysisWorkspace.tsx": 4558,
     "src/App.tsx": 4401,
     "src/components/AdminSettingsView.tsx": 3449,
