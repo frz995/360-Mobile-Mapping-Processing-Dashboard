@@ -77,16 +77,7 @@ export function SurveyIntegrityPanel({
   const unlinkedCount = report.unlinkedImages?.length ?? null;
 
   const expectedCount = report.expectedImages ?? report.poiCount ?? 0;
-  const availableCount = report.foundImages ?? 0;
   const totalIssuesCount = (duplicateCount ?? 0) + (invalidCount ?? 0) + (mismatchCount ?? 0);
-
-  // Overall status severity
-  const statusSeverity = useMemo<'critical' | 'warning' | 'valid' | 'unverified'>(() => {
-    if (!report.inventoryVerified) return 'unverified';
-    if ((missingCount ?? 0) > 0) return 'critical';
-    if (totalIssuesCount > 0) return 'warning';
-    return 'valid';
-  }, [report.inventoryVerified, missingCount, totalIssuesCount]);
 
   const isClean =
     report.inventoryVerified &&
@@ -126,27 +117,28 @@ export function SurveyIntegrityPanel({
     const source = report[openList] as unknown;
     if (!Array.isArray(source)) return [];
 
-    return source.map((entry: any, index: number) => {
+    return source.map((raw: unknown, index: number) => {
+      const entry = raw as Record<string, unknown>;
       switch (openList) {
         case 'missingImages':
           return {
             key: `missing-${index}`,
-            primary: `#${entry.poiIndex + 1}  ${entry.filename}`
+            primary: `#${Number(entry.poiIndex) + 1}  ${String(entry.filename ?? '')}`
           };
         case 'duplicates':
-          return { key: `dup-${index}`, primary: entry.filename, secondary: `x${entry.occurrences}` };
+          return { key: `dup-${index}`, primary: String(entry.filename ?? ''), secondary: `x${entry.occurrences}` };
         case 'invalidFilenames':
-          return { key: `inv-${index}`, primary: entry.filename, secondary: entry.reason };
+          return { key: `inv-${index}`, primary: String(entry.filename ?? ''), secondary: String(entry.reason ?? '') };
         case 'metadataMismatches':
           return {
             key: `mm-${index}`,
-            primary: `#${entry.poiIndex + 1}  ${entry.recordedFilename}`,
-            secondary: `metadata: ${entry.metadataFilename || '(none)'}`
+            primary: `#${Number(entry.poiIndex) + 1}  ${String(entry.recordedFilename ?? '')}`,
+            secondary: `metadata: ${String(entry.metadataFilename || '(none)')}`
           };
         case 'unlinkedImages':
-          return { key: `unl-${index}`, primary: entry.filename };
+          return { key: `unl-${index}`, primary: String(entry.filename ?? '') };
         default:
-          return { key: `x-${index}`, primary: String(entry) };
+          return { key: `x-${index}`, primary: String(raw) };
       }
     });
   }, [openList, report]);

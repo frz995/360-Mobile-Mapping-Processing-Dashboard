@@ -312,13 +312,14 @@ export function computeSurveyIntegrity(subject: IntegritySubject): IntegrityRepo
   let metadataCaptured = false;
   if (Array.isArray(subject.metadataFilenames)) {
     metadataCaptured = true;
-    const metadataKeys = new Set(subject.metadataFilenames.map(frameKey).filter(Boolean));
+    const metaFiles = subject.metadataFilenames;
+    const metadataKeys = new Set(metaFiles.map(frameKey).filter(Boolean));
     metadataMismatches = recordedClean
       .map((recordedFilename, poiIndex) => ({ recordedFilename, poiIndex }))
       .filter((e) => e.recordedFilename && !metadataKeys.has(frameKey(e.recordedFilename)))
       .map((e) => ({
         poiIndex: e.poiIndex,
-        metadataFilename: subject.metadataFilenames!.find((m) =>
+        metadataFilename: metaFiles.find((m) =>
           frameKey(m) === frameKey(e.recordedFilename)
         ) ?? '',
         recordedFilename: e.recordedFilename

@@ -445,14 +445,11 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     expectedFilenames?: string[];
   } | null>(null);
 
-  // Survey integrity drawer (v27 §4). Holds the subjects rather than a computed
-  // report so the panel re-derives when the rows behind it change.
+  // Survey integrity drawer (v27 §4). Holds subjects for reactive derivation.
   const [integrityPanel, setIntegrityPanel] = useState<{
     isOpen: boolean;
     title: string;
-    /** Shown directly beneath the title — the subgrid name. */
     subtitle?: string;
-    /** Secondary line, below the subgrid. */
     detail?: string;
     subjects: IntegritySubject[];
   } | null>(null);
@@ -1715,8 +1712,6 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
     setIntegrityPanel({
       isOpen: true,
-      // Fixed heading; the subgrid sits on its own line beneath it. Interleaving
-      // it into the title with a dash read as one run-on phrase.
       title: 'Survey Integrity',
       subtitle: (extractSubgridName(row.subgrid) || row.subgrid || 'Run').toUpperCase(),
       detail: [formatDisplayDate(row.date), row.csvFileName].filter(Boolean).join(', '),
@@ -1727,8 +1722,6 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
           date: row.date,
           recordedFilenames,
           verifiedFilenames: row.availableFilenames ?? [],
-          // Absent means the loader never set it — treated as NOT verified, so
-          // an unverified run shows "unknown" rather than a confident figure.
           inventoryVerified: (row as { imagesStorageVerified?: boolean }).imagesStorageVerified === true,
           metadataFilenames: null,
           bucketFilenames: null
@@ -4095,10 +4088,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
           )}
 
           {/* Survey Integrity drawer (v27 §4) */}
-          {integrityPanel && integrityPanel.isOpen && (
-            <SurveyIntegrityPanel
-              isOpen
-              onClose={() => setIntegrityPanel(null)}
+          {integrityPanel?.isOpen && (
+            <SurveyIntegrityPanel isOpen onClose={() => setIntegrityPanel(null)}
               title={integrityPanel.title}
               subtitle={integrityPanel.subtitle}
               detail={integrityPanel.detail}

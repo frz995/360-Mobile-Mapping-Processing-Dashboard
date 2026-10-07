@@ -93,13 +93,13 @@ expect(screen.getAllByText(/Frame inventory not verified/).length).toBeGreaterTh
 
     // And the two computable ones still report real numbers rather than
     // borrowing Metadata mismatch's excuse.
-    const dupRow = screen.getByText('Duplicate').closest('tr')!
-    const invalidRow = screen.getByText('Invalid filename').closest('tr')!
-    expect(dupRow.textContent).not.toContain('Not captured at import')
-    expect(invalidRow.textContent).not.toContain('Not captured at import')
+    const dupRow = screen.getByText('Duplicate').closest('tr');
+    const invalidRow = screen.getByText('Invalid filename').closest('tr');
+    expect(dupRow?.textContent).not.toContain('Not captured at import');
+    expect(invalidRow?.textContent).not.toContain('Not captured at import');
     // Measured zero, so the glyph stands in for the digit and still reads "0".
-    expect(dupRow.querySelector('[aria-label="0"]')).toBeTruthy()
-    expect(invalidRow.querySelector('[aria-label="0"]')).toBeTruthy()
+    expect(dupRow?.querySelector('[aria-label="0"]')).toBeTruthy();
+    expect(invalidRow?.querySelector('[aria-label="0"]')).toBeTruthy();
   })
 
   it('blames the bucket contents rather than connectivity for an unlisted run', () => {
@@ -201,9 +201,9 @@ expect(screen.getAllByText(/Frame inventory not verified/).length).toBeGreaterTh
 
     // Heading is exactly the fixed phrase; the subgrid is a separate line.
     expect(screen.getByText('Survey Integrity')).toBeTruthy()
-    const header = screen.getByText('Survey Integrity').parentElement!.parentElement!
-    expect(header.textContent).toContain('N93E70')
-    expect(header.textContent).toContain('25 Sept 2026')
+    const header = screen.getByText('Survey Integrity').parentElement?.parentElement;
+    expect(header?.textContent).toContain('N93E70');
+    expect(header?.textContent).toContain('25 Sept 2026');
   })
 
   it('renders a measured zero as a glyph, not the digit', () => {
@@ -285,9 +285,9 @@ describe('SurveyIntegrityPanel — survives a clipped ancestor', () => {
       </div>
     )
 
-    const ancestor = container.firstElementChild!
+    const ancestor = container.firstElementChild;
     // The panel's content must not be a descendant of the clipping container.
-    expect(ancestor.textContent).not.toContain('Expected images')
+    expect(ancestor?.textContent).not.toContain('Expected images');
     // It lives at the document root instead.
     expect(document.body.textContent).toContain('Expected images')
   })
