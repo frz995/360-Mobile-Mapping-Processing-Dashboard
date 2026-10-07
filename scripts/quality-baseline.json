@@ -1,6 +1,6 @@
 {
   "_why": "Measured quality baselines for scripts/lint.mjs ratchets. Every number here was produced by running the tool, not estimated. Raise a value only as a deliberate act - the diff is the record. See implementation_plan_v26.md section 5.",
-  "capturedAtCommit": "c0e85d1",
+  "capturedAtCommit": "21c0ca1",
   "capturedAt": "2026-10-07",
   "_history": [
     "Captured at fb84dae, before v26 section 1 ran.",
@@ -9,7 +9,9 @@
     "why a catch is safe. Warnings 1228 -> 1232.",
     "Updated again after sections 2 and 3: datasets.ts +19 more for the",
     "QueryResult calls, and no-explicit-any 1018 -> 1024 as row payloads",
-    "became toQueryResult<any[]> arguments. Warnings now 1238."
+    "became toQueryResult<any[]> arguments. Warnings now 1238.",
+    "Updated for v27 section 1: datasets.ts +38 for the frameState/qaState",
+    "derivation and its comments. Warnings unchanged at 1240."
   ],
 
   "lint": {
@@ -51,7 +53,7 @@
     "src/utils/projectExplorerGeometry.ts": 2124,
     "src/components/roadAnalysis/RoadCatalogPanel.tsx": 2037,
     "src/utils/subgridComparison.ts": 2002,
-    "src/services/api/datasets.ts": 1832,
+    "src/services/api/datasets.ts": 1870,
     "src/lib/i18n.ts": 1574,
     "src/components/production/hub/BucketPublicationGate.tsx": 1557,
     "src/components/ProjectOnboarding.tsx": 1488,

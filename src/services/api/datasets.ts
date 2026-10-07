@@ -10,6 +10,12 @@ import { batchLogToDbRow } from '../../utils/dashboardData';
 import { extractSubgridName } from '../../utils/subgrid';
 import { resolveAuditForRun } from '../../utils/items';
 import { resolveRunDefectCount, buildQaqcStatus } from '../../utils/defectCounts';
+import {
+  deriveFrameState,
+  deriveQaState,
+  isAvailableFromFrameState,
+  resolvePointAppearance
+} from '../../utils/panotrackAppearance';
 import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
 import { getDatabaseTableMapping } from '../supabaseConfig';
 
@@ -568,10 +574,21 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         isSyncedWithSupabase: true,
         points: g.points,
         panoramas: g.points.map((pt, pIdx) => {
-          const fn = g.imageFilenames[pIdx] || `${subgrid}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+          // A synthesized name is NOT a recorded name. `g.imageFilenames[pIdx]`
+          // is undefined when no filename was stored for this POI, and inventing
+          // one produced a point that looked present in the data and missing
+          // from the bucket. The frame state keeps those distinct.
+          const recordedFn = g.imageFilenames[pIdx];
+          const fn = recordedFn || `${subgrid}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
           const cleanFn = (fn.split('/').pop() || '').toUpperCase().trim();
           const isDef = cleanFn ? knownDefectFilenames.has(cleanFn) : false;
-          const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some(vf => vf.toLowerCase() === fn.toLowerCase())) : true;
+          const frameState = deriveFrameState({
+            recordedFilename: recordedFn,
+            verifiedFilenames: verifiedFiles,
+            inventoryVerified: imagesStorageVerified
+          });
+          const qaState = deriveQaState({ isDefect: isDef });
+          const appearance = resolvePointAppearance({ frameState, qaState, isPublished: true });
           return {
             id: `pub-pt-${runKey}-${pIdx}`,
             runId: `sp-d-${runKey}`,
@@ -581,6 +598,11 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             lat: pt.lat,
             lon: pt.lon,
             subgrid: subgrid,
+            // `frameState`/`qaState` are the authoritative pair. The legacy
+            // status/qa_status fields are kept for the external WebGIS app,
+            // which switches on them; v28 adds the `missing` legend entry.
+            frameState,
+            qaState,
             status: isDef ? 'defect' : 'yes',
             qa_status: isDef ? 'defect' : 'published',
             publishToWebGIS: isDef ? 'need to recheck' : 'yes',
@@ -589,12 +611,15 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             published: !isDef,
             isDefect: isDef,
             is_defect: isDef,
-            isAvailable: isAvail,
-            opacity: 1.0,
-            color: isDef ? '#ef4444' : '#10b981',
-            statusColor: isDef ? '#ef4444' : '#10b981',
-            strokeColor: isDef ? '#ef4444' : '#10b981',
-            fillColor: isDef ? '#ef4444' : '#10b981'
+            // Derived and lossy: a boolean cannot tell `unverified` from
+            // `missing`. Six existing call sites read it; new code must read
+            // `frameState` instead.
+            isAvailable: isAvailableFromFrameState(frameState),
+            opacity: appearance.opacity,
+            color: appearance.color,
+            statusColor: appearance.color,
+            strokeColor: appearance.strokeColor,
+            fillColor: appearance.color
           };
         })
       });
@@ -798,36 +823,49 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
              productionAttemptId: g.productionAttemptId || null,
              productionReleaseId: g.productionReleaseId || null,
              points: g.points,
-             panoramas: g.points.map((pt: any, pIdx: number) => {
-              const fn = g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
-              const cleanFn = (fn.split('/').pop() || '').toUpperCase().trim();
-              const isDef = cleanFn ? knownDefectFilenames.has(cleanFn) : false;
-              const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some((vf: string) => vf.toLowerCase() === fn.toLowerCase())) : false;
-              return {
-                id: `staging-pt-${runKey}-${pIdx}`,
-                runId: `staging-d-${runKey}`,
-                filename: fn,
-                latitude: pt.lat,
-                longitude: pt.lon,
-                lat: pt.lat,
-                lon: pt.lon,
-                subgrid: sg,
-                status: isDef ? 'defect' : 'in process',
-                qa_status: isDef ? 'defect' : 'in process',
-                publishToWebGIS: isDef ? 'need to recheck' : 'in process',
-                publishToUSVPRO: isDef ? 'need to recheck' : 'in process',
-                isPublished: false,
-                published: false,
-                isDefect: isDef,
-                is_defect: isDef,
-                isAvailable: isAvail,
-                opacity: 0.5,
-                color: isDef ? '#ef4444' : '#f59e0b',
-                statusColor: isDef ? '#ef4444' : '#f59e0b',
-                strokeColor: isDef ? '#ef4444' : '#f59e0b',
-                fillColor: isDef ? '#ef4444' : '#f59e0b'
-              };
-            })
+panoramas: g.points.map((pt: any, pIdx: number) => {
+               // See the published builder above: a synthesized name is not a
+               // recorded one, and this path previously defaulted `isAvailable`
+               // to `false` while the published path defaulted to `true` — so
+               // one unreachable bucket reported the two runs oppositely.
+               const recordedFn = g.imageFilenames[pIdx];
+               const fn = recordedFn || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+               const cleanFn = (fn.split('/').pop() || '').toUpperCase().trim();
+               const isDef = cleanFn ? knownDefectFilenames.has(cleanFn) : false;
+               const frameState = deriveFrameState({
+                 recordedFilename: recordedFn,
+                 verifiedFilenames: verifiedFiles,
+                 inventoryVerified: imagesStorageVerified
+               });
+               const qaState = deriveQaState({ isDefect: isDef });
+               const appearance = resolvePointAppearance({ frameState, qaState, isPublished: false });
+               return {
+                 id: `staging-pt-${runKey}-${pIdx}`,
+                 runId: `staging-d-${runKey}`,
+                 filename: fn,
+                 latitude: pt.lat,
+                 longitude: pt.lon,
+                 lat: pt.lat,
+                 lon: pt.lon,
+                 subgrid: sg,
+                 frameState,
+                 qaState,
+                 status: isDef ? 'defect' : 'in process',
+                 qa_status: isDef ? 'defect' : 'in process',
+                 publishToWebGIS: isDef ? 'need to recheck' : 'in process',
+                 publishToUSVPRO: isDef ? 'need to recheck' : 'in process',
+                 isPublished: false,
+                 published: false,
+                 isDefect: isDef,
+                 is_defect: isDef,
+                 isAvailable: isAvailableFromFrameState(frameState),
+                 opacity: appearance.opacity,
+                 color: appearance.color,
+                 statusColor: appearance.color,
+                 strokeColor: appearance.strokeColor,
+                 fillColor: appearance.color
+               };
+             })
           });
         }
       }

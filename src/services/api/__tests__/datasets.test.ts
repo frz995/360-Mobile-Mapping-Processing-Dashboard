@@ -288,10 +288,146 @@ describe('fetchSupabaseData — defect aggregate', () => {
       ]
     } as any);
 
-    expect(upsert).toHaveBeenCalled();
+expect(upsert).toHaveBeenCalled();
     const [chunk] = upsert.mock.calls[0];
     for (const row of chunk) {
       expect(row.defect_count).toBe(7);
+    }
+  });
+});
+
+/**
+ * Frame state, end to end through the real loader (v27 §1).
+ *
+ * The unit tests cover `deriveFrameState` in isolation. These prove the loader
+ * actually supplies the facts it needs — above all `imagesStorageVerified`,
+ * which is the only thing distinguishing "the bucket has none of these" from
+ * "we could not reach the bucket". Before this, the published path defaulted
+ * `isAvailable` to `true` and the staged path to `false` for the same
+ * unreachable store, so one outage reported the two runs oppositely.
+ */
+describe('fetchSupabaseData — frame state', () => {
+  const FRAMES = 4;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getServiceProjectIdMock.mockReturnValue('project-1');
+    ensureManifestSettingsMock.mockResolvedValue(true);
+    scopedMock.mockImplementation((q: unknown) => q);
+    scopedIncludingUnassignedMock.mockImplementation((q: unknown) => q);
+    getServiceProjectIdMock.mockReturnValue('project-1');
+  });
+
+  /** Storage reachable, and `present` names are genuinely in the inventory. */
+  function reachableStorage(presentNames: string[]) {
+    resolveStorageFilesMock.mockResolvedValue({
+      countsBySubgrid: new Map<string, number>(),
+      fileSet: new Set(presentNames.map((n) => n.toLowerCase())),
+      listingOk: true
+    });
+  }
+
+  /** Storage unreachable. The fileSet is empty AND listingOk is false. */
+  function unreachableStorage() {
+    resolveStorageFilesMock.mockResolvedValue({
+      countsBySubgrid: new Map<string, number>(),
+      fileSet: new Set<string>(),
+      listingOk: false
+    });
+  }
+
+  it('marks a recorded frame missing when the bucket is reachable and lacks it', async () => {
+    // The bucket answered, and the frame is not in it. A real measurement.
+    reachableStorage([]);
+    installTables({
+      panoramas_view: panoramaRow({ run_id: 'run-a' }, FRAMES),
+      subgrids: [],
+      qa_defects: []
+    });
+
+    const { dailyData } = await fetchSupabaseData(makeSettings());
+    const states = dailyData[0].panoramas.map((p: any) => p.frameState);
+
+    expect(states.length).toBeGreaterThan(0);
+    expect(states.every((s: string) => s === 'missing')).toBe(true);
+  });
+
+  it('marks a frame present when the bucket holds it', async () => {
+    reachableStorage(panoramaRow({}, FRAMES).map((r) => String(r.image_url)));
+    installTables({
+      panoramas_view: panoramaRow({ run_id: 'run-a' }, FRAMES),
+      subgrids: [],
+      qa_defects: []
+    });
+
+    const { dailyData } = await fetchSupabaseData(makeSettings());
+    const states = dailyData[0].panoramas.map((p: any) => p.frameState);
+
+    expect(states.every((s: string) => s === 'present')).toBe(true);
+  });
+
+  it('marks frames unverified — not missing — when storage is unreachable', async () => {
+    // THE DECISIVE CASE. An empty `fileSet` with `listingOk: false` is
+    // indistinguishable from a reachable-but-empty bucket if you only look at
+    // the set. Reporting this run as 100% missing frames would be a fabricated
+    // deficit derived from a connectivity failure.
+    unreachableStorage();
+    installTables({
+      panoramas_view: panoramaRow({ run_id: 'run-a' }, FRAMES),
+      subgrids: [],
+      qa_defects: []
+    });
+
+    const { dailyData } = await fetchSupabaseData(makeSettings());
+    const states = dailyData[0].panoramas.map((p: any) => p.frameState);
+
+    expect(states.length).toBeGreaterThan(0);
+    expect(states.every((s: string) => s === 'unverified')).toBe(true);
+    expect(states).not.toContain('missing');
+  });
+
+  it('does not report the same outage as 100% missing', async () => {
+    // Same fixture, opposite verdicts. If this ever collapses to one, the
+    // published/staged disagreement is back.
+    reachableStorage([]);
+    const reachable = (await fetchSupabaseData(makeSettings())).dailyData;
+    installTables({
+      panoramas_view: panoramaRow({ run_id: 'run-a' }, FRAMES),
+      subgrids: [],
+      qa_defects: []
+    });
+    unreachableStorage();
+    const unreachable = (await fetchSupabaseData(makeSettings())).dailyData;
+
+    const countOf = (rows: any[], state: string) =>
+      rows[0].panoramas.filter((p: any) => p.frameState === state).length;
+
+    expect(countOf(reachable, 'missing')).toBeGreaterThan(0);
+    expect(countOf(reachable, 'unverified')).toBe(0);
+    expect(countOf(unreachable, 'unverified')).toBeGreaterThan(0);
+    expect(countOf(unreachable, 'missing')).toBe(0);
+  });
+
+  it('keeps a defect visible on a frame that is also missing', async () => {
+    // Both facts survive. The fill stays red; the ring is gray.
+    reachableStorage([]);
+    installTables({
+      panoramas_view: panoramaRow({ run_id: 'run-a' }, FRAMES),
+      subgrids: [],
+      qa_defects: [
+        { point_id: 'N93E70-0001.jpg', subgrid: 'N93E70', run_id: RUN_A, qa_status: 'flagged' }
+      ]
+    });
+
+    const { dailyData } = await fetchSupabaseData(makeSettings());
+    const defective = dailyData[0].panoramas.filter((p: any) => p.qaState === 'defect');
+
+    expect(defective.length).toBeGreaterThan(0);
+    for (const p of defective) {
+      expect(p.frameState).toBe('missing');
+      // Red fill, gray stroke — neither fact lost to the other.
+      expect(p.color).toBe('#ef4444');
+      expect(p.strokeColor).toBe('#94a3b8');
     }
   });
 });
