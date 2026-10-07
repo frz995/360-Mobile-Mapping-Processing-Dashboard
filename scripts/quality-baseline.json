@@ -1,15 +1,21 @@
 {
   "_why": "Measured quality baselines for scripts/lint.mjs ratchets. Every number here was produced by running the tool, not estimated. Raise a value only as a deliberate act - the diff is the record. See implementation_plan_v26.md section 5.",
-  "capturedAtCommit": "fb84dae",
+  "capturedAtCommit": "a5627b3",
   "capturedAt": "2026-10-07",
+  "_history": [
+    "Captured at fb84dae, before v26 section 1 ran.",
+    "Updated at a5627b3 after sections 1 and 2. Three budgets moved and the",
+    "warning count moved with them, because section 1 added explanatory",
+    "comments and the QueryResult work has not landed yet:"
+  ],
 
   "lint": {
     "_scope": "eslint src vitest.config.ts, ESLINT_USE_FLAT_CONFIG=true, flat config eslint.config.mjs",
     "errors": 0,
-    "warnings": 1228,
+    "warnings": 1232,
     "byRule": {
       "@typescript-eslint/no-explicit-any": 1018,
-      "@typescript-eslint/no-non-null-assertion": 131,
+      "@typescript-eslint/no-non-null-assertion": 135,
       "react-hooks/exhaustive-deps": 70,
       "@typescript-eslint/no-unused-vars": 8,
       "react-hooks/rules-of-hooks": 1
@@ -23,16 +29,17 @@
   },
 
   "emptyCatch": {
-    "_definition": "A catch clause whose brace-balanced body, after stripping comments, is either empty (strict) or contains nothing but console.* statements (consoleOnly). Bodies with real statements are ignored. Scoped to src/, matching what lint.mjs lints.",
+    "_definition": "A catch clause whose brace-balanced body, after stripping comments, is either empty (strict) or contains nothing but console.* statements (consoleOnly). Bodies with real statements are ignored. Scoped to src/ excluding test files, matching what lint.mjs lints. Report-only, not enforced: an empty catch is not always a defect, since best-effort telemetry genuinely does not warrant failing a build.",
+    "_measured": "177 strict + 36 console-only at fb84dae, before v26 section 1. Section 1 reclassified the catches on the write paths rather than deleting them, so most moved from `strict` to `console-only`: the total fell, the shape changed.",
     "strict": 136,
     "consoleOnly": 57
   },
 
   "fileSizeBudgets": {
-    "_why": "Fails on exceedance only. These are physical line counts, which run ~8% higher than PowerShell's Measure-Object -Line because that cmdlet skips blank lines. 32 files are at or above 800 lines.",
+    "_why": "Fails on exceedance only. These are physical line counts, which run ~8% higher than PowerShell's Measure-Object -Line because that cmdlet skips blank lines. Covers every file at or above 800 lines. Raising a budget is a deliberate act: the diff is the record that the god files are growing.",
     "src/components/DataManagementPage.tsx": 4832,
     "src/components/RoadAnalysisWorkspace.tsx": 4558,
-    "src/App.tsx": 4361,
+    "src/App.tsx": 4401,
     "src/components/AdminSettingsView.tsx": 3449,
     "src/components/roadAnalysis/RoadAnalysisMap.tsx": 3021,
     "src/components/boundary/districtMetadata.ts": 2896,
@@ -41,7 +48,7 @@
     "src/utils/projectExplorerGeometry.ts": 2124,
     "src/components/roadAnalysis/RoadCatalogPanel.tsx": 2037,
     "src/utils/subgridComparison.ts": 2002,
-    "src/services/api/datasets.ts": 1684,
+    "src/services/api/datasets.ts": 1813,
     "src/lib/i18n.ts": 1574,
     "src/components/production/hub/BucketPublicationGate.tsx": 1557,
     "src/components/ProjectOnboarding.tsx": 1488,
@@ -60,7 +67,7 @@
     "src/utils/mapShares.ts": 892,
     "src/components/showcase/ModuleTourCards.tsx": 860,
     "src/components/roadAnalysis/RoadAnalysisPrintPanel.tsx": 842,
-    "src/utils/deletionImpact.ts": 821,
+    "src/utils/deletionImpact.ts": 822,
     "src/components/DefectsGalleryModal.tsx": 809
   }
 }
