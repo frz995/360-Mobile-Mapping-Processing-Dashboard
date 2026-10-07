@@ -11,16 +11,18 @@
     "QueryResult calls, and no-explicit-any 1018 -> 1024 as row payloads",
     "became toQueryResult<any[]> arguments. Warnings now 1238.",
     "Updated for v27 section 1: datasets.ts +38 for the frameState/qaState",
-    "derivation and its comments. Warnings unchanged at 1240."
+    "derivation and its comments.",
+    "Updated for v27 section 2: surveyIntegrity.ts uses non-null assertions on",
+    "figures it has already proven non-null on the line above. Warnings 1240 -> 1247."
   ],
 
   "lint": {
     "_scope": "eslint src vitest.config.ts, ESLINT_USE_FLAT_CONFIG=true, flat config eslint.config.mjs",
     "errors": 0,
-    "warnings": 1240,
+    "warnings": 1247,
     "byRule": {
       "@typescript-eslint/no-explicit-any": 1024,
-      "@typescript-eslint/no-non-null-assertion": 137,
+      "@typescript-eslint/no-non-null-assertion": 144,
       "react-hooks/exhaustive-deps": 70,
       "@typescript-eslint/no-unused-vars": 8,
       "react-hooks/rules-of-hooks": 1
