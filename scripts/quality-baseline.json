@@ -1,20 +1,23 @@
 {
   "_why": "Measured quality baselines for scripts/lint.mjs ratchets. Every number here was produced by running the tool, not estimated. Raise a value only as a deliberate act - the diff is the record. See implementation_plan_v26.md section 5.",
-  "capturedAtCommit": "a5627b3",
+  "capturedAtCommit": "c0e85d1",
   "capturedAt": "2026-10-07",
   "_history": [
     "Captured at fb84dae, before v26 section 1 ran.",
-    "Updated at a5627b3 after sections 1 and 2. Three budgets moved and the",
-    "warning count moved with them, because section 1 added explanatory",
-    "comments and the QueryResult work has not landed yet:"
+    "Updated after section 1 (write paths classified): App.tsx +40,",
+    "datasets.ts +129, deletionImpact.ts +1, all mostly comments explaining",
+    "why a catch is safe. Warnings 1228 -> 1232.",
+    "Updated again after sections 2 and 3: datasets.ts +19 more for the",
+    "QueryResult calls, and no-explicit-any 1018 -> 1024 as row payloads",
+    "became toQueryResult<any[]> arguments. Warnings now 1238."
   ],
 
   "lint": {
     "_scope": "eslint src vitest.config.ts, ESLINT_USE_FLAT_CONFIG=true, flat config eslint.config.mjs",
     "errors": 0,
-    "warnings": 1232,
+    "warnings": 1238,
     "byRule": {
-      "@typescript-eslint/no-explicit-any": 1018,
+      "@typescript-eslint/no-explicit-any": 1024,
       "@typescript-eslint/no-non-null-assertion": 135,
       "react-hooks/exhaustive-deps": 70,
       "@typescript-eslint/no-unused-vars": 8,
@@ -31,8 +34,8 @@
   "emptyCatch": {
     "_definition": "A catch clause whose brace-balanced body, after stripping comments, is either empty (strict) or contains nothing but console.* statements (consoleOnly). Bodies with real statements are ignored. Scoped to src/ excluding test files, matching what lint.mjs lints. Report-only, not enforced: an empty catch is not always a defect, since best-effort telemetry genuinely does not warrant failing a build.",
     "_measured": "177 strict + 36 console-only at fb84dae, before v26 section 1. Section 1 reclassified the catches on the write paths rather than deleting them, so most moved from `strict` to `console-only`: the total fell, the shape changed.",
-    "strict": 136,
-    "consoleOnly": 57
+    "strict": 134,
+    "consoleOnly": 59
   },
 
   "fileSizeBudgets": {
@@ -48,7 +51,7 @@
     "src/utils/projectExplorerGeometry.ts": 2124,
     "src/components/roadAnalysis/RoadCatalogPanel.tsx": 2037,
     "src/utils/subgridComparison.ts": 2002,
-    "src/services/api/datasets.ts": 1813,
+    "src/services/api/datasets.ts": 1832,
     "src/lib/i18n.ts": 1574,
     "src/components/production/hub/BucketPublicationGate.tsx": 1557,
     "src/components/ProjectOnboarding.tsx": 1488,

@@ -16,12 +16,20 @@ const {
   ensureManifestSettingsMock: vi.fn()
 }))
 
-vi.mock('../client', () => ({
-  supabase: { from: fromMock },
-  scoped: scopedMock,
-  scopedIncludingUnassigned: scopedIncludingUnassignedMock,
-  getServiceProjectId: getServiceProjectIdMock
-}))
+vi.mock('../client', async () => {
+  // Spreads the real module so `toQueryResult` keeps its behaviour. Mocking the
+  // whole module would mean hand-rolling the discrimination the module under
+  // test now depends on, which would let these tests pass against a broken
+  // toQueryResult.
+  const actual = await vi.importActual<typeof import('../client')>('../client');
+  return {
+    ...actual,
+    supabase: { from: fromMock },
+    scoped: scopedMock,
+    scopedIncludingUnassigned: scopedIncludingUnassignedMock,
+    getServiceProjectId: getServiceProjectIdMock
+  };
+});
 
 vi.mock('../storage', () => ({
   resolveStorageFiles: resolveStorageFilesMock,

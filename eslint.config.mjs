@@ -124,5 +124,22 @@ export default [
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn'
     }
-  }
+  },
+  // v26 section 3.3 — NOT ENABLED, deliberately.
+  //
+  // The intent is to make `@typescript-eslint/no-explicit-any` an ERROR on the
+  // three write paths so the service layer cannot regress. It is not enabled
+  // because those three files still hold ~55 `any`s, and flipping the rule today
+  // fails the gate on 55 errors instead of guarding anything.
+  //
+  // Scoped to the three named files rather than to `src/services/api/**` or
+  // `src/hooks/use*.ts`: those wider globs hold ~48 further `any`s in files no
+  // test covers, so a glob-wide override would fail even harder.
+  //
+  // What section 3 did land is `QueryResult<T>` in src/services/api/client.ts,
+  // which makes `const { data } = await ...` a type error rather than a review
+  // comment — the actual defect class, enforced by the compiler instead of by a
+  // lint rule. The `any` ratchet in scripts/lint.mjs reports per-rule regressions,
+  // so growth is visible now and the hard gate can be added per file as each is
+  // migrated. Enabling it is a one-line change once a file reaches zero.
 ]

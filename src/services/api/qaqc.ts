@@ -1,4 +1,4 @@
-import { supabase, scoped, getServiceProjectId } from './client';
+import { supabase, scoped, getServiceProjectId, toQueryResult } from './client';
 import { DATABASE_TABLE_DEFAULTS } from '../../config/defaults';
 import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
 import type { QADefectRecord, QAQCAuditRunRecord } from '../../types/admin';
@@ -190,13 +190,17 @@ export async function fetchQaRecordsFromSupabase(settings?: any): Promise<Record
 export async function fetchQaAuditRunsFromSupabase(settings?: any): Promise<Record<string, QAQCAuditRunRecord>> {
   try {
     const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || DATABASE_TABLE_DEFAULTS.qaqcRunsTable;
-    const { data, error } = await scoped(supabase.from(qaqcRunsTable).select('subgrid, run_id, id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at, updated_at')).order('completed_at', { ascending: false });
-    if (error) {
-      console.warn('fetchQaAuditRunsFromSupabase notice:', error.message);
+    // `ok` must be checked before `data` is read, which is the property that makes
+    // a failure impossible to mistake for "no audits exist".
+    const auditRuns = toQueryResult<any[]>(
+      await scoped(supabase.from(qaqcRunsTable).select('subgrid, run_id, id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at, updated_at')).order('completed_at', { ascending: false })
+    );
+    if (!auditRuns.ok) {
+      console.warn('fetchQaAuditRunsFromSupabase notice:', auditRuns.error.message);
       return {};
     }
     const result: Record<string, QAQCAuditRunRecord> = {};
-    (data || []).forEach((row: any) => {
+    auditRuns.data.forEach((row: any) => {
       const normSg = (extractSubgrid(row.subgrid) || row.subgrid || '').toUpperCase().trim();
       const runId = row.run_id || 'default';
       const record: QAQCAuditRunRecord = {
@@ -314,10 +318,14 @@ export async function fetchQADefectsForSubgrid(subgrid: string, runId?: string |
         .eq('subgrid', cleanSub);
       if (cleanRun) q = q.eq('run_id', cleanRun);
 
-      const { data: qaRows, error } = await scoped(q.order('frame_index', { ascending: true }));
+// A failure here used to be indistinguishable from "this subgrid has no
+      // defects", which is what made 0032 invisible from this screen.
+      const qaDefects = toQueryResult<any[]>(
+        await scoped(q.order('frame_index', { ascending: true }))
+      );
 
-      if (!error && Array.isArray(qaRows)) {
-        qaRows.forEach((row: any) => {
+      if (qaDefects.ok) {
+        qaDefects.data.forEach((row: any) => {
           const ptId = (row.point_id || row.filename || row.item_key || '').replace(/^.*[\\\/]/, '');
           if (!ptId) return;
           defectMap.set(ptId.toUpperCase(), {
@@ -336,10 +344,16 @@ export async function fetchQADefectsForSubgrid(subgrid: string, runId?: string |
             is_resolved: Boolean(row.is_resolved),
             resolved_at: row.resolved_at,
             created_at: row.created_at
-          });
+});
         });
       }
-    } catch (_) { }
+    } catch (qaDefectsReadErr: unknown) {
+      // Best-effort: source 2 below reads the same defects from
+      // `qaqc_audit_runs`, so a failure here degrades to a partial list rather
+      // than an empty one. That fallback only works if the failure is visible —
+      // a silent empty list here reads as "this subgrid was clean".
+      console.warn('qa_defects unreadable for subgrid:', qaDefectsReadErr);
+    }
 
     // 2. Also fetch from qaqc_audit_runs where defects_list JSON is stored
     try {
@@ -349,10 +363,12 @@ export async function fetchQADefectsForSubgrid(subgrid: string, runId?: string |
         .ilike('subgrid', `%${cleanSub}%`);
       if (cleanRun) aq = aq.eq('run_id', cleanRun);
 
-      const { data: auditRows, error: auditError } = await scoped(aq.order('created_at', { ascending: false }));
+      const auditRuns = toQueryResult<any[]>(
+        await scoped(aq.order('created_at', { ascending: false }))
+      );
 
-      if (!auditError && Array.isArray(auditRows)) {
-        auditRows.forEach((audit: any) => {
+      if (auditRuns.ok) {
+        auditRuns.data.forEach((audit: any) => {
           if (Array.isArray(audit.defects_list)) {
             audit.defects_list.forEach((d: any, idx: number) => {
               const ptId = (d.point_id || d.filename || d.imageFilename || `${cleanSub}-${String(idx + 1).padStart(4, '0')}.jpg`).replace(/^.*[\\\/]/, '');
@@ -379,7 +395,12 @@ export async function fetchQADefectsForSubgrid(subgrid: string, runId?: string |
           }
         });
       }
-    } catch (_) { }
+    } catch (auditReadErr: unknown) {
+      // Same reasoning as source 1: whatever was read from `qa_defects` still
+      // stands, so this degrades rather than empties — but an empty result with
+      // no warning reads as a clean subgrid.
+      console.warn('qaqc_audit_runs unreadable for subgrid:', auditReadErr);
+    }
 
     return Array.from(defectMap.values());
   } catch (err) {

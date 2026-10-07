@@ -99,6 +99,55 @@ export function getServiceProjectId(): string | null {
   return id && id.trim() ? id : null;
 }
 
+/**
+ * The result of a PostgREST read, discriminated so a failure cannot be read as
+ * data.
+ *
+ * WHY THE UNION EXISTS
+ *
+ * PostgREST answers `{ data, error }` where `data` is `null` on failure. A
+ * caller that destructures `const { data } = await scoped(...)` and reads
+ * `data?.length` gets a perfectly well-typed `undefined` from a query that
+ * failed — and, where a default follows, a plausible-looking number. That is
+ * the type-level root of the silent-failure class this codebase spent
+ * migrations 0032 and 0033 repairing: an unreadable `qa_defects` table
+ * produced a clean run with zero defects, on every run, and no error anywhere.
+ *
+ * `QueryResult<T>` makes reading `data` without checking `ok` a type error
+ * rather than a review comment. It is applied to the write paths in
+ * `qaqc.ts`, `datasets.ts` and `useQAQCWorker.ts`; the read-heavy view layer
+ * still uses the raw shape, because converting it wholesale would be a large
+ * diff against a working build for no defect found.
+ */
+export type QueryResult<T> =
+  | { ok: true; data: T; error: null }
+  | { ok: false; data: null; error: { message: string; code?: string; details?: string } };
+
+/**
+ * Narrow a PostgREST response into a `QueryResult`.
+ *
+ * The `as` cast is unavoidable and is the one place the untyped boundary is
+ * acknowledged: supabase-js types the error as `PostgrestError | null` and data
+ * as `T | null`, which cannot be verified to be mutually exclusive from here.
+ * Everything downstream of this function is checked, which is the improvement.
+ */
+export function toQueryResult<T>(response: { data: T | null; error: { message: string; code?: string; details?: string } | null }): QueryResult<T> {
+  if (response.error) {
+    return { ok: false, data: null, error: response.error };
+  }
+  // A null `data` with no error is not a valid PostgREST response, but it is
+  // reachable through an untyped chain, and treating it as an empty array would
+  // reinstate the exact confusion this type exists to remove.
+  if (response.data === null) {
+    return {
+      ok: false,
+      data: null,
+      error: { message: 'Query returned no data and no error' }
+    };
+  }
+  return { ok: true, data: response.data, error: null };
+}
+
 /** Append a `project_id = <active>` equality filter when a project is active. */
 export function scoped(query: any): any {
   const id = getServiceProjectId();

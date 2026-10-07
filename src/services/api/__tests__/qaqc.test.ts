@@ -7,11 +7,17 @@ const { fromMock, scopedMock, getServiceProjectIdMock, saveAuditLogMock } = vi.h
   saveAuditLogMock: vi.fn()
 }))
 
-vi.mock('../client', () => ({
-  supabase: { from: fromMock },
-  scoped: scopedMock,
-  getServiceProjectId: getServiceProjectIdMock
-}))
+vi.mock('../client', async () => {
+  // Spreads the real module so `toQueryResult` keeps its behaviour. Hand-rolling
+  // it here would let these tests pass against a broken implementation.
+  const actual = await vi.importActual<typeof import('../client')>('../client');
+  return {
+    ...actual,
+    supabase: { from: fromMock },
+    scoped: scopedMock,
+    getServiceProjectId: getServiceProjectIdMock
+  };
+});
 
 vi.mock('../admin', () => ({
   saveAuditLogToSupabase: saveAuditLogMock

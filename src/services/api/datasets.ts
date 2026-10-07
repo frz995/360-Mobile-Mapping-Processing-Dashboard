@@ -1,4 +1,5 @@
-import { supabase, scoped, scopedIncludingUnassigned, getServiceProjectId } from './client';
+import { supabase, scoped, scopedIncludingUnassigned, getServiceProjectId, toQueryResult } from './client';
+import type { QueryResult } from './client';
 import { ensureManifestSettings, resolveStorageFiles } from './storage';
 import type { ExtendedProjectSettings } from '../../types/admin';
 import type { BatchLog } from '../../types/dashboard';
@@ -238,13 +239,17 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     let qaDefectsReadable = true;
     let qaDefectsError: string | null = null;
     try {
-      const { data: qdRows, error: qdErr } = await scoped(supabase.from('qa_defects').select('point_id, filename, item_key, subgrid, run_id, qa_status, defect_flags, defect_count, defect_type, is_resolved'));
-      if (qdErr) {
+      // QueryResult<T> from ./client makes `ok` mandatory, so a failure cannot
+      // reach the tally below as an empty result. That is the whole point of
+      // the type: this is the query that failed in production twice.
+      const defects = toQueryResult<any[]>(
+        await scoped(supabase.from('qa_defects').select('point_id, filename, item_key, subgrid, run_id, qa_status, defect_flags, defect_count, defect_type, is_resolved'))
+      );
+      if (!defects.ok) {
         qaDefectsReadable = false;
-        qaDefectsError = qdErr.message;
-      }
-      if (qdRows && qdRows.length > 0) {
-        qdRows.forEach((r: any) => {
+        qaDefectsError = defects.error.message;
+      } else if (defects.data.length > 0) {
+        defects.data.forEach((r: any) => {
           const fn = (r.point_id || r.filename || r.item_key || '').split('/').pop()?.toUpperCase().trim();
           if (fn) {
             knownDefectFilenames.add(fn);
@@ -297,10 +302,15 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     // Query cloud qaqc_audit_runs table for persisted QAQC audit metrics
     const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || DATABASE_TABLE_DEFAULTS.qaqcRunsTable;
     let cloudAuditCache: Record<string, any> = {};
+    // Declared outside the try: a throw leaves it null, and that is itself
+    // information the caller needs rather than something to swallow.
+    let auditRuns: QueryResult<any[]> | null = null;
     try {
-      const { data: auditRows } = await scoped(supabase.from(qaqcRunsTable).select('subgrid, run_id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at'));
-      if (auditRows && auditRows.length > 0) {
-        auditRows.forEach((r: any) => {
+      auditRuns = toQueryResult<any[]>(
+        await scoped(supabase.from(qaqcRunsTable).select('subgrid, run_id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at'))
+      );
+      if (auditRuns.ok && auditRuns.data.length > 0) {
+        auditRuns.data.forEach((r: any) => {
           const norm = (extractSubgrid(r.subgrid) || r.subgrid || '').toUpperCase().trim();
           const runId = r.run_id || 'default';
           const entry = {
@@ -335,13 +345,22 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         });
       }
     } catch (auditRunsErr: unknown) {
+      // A throw here bypasses the `ok` check above, so both shapes have to be
+      // handled or one of them reaches the cache as an empty result.
+      console.warn(
+        '[datasets] qaqc_audit_runs unreadable — audit summaries unavailable for this load:',
+        auditRunsErr instanceof Error ? auditRunsErr.message : String(auditRunsErr)
+      );
+    }
+
+    if (auditRuns !== null && !auditRuns.ok) {
       // `qaqc_audit_runs` is the fallback defect source. Runs with no
       // run-scoped `qa_defects` rows would lose their audit summary here and
       // fall through to 0 — defensible, because the row-level table itself WAS
       // readable, but it is a diagnosable gap rather than a clean state.
       console.warn(
-        '[datasets] qaqc_audit_runs unreadable — audit summaries unavailable for this load:',
-        auditRunsErr instanceof Error ? auditRunsErr.message : String(auditRunsErr)
+        '[datasets] qaqc_audit_runs rejected — audit summaries unavailable for this load:',
+        auditRuns.error.message
       );
     }
 
