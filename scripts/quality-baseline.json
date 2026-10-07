@@ -24,8 +24,8 @@
 
   "emptyCatch": {
     "_definition": "A catch clause whose brace-balanced body, after stripping comments, is either empty (strict) or contains nothing but console.* statements (consoleOnly). Bodies with real statements are ignored. Scoped to src/, matching what lint.mjs lints.",
-    "strict": 177,
-    "consoleOnly": 36
+    "strict": 136,
+    "consoleOnly": 57
   },
 
   "fileSizeBudgets": {

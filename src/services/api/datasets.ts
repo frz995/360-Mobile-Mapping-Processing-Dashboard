@@ -15,7 +15,8 @@ import { getDatabaseTableMapping } from '../supabaseConfig';
 /** Operation keys for the write-failure banner. */
 export const DATASET_WRITE_OPS = {
   batchLog: 'datasets.batch_log',
-  publishRelease: 'datasets.publish_release'
+  publishRelease: 'datasets.publish_release',
+  subgridDelete: 'datasets.subgrid_delete'
 } as const;
 import { withRetry } from '../../lib/retry';
 import { STORAGE_BUCKET_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../../config/defaults';
@@ -333,7 +334,16 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           }
         });
       }
-    } catch (_) { }
+    } catch (auditRunsErr: unknown) {
+      // `qaqc_audit_runs` is the fallback defect source. Runs with no
+      // run-scoped `qa_defects` rows would lose their audit summary here and
+      // fall through to 0 — defensible, because the row-level table itself WAS
+      // readable, but it is a diagnosable gap rather than a clean state.
+      console.warn(
+        '[datasets] qaqc_audit_runs unreadable — audit summaries unavailable for this load:',
+        auditRunsErr instanceof Error ? auditRunsErr.message : String(auditRunsErr)
+      );
+    }
 
     // Group published database records by individual survey run (runKey) so daily journeys remain separate
     const publishedGrouped = new Map<string, {
@@ -376,7 +386,15 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             lon = parseFloat(match[1]);
             lat = parseFloat(match[2]);
           } else {
-            try { geomObj = JSON.parse(geomObj); } catch { }
+            try {
+              geomObj = JSON.parse(geomObj);
+            } catch (geomParseErr) {
+              // Best-effort: `geom` is expected as WKT `POINT(lon lat)`, which
+              // the regex above handles. GeoJSON is the tolerated fallback; a
+              // row in neither shape has no usable coordinates and is skipped
+              // by the bounds check below either way.
+              console.warn('Unparseable geometry string:', geomParseErr);
+            }
           }
         }
         if (geomObj && geomObj.coordinates && Array.isArray(geomObj.coordinates) && geomObj.coordinates.length >= 2) {
@@ -969,7 +987,12 @@ export async function publishToSupabase(record: {
         if (!isNaN(d.getTime())) {
           return d.toISOString();
         }
-      } catch { }
+      } catch (dateParseErr) {
+        // Best-effort: a non-Date-like value just falls through to the manual
+        // dd/mm/yyyy parse below. Throwing here would abort the whole load for
+        // one unparseable row.
+        console.warn('Date not parsed as ISO:', dateParseErr);
+      }
       const parts = String(rawDate).trim().split(/[\/\-]/);
       if (parts.length === 3) {
         const [m, d, y] = parts.map(Number);
@@ -1234,7 +1257,15 @@ export async function deleteFromStagingSupabase(subgrid: string, filenames?: str
             'Authorization': `Bearer ${supabaseKey}`
           }
         });
-      } catch { }
+      } catch (restDeleteErr) {
+        // Best-effort secondary sweep. The authoritative delete above already
+        // ran through the PostgREST client and its result is what the caller
+        // reports; this raw request additionally catches rows whose `filename`
+        // has a path prefix the client normalises differently. A failure here
+        // leaves at most some orphaned staging rows, which the next full sync
+        // reconciles.
+        console.warn('Secondary staging delete sweep failed:', restDeleteErr);
+      }
     } else {
       await supabase
         .from('staging_panoramas')
@@ -1310,7 +1341,17 @@ export async function deletePointsFromSupabase(
 export async function deleteFromSupabase(subgrid: string): Promise<{ success: boolean; message: string }> {
   try {
     const cleanSub = (subgrid || '').trim();
-    await deleteFromStagingSupabase(cleanSub).catch(() => { });
+    // The staging sweep must not abort the permanent delete of the published
+    // rows below, but a failure means orphaned staging records that look like
+    // live survey data. Surfaced rather than swallowed.
+    await deleteFromStagingSupabase(cleanSub).catch((stagingDeleteErr: unknown) => {
+      reportWriteFailure(
+        DATASET_WRITE_OPS.subgridDelete,
+        `Staging rows — ${cleanSub}`,
+        stagingDeleteErr instanceof Error ? stagingDeleteErr.message : String(stagingDeleteErr),
+        'warning'
+      );
+    });
 
     const { error: pErr } = await supabase
       .from('panoramas')
@@ -1322,14 +1363,30 @@ export async function deleteFromSupabase(subgrid: string): Promise<{ success: bo
         .from('qa_defects')
         .delete()
         .or(`subgrid.ilike.${cleanSub},filename.ilike.${cleanSub}%,filename.ilike.%/${cleanSub}/%,filename.ilike.%-${cleanSub}-%,filename.ilike.%_${cleanSub}%`);
-    } catch { }
+    } catch (defectDeleteErr: unknown) {
+      // Orphaned qa_defects rows are the worst outcome of this function: the
+      // panorama is gone but its defect tally survives, so the subgrid reports
+      // defects against data that no longer exists. Must be visible.
+      reportWriteFailure(
+        DATASET_WRITE_OPS.subgridDelete,
+        `Defect records — ${cleanSub}`,
+        defectDeleteErr instanceof Error ? defectDeleteErr.message : String(defectDeleteErr)
+      );
+    }
 
     try {
       await supabase
         .from('qaqc_audit_runs')
         .delete()
         .ilike('subgrid', cleanSub);
-    } catch { }
+    } catch (auditDeleteErr: unknown) {
+      // Same reasoning: a surviving audit summary outlives its panoramas.
+      reportWriteFailure(
+        DATASET_WRITE_OPS.subgridDelete,
+        `Audit summaries — ${cleanSub}`,
+        auditDeleteErr instanceof Error ? auditDeleteErr.message : String(auditDeleteErr)
+      );
+    }
 
     if (pErr) {
       console.error('Error deleting from Supabase panoramas:', pErr);
@@ -1394,7 +1451,11 @@ export async function saveToRecycleBinInSupabase(item: RecycleBinItem): Promise<
     const existing: RecycleBinItem[] = JSON.parse(localStorage.getItem('geosphere360_recycle_bin') || '[]');
     const updated = [item, ...existing.filter(x => x.id !== item.id)];
     localStorage.setItem('geosphere360_recycle_bin', JSON.stringify(updated));
-  } catch { }
+  } catch (binWriteErr) {
+    // Best-effort: the Supabase insert above is the durable record. This cache
+    // is a convenience mirror and is re-derived on the next fetch.
+    console.warn('Recycle bin local cache not written:', binWriteErr);
+  }
 
   return true;
 }
@@ -1413,7 +1474,16 @@ export async function fetchRecycleBinFromSupabase(): Promise<RecycleBinItem[]> {
     if (!error && Array.isArray(data)) {
       dbItems = data as RecycleBinItem[];
     }
-  } catch { }
+  } catch (recycleReadErr: unknown) {
+    // The local merge below still runs, so the operator sees whatever the
+    // browser cache holds. But a silently empty recycle bin means deleted
+    // panoramas become unrecoverable from the operator's point of view, which
+    // is worth a warning.
+    console.warn(
+      '[datasets] Recycle bin table unreadable — showing local cache only:',
+      recycleReadErr instanceof Error ? recycleReadErr.message : String(recycleReadErr)
+    );
+  }
 
   try {
     const localItems: RecycleBinItem[] = JSON.parse(localStorage.getItem('geosphere360_recycle_bin') || '[]');
@@ -1434,13 +1504,25 @@ export async function fetchRecycleBinFromSupabase(): Promise<RecycleBinItem[]> {
 export async function deleteFromRecycleBinInSupabase(id: string): Promise<boolean> {
   try {
     await supabase.from(RECYCLE_BIN_TABLE).delete().eq('id', id);
-  } catch { }
+  } catch (permanentDeleteErr: unknown) {
+    // A real write. The operator is told this item is gone; if it is not, a
+    // permanent delete has to be repeated from a list that no longer shows it.
+    reportWriteFailure(
+      DATASET_WRITE_OPS.subgridDelete,
+      'Recycle bin purge',
+      permanentDeleteErr instanceof Error ? permanentDeleteErr.message : String(permanentDeleteErr)
+    );
+  }
 
   try {
     const existing: RecycleBinItem[] = JSON.parse(localStorage.getItem('geosphere360_recycle_bin') || '[]');
     const updated = existing.filter(x => x.id !== id);
     localStorage.setItem('geosphere360_recycle_bin', JSON.stringify(updated));
-  } catch { }
+  } catch (binCacheErr) {
+    // Best-effort: the database delete above is authoritative. A stale local
+    // cache would re-list the item until the next fetch, which self-corrects.
+    console.warn('Recycle bin local cache not updated:', binCacheErr);
+  }
 
   return true;
 }
@@ -1586,7 +1668,11 @@ function getLocalDatasets(): DatasetRecord[] {
   try {
     const raw = localStorage.getItem(getDatasetStorageKey());
     return raw ? JSON.parse(raw) : [];
-  } catch (_) {
+  } catch (datasetReadErr) {
+    // Best-effort cache read. Returning [] is correct: every consumer merges
+    // this with the database result rather than trusting it alone, so a corrupt
+    // cache degrades to "no local copy", never to lost data.
+    console.warn('Dataset local cache not read:', datasetReadErr);
     return [];
   }
 }
@@ -1594,7 +1680,11 @@ function getLocalDatasets(): DatasetRecord[] {
 function setLocalDatasets(datasets: DatasetRecord[]): void {
   try {
     localStorage.setItem(getDatasetStorageKey(), JSON.stringify(datasets));
-  } catch (_) { }
+  } catch (datasetCacheErr) {
+    // Best-effort: Supabase is the source of truth for datasets and every read
+    // path queries it first. This cache only shortens a cold start.
+    console.warn('Dataset local cache not written:', datasetCacheErr);
+  }
 }
 
 export async function fetchDatasetsFromSupabase(): Promise<DatasetRecord[]> {
