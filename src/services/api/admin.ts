@@ -200,6 +200,165 @@ export async function testDatabaseHealth(): Promise<{
 }
 
 /**
+ * One schema expectation this app depends on, and the migration that satisfies it.
+ */
+export interface SchemaExpectation {
+  /** What the app needs, phrased for an operator who has to act on it. */
+  label: string;
+  /** The table or column set being checked. */
+  relation: string;
+  /** Columns that must exist. Empty means the table's mere presence is the check. */
+  columns: string[];
+  /** Migration that provides it, for the operator to go and apply. */
+  migration: string;
+}
+
+/**
+ * The schema this build REQUIRES, stated as data.
+ *
+ * WHY THIS LIST EXISTS
+ *
+ * Migrations 0032 and 0033 each added a column the app reads on every load, and
+ * each shipped to a pilot-bound client before anyone checked whether the column
+ * was there. On a database without `qa_defects.run_id` the select failed, the
+ * failure was swallowed, and every survey run reported zero defects. That is a
+ * system which looks perfectly healthy and is quietly wrong — the worst failure
+ * mode available, and the reason a schema probe belongs next to the other
+ * diagnostics.
+ *
+ * Each entry names the migration, so a failure tells the operator which file to
+ * apply rather than only that something is wrong.
+ */
+export const SCHEMA_EXPECTATIONS: readonly SchemaExpectation[] = [
+  {
+    label: 'qa_defects.run_id — scopes a defect to one survey run',
+    relation: 'qa_defects',
+    columns: ['run_id'],
+    migration: '0032_qa_defects_run_scope.sql'
+  },
+  {
+    label: 'qa_defects.item_key — required NOT NULL column on the defect write',
+    relation: 'qa_defects',
+    columns: ['item_key'],
+    migration: '0033_qa_defects_item_key.sql'
+  },
+  {
+    label: 'panoramas.csv_file_name — migration 0029',
+    relation: 'panoramas',
+    columns: ['csv_file_name'],
+    migration: '0029_csv_file_name.sql'
+  }
+] as const;
+
+export interface SchemaCheckResult extends SchemaExpectation {
+  /** 'ok' when the relation and every listed column exist. */
+  status: 'ok' | 'missing_columns' | 'missing_relation' | 'unreachable';
+  /** Measured names of the columns actually present; empty when unreachable. */
+  foundColumns: string[];
+  detail: string;
+}
+
+/**
+ * Check that the schema this build needs is actually installed.
+ *
+ * Uses PostgREST rather than `to_regclass` because it needs no RPC, no extra
+ * grant, and no `pg` dependency — the same reason `toQueryResult` exists at this
+ * boundary. Selecting a column that does not exist returns an error naming it,
+ * which is precisely the condition being detected, so the check cannot succeed
+ * by accident.
+ *
+ * Every outcome is reported, including `unreachable`. A probe that returns
+ * "fine" when it could not reach the database would be the same class of silent
+ * failure it exists to detect.
+ */
+export async function checkSchemaExpectations(): Promise<SchemaCheckResult[]> {
+  const results: SchemaCheckResult[] = [];
+
+  // Group columns by relation so each table is queried once.
+  const byRelation = new Map<string, string[]>();
+  for (const expectation of SCHEMA_EXPECTATIONS) {
+    const existing = byRelation.get(expectation.relation) ?? [];
+    byRelation.set(expectation.relation, [...existing, ...expectation.columns]);
+  }
+
+  for (const [relation, columns] of byRelation) {
+    // One query per relation, however many columns it is expected to have.
+    // `thrown` is tracked separately from `message` because the two mean
+    // different things to an operator: an error RESPONSE means the database
+    // answered and the schema is wrong, while a rejection means the database was
+    // never reached and the schema is simply unknown. Collapsing them is how a
+    // connectivity blip gets reported as a missing migration.
+    let observed:
+      | { ok: true; found: string[] }
+      | { ok: false; message: string; thrown: boolean }
+      | null = null;
+
+    try {
+      const { data, error } = await supabase
+        .from(relation)
+        .select(columns.join(', '))
+        .limit(1);
+
+      if (error) {
+        observed = { ok: false, message: error.message, thrown: false };
+      } else {
+        // An empty table still proves the columns exist: PostgREST validates the
+        // select against the schema before returning rows, so reaching this
+        // point without an error means every requested column resolved.
+        observed = {
+          ok: true,
+          found: data && data.length > 0 ? Object.keys(data[0] ?? {}) : columns
+        };
+      }
+    } catch (err) {
+      observed = {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+        thrown: true
+      };
+    }
+
+    for (const expectation of SCHEMA_EXPECTATIONS.filter((e) => e.relation === relation)) {
+      // What the operator needs is the migration to apply. Postgres' own wording
+      // means nothing to someone holding a deployment checklist, and a raw error
+      // is how 0032 reached a pilot unnoticed.
+      if (observed.ok) {
+        const missing = expectation.columns.filter((c) => !observed.found.includes(c));
+        results.push({
+          ...expectation,
+          status: missing.length === 0 ? 'ok' : 'missing_columns',
+          foundColumns: observed.found,
+          detail:
+            missing.length === 0
+              ? `present (migration ${expectation.migration} applied)`
+              : `missing column(s): ${missing.join(', ')} — apply ${expectation.migration}`
+        });
+      } else if (observed.thrown) {
+        // The database was never reached. Saying "missing" here would tell an
+        // operator to apply a migration they do not need.
+        results.push({
+          ...expectation,
+          status: 'unreachable',
+          foundColumns: [],
+          detail: `not checked — database unreachable (${observed.message})`
+        });
+      } else {
+        results.push({
+          ...expectation,
+          // A missing relation and a missing column both surface as an error
+          // response here; the message is the only thing that tells them apart.
+          status: /column/i.test(observed.message) ? 'missing_columns' : 'missing_relation',
+          foundColumns: [],
+          detail: `${observed.message} — apply ${expectation.migration}`
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
  * Fetch data deletion approval requests from Supabase.
  */
 export async function fetchDeletionRequestsFromSupabase(_currentUser?: any): Promise<any[]> {

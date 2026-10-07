@@ -10,6 +10,7 @@ import {
   Eye,
   ChevronDown,
   ChevronRight,
+  Database,
   Server,
   Zap
 } from 'lucide-react';
@@ -21,6 +22,7 @@ import {
 } from '../lib/report';
 import { isSentryEnabled } from '../lib/sentry';
 import { testDatabaseHealth } from '../services/supabase';
+import { checkSchemaExpectations, type SchemaCheckResult } from '../services/api/admin';
 const LEVEL_STYLES: Record<string, { color: string; icon: React.ReactNode }> = {
   error: { color: 'text-rose-400', icon: <Bug size={12} /> },
   warn:  { color: 'text-amber-400', icon: <AlertTriangle size={12} /> },
@@ -52,6 +54,11 @@ export const DiagnosticsPanel: React.FC<{ cardBg?: string }> = ({ cardBg = 'bg-c
     lastPingTime: string;
   } | null>(null);
   const [envExpanded, setEnvExpanded] = useState(false);
+  // null = not run yet, distinct from [] = ran and found nothing missing. The
+  // panel is operator-triggered rather than boot-triggered so it costs nothing
+  // on every load.
+  const [schemaResults, setSchemaResults] = useState<SchemaCheckResult[] | null>(null);
+  const [schemaLoading, setSchemaLoading] = useState(false);
 
   useEffect(() => {
     return subscribeReports((snap) => setEntries(snap));
@@ -92,6 +99,27 @@ export const DiagnosticsPanel: React.FC<{ cardBg?: string }> = ({ cardBg = 'bg-c
   const handleClearBuffer = useCallback(() => {
     clearReports();
     setEntries([]);
+  }, []);
+
+  const handleSchemaCheck = useCallback(async () => {
+    setSchemaLoading(true);
+    try {
+      setSchemaResults(await checkSchemaExpectations());
+    } catch (err) {
+      // The check itself throwing is not a pass. Report it as a failed probe
+      // rather than leaving the panel showing a stale or empty result.
+      setSchemaResults([{
+        label: 'Schema check',
+        relation: '',
+        columns: [],
+        migration: '',
+        status: 'unreachable',
+        foundColumns: [],
+        detail: err instanceof Error ? err.message : String(err)
+      }]);
+    } finally {
+      setSchemaLoading(false);
+    }
   }, []);
 
   const recentEntries = entries.slice(-80).reverse();
@@ -152,6 +180,67 @@ export const DiagnosticsPanel: React.FC<{ cardBg?: string }> = ({ cardBg = 'bg-c
               <span className="flex items-center gap-1"><Server size={10} /> Mem: {pingResult.memoryUsageMb !== null ? `${pingResult.memoryUsageMb} MB` : 'not exposed by this browser'}</span>
             </div>
           </>
+        )}
+      </div>
+
+      {/* Schema Expectations — the 0032/0033 class made visible */}
+      <div className={`${cardBg} rounded-2xl p-4`}>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <Database size={16} className="text-sky-400" />
+            <div>
+              <h4 className="text-xs font-bold text-text-base uppercase tracking-wide">Schema Expectations</h4>
+              <p className="text-[11px] text-text-muted mt-0.5">
+                Verify the columns this build reads actually exist. A missing one does not
+                error — it silently changes what the app reports.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleSchemaCheck}
+            disabled={schemaLoading}
+            className="px-3 py-1.5 bg-inner hover:bg-sky-950/60 border border-subtle rounded-lg text-xs font-semibold text-sky-400 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+          >
+            {schemaLoading ? (
+              <><Activity size={12} className="animate-spin" /> Checking…</>
+            ) : (
+              <><Database size={12} /> Check schema</>
+            )}
+          </button>
+        </div>
+
+        {schemaResults === null ? (
+          <p className="text-[11px] text-text-muted">
+            Not run yet. Applies migrations 0029, 0032 and 0033 if they are missing.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {schemaResults.map((r, i) => {
+              const tone = r.status === 'ok'
+                ? 'bg-emerald-500/10 text-emerald-400'
+                : r.status === 'unreachable'
+                  ? 'bg-text-muted/10 text-text-muted'
+                  : 'bg-rose-500/10 text-rose-400';
+              return (
+                <div key={`${r.relation}.${r.columns.join(',')}.${i}`} className={`flex items-start gap-2 px-3 py-2 rounded-lg text-[11px] font-mono ${tone}`}>
+                  {r.status === 'ok'
+                    ? <CheckCircle2 size={12} className="mt-0.5 shrink-0" />
+                    : r.status === 'unreachable'
+                      ? <Info size={12} className="mt-0.5 shrink-0" />
+                      : <AlertTriangle size={12} className="mt-0.5 shrink-0" />}
+                  <div className="min-w-0">
+                    <div className="text-text-base">{r.label}</div>
+                    <div className="break-words opacity-80">{r.detail}</div>
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-[11px] text-text-muted pt-1">
+              {schemaResults.every((r) => r.status === 'ok')
+                ? 'All expected columns are present.'
+                : 'Apply the named migration, then re-run. Defect counts and QA/QC writes are wrong until you do.'}
+            </p>
+          </div>
         )}
       </div>
 

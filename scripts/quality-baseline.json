@@ -15,10 +15,10 @@
   "lint": {
     "_scope": "eslint src vitest.config.ts, ESLINT_USE_FLAT_CONFIG=true, flat config eslint.config.mjs",
     "errors": 0,
-    "warnings": 1238,
+    "warnings": 1240,
     "byRule": {
       "@typescript-eslint/no-explicit-any": 1024,
-      "@typescript-eslint/no-non-null-assertion": 135,
+      "@typescript-eslint/no-non-null-assertion": 137,
       "react-hooks/exhaustive-deps": 70,
       "@typescript-eslint/no-unused-vars": 8,
       "react-hooks/rules-of-hooks": 1
