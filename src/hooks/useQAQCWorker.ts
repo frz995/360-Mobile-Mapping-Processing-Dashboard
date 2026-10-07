@@ -198,8 +198,10 @@ export async function persistDefectBatch(
   runId?: string | null
 ): Promise<number> {
   let synced = 0;
+  let failedChunks = 0;
   const pid = getActiveProjectId();
   const scopedRunId = (runId || '').toString().trim() || null;
+  const totalChunks = Math.max(1, Math.ceil(defects.length / QA_DEFECTS_BATCH_SIZE));
   for (let i = 0; i < defects.length; i += QA_DEFECTS_BATCH_SIZE) {
     const chunk = defects.slice(i, i + QA_DEFECTS_BATCH_SIZE).map(defectRecord => ({
       subgrid: defectRecord.subgrid,
@@ -248,18 +250,25 @@ export async function persistDefectBatch(
     });
     if (upsertErr) {
       console.warn('qa_defects batch sync notice:', upsertErr);
+      failedChunks++;
       // The operator ran a full audit and this is the write that records it.
       // A silent failure here means the frame-by-frame verdicts exist only in
       // React state and vanish on refresh.
       reportWriteFailure(
         QAQC_WRITE_OPS.defectBatch,
-        `QA/QC defect results — chunk ${Math.floor(i / QA_DEFECTS_BATCH_SIZE) + 1}`,
+        `QA/QC defect results — chunk ${Math.floor(i / QA_DEFECTS_BATCH_SIZE) + 1} of ${totalChunks}`,
         upsertErr.message,
         'warning'
       );
     } else {
       synced += chunk.length;
-      reportWriteSuccess(QAQC_WRITE_OPS.defectBatch);
+      // Only clear the banner once EVERY chunk has landed. Calling this per
+      // chunk meant a later success erased an earlier failure: for a 100-defect
+      // audit, chunk 2 rejecting and chunk 3 succeeding left no banner at all,
+      // which is the exact silent partial-loss this function has to avoid.
+      if (failedChunks === 0 && i + chunk.length >= defects.length) {
+        reportWriteSuccess(QAQC_WRITE_OPS.defectBatch);
+      }
     }
   }
   return synced;
