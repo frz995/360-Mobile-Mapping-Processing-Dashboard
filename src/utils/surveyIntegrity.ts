@@ -83,7 +83,7 @@ export interface UnlinkedEntry {
 /** A survey record as the integrity module needs it. Plain data, no behaviour. */
 export interface IntegritySubject {
   /** Run id, e.g. `sp-d-N93E70_run-a` or `staging-d-N93E70_20260925.csv`. */
-  runId?: string;
+  runId?: string | null;
   subgrid: string;
   /** Survey date as recorded on the row. */
   date?: string;
