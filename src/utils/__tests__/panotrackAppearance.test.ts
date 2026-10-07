@@ -227,7 +227,27 @@ describe('resolvePointAppearance', () => {
         isPublished: true,
         dimmed: true
       })
-    ).toEqual({ color: '#64748b', strokeColor: '#64748b', status: 'defect', opacity: 0.35 });
+    ).toEqual({
+      color: '#64748b',
+      strokeColor: '#64748b',
+      // Echoed so a payload can filter without re-deriving.
+      frameState: 'missing',
+      qaState: 'defect',
+      status: 'defect',
+      opacity: 0.35
+    });
+  });
+
+  it('echoes frameState and qaState so a consumer need not re-derive', () => {
+    // The external map cannot compute frameState: it never fetches a Storage
+    // inventory. So the payload has to carry the state beside the colour.
+    const a = resolvePointAppearance({
+      frameState: 'unverified',
+      qaState: 'clean',
+      isPublished: true
+    });
+    expect(a.frameState).toBe('unverified');
+    expect(a.qaState).toBe('clean');
   });
 
   it('emits a status string the map can switch on', () => {

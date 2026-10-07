@@ -1,6 +1,6 @@
 {
   "_why": "Measured quality baselines for scripts/lint.mjs ratchets. Every number here was produced by running the tool, not estimated. Raise a value only as a deliberate act - the diff is the record. See implementation_plan_v26.md section 5.",
-  "capturedAtCommit": "21c0ca1",
+  "capturedAtCommit": "a0016c2",
   "capturedAt": "2026-10-07",
   "_history": [
     "Captured at fb84dae, before v26 section 1 ran.",
@@ -17,40 +17,40 @@
     "Updated for v27 section 3: DataManagementPage +40 for the metadata write,",
     "and one more non-null assertion in the bootstrap test. Warnings 1247 -> 1248.",
     "Updated for v27 section 4: DataManagementPage +150 for the two integrity",
-    "openers and the null-safe defect cells. Warnings 1248 -> 1250."
+    "openers and the null-safe defect cells. Warnings 1248 -> 1250.",
+    "Updated for v27 section 5 (A1-A7): the colour resolver is now the single",
+    "authority for map payload colour, so the App.tsx and MapComponent.tsx",
+    "payload builders delegate instead of recomputing. App.tsx +77,",
+    "DataManagementPage +4. Warnings 1250 -> 1251."
   ],
-
   "lint": {
     "_scope": "eslint src vitest.config.ts, ESLINT_USE_FLAT_CONFIG=true, flat config eslint.config.mjs",
     "errors": 0,
-    "warnings": 1250,
+    "warnings": 1251,
     "byRule": {
       "@typescript-eslint/no-explicit-any": 1025,
-      "@typescript-eslint/no-non-null-assertion": 146,
+      "@typescript-eslint/no-non-null-assertion": 147,
       "react-hooks/exhaustive-deps": 70,
       "@typescript-eslint/no-unused-vars": 8,
       "react-hooks/rules-of-hooks": 1
     }
   },
-
   "tests": {
     "_scope": "vitest run, include src/**/*.{test,spec}.{ts,tsx,js}",
     "files": 101,
     "tests": 1179
   },
-
   "emptyCatch": {
     "_definition": "A catch clause whose brace-balanced body, after stripping comments, is either empty (strict) or contains nothing but console.* statements (consoleOnly). Bodies with real statements are ignored. Scoped to src/ excluding test files, matching what lint.mjs lints. Report-only, not enforced: an empty catch is not always a defect, since best-effort telemetry genuinely does not warrant failing a build.",
     "_measured": "177 strict + 36 console-only at fb84dae, before v26 section 1. Section 1 reclassified the catches on the write paths rather than deleting them, so most moved from `strict` to `console-only`: the total fell, the shape changed.",
     "strict": 134,
     "consoleOnly": 59
   },
-
   "fileSizeBudgets": {
     "_why": "Fails on exceedance only. These are physical line counts, which run ~8% higher than PowerShell's Measure-Object -Line because that cmdlet skips blank lines. Covers every file at or above 800 lines. Raising a budget is a deliberate act: the diff is the record that the god files are growing.",
-    "src/components/DataManagementPage.tsx": 5022,
+    "src/components/DataManagementPage.tsx": 5026,
     "src/components/RoadAnalysisWorkspace.tsx": 4558,
-    "src/App.tsx": 4401,
+    "src/App.tsx": 4478,
     "src/components/AdminSettingsView.tsx": 3449,
     "src/components/roadAnalysis/RoadAnalysisMap.tsx": 3021,
     "src/components/boundary/districtMetadata.ts": 2896,

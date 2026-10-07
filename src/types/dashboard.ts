@@ -43,6 +43,13 @@ export interface DailyTimeSeries {
   isSyncedWithSupabase?: boolean;
   isFromSupabase?: boolean;
   _alreadySyncedToBatch?: boolean;
+  /**
+   * False when the storage inventory could not be read, so frame counts are
+   * unverified rather than zero. Written by the data layer and read by the map
+   * payload and the integrity panel — declared here because three modules read
+   * it off this type without a cast.
+   */
+  imagesStorageVerified?: boolean;
   panoramas?: PanoramaItem[];
   points?: any[];
   qaqcStatus?: string;

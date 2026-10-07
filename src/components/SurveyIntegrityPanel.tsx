@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, Copy, Database, Info, Search } from 'lucide-react';
 import { InspectorDrawer } from './common/InspectorDrawer';
 import { toast } from './common/toast';
@@ -75,7 +76,7 @@ export function SurveyIntegrityPanel({
   reports,
   title,
   subtitle
-}: SurveyIntegrityPanelProps): React.ReactElement {
+}: SurveyIntegrityPanelProps): React.ReactElement | null {
   const [openList, setOpenList] = useState<ListKey | null>(null);
   const [filter, setFilter] = useState('');
 
@@ -236,8 +237,22 @@ export function SurveyIntegrityPanel({
 
   const activeRowLabel = rows.find((r) => r.listKey === openList)?.label ?? '';
 
-  return (
-    <InspectorDrawer
+  // Portalled to `document.body`, NOT rendered in place.
+  //
+  // `InspectorDrawer` is `position: fixed`. Its mount point in
+  // `DataManagementPage.tsx:2847` carries `.fade-in`, which `src/index.css:927`
+  // gives a real rule with `will-change: opacity` — and `will-change` on a
+  // paint property makes an element a containing block for fixed descendants.
+  // The drawer then resolved against that div instead of the viewport, and the
+  // same div's `overflow-hidden` clipped it away. The panel was invisible.
+  //
+  // `QCAuditModal.tsx:332` already solves this with `createPortal` to
+  // `document.body`; this matches it. Nothing about the drawer changes — it is
+  // still `fixed inset-0`, it is just no longer trapped in a subtree that
+  // clips it.
+  return typeof document !== 'undefined'
+    ? createPortal(
+        <InspectorDrawer
       isOpen={isOpen}
       onClose={onClose}
       widthMode="expanded"
@@ -413,8 +428,10 @@ export function SurveyIntegrityPanel({
           <em> within</em> the images that were found — they are not part of the Expected − Found arithmetic.
         </span>
       </div>
-    </InspectorDrawer>
-  );
+    </InspectorDrawer>,
+        document.body
+      )
+    : null;
 }
 
 export default SurveyIntegrityPanel;

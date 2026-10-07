@@ -175,3 +175,58 @@ expect(screen.getAllByText(/Frame inventory not verified/).length).toBeGreaterTh
     expect(screen.getAllByText(/migration 0034/).length).toBeGreaterThan(0)
   })
 })
+
+/**
+ * The clipping regression.
+ *
+ * `InspectorDrawer` renders `position: fixed`. `src/index.css:927` gives
+ * `.fade-in` a real rule carrying `will-change: opacity`, and
+ * `DataManagementPage.tsx:2847` — the panel's own mount point — is
+ * `className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500"`.
+ *
+ * `will-change: opacity` makes that element a containing block for fixed
+ * descendants, so the drawer resolved against it instead of the viewport, and
+ * the same element's `overflow-hidden` clipped it away entirely. The panel was
+ * invisible while every unit test in this file passed.
+ *
+ * This test mounts the panel inside an equivalent ancestor and asserts it
+ * escapes to `document.body`, which is what the portal guarantees.
+ */
+describe('SurveyIntegrityPanel — survives a clipped ancestor', () => {
+  it('renders into document.body, not into the overflow-hidden ancestor', () => {
+    const { container } = render(
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
+        <SurveyIntegrityPanel
+          isOpen
+          onClose={() => {}}
+          title="Survey Integrity — N93E70"
+          reports={buildReports([subject()])}
+        />
+      </div>
+    )
+
+    const ancestor = container.firstElementChild!
+    // The panel's content must not be a descendant of the clipping container.
+    expect(ancestor.textContent).not.toContain('Expected images')
+    // It lives at the document root instead.
+    expect(document.body.textContent).toContain('Expected images')
+  })
+
+  it('keeps the ten checks reachable from document.body', () => {
+    render(
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
+        <SurveyIntegrityPanel
+          isOpen
+          onClose={() => {}}
+          title="Survey Integrity — N93E70"
+          reports={buildReports([subject()])}
+        />
+      </div>
+    )
+
+    // Asserted against document.body specifically: this is the assertion that
+    // fails when the portal is removed and the drawer goes back to being clipped.
+    expect(screen.getByText('Survey Date Capture')).toBeTruthy()
+    expect(screen.getByText('Unlinked images')).toBeTruthy()
+  })
+})

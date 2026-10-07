@@ -40,6 +40,7 @@ import { WorkspaceErrorBoundary } from './components/common/WorkspaceErrorBounda
 import { GeoSphereIcon } from './components/common/GeoSphereLogo';
 import { translate } from './lib/i18n';
 import { reportWriteFailure } from './lib/writeFailures';
+import { resolvePointAppearance, type FrameState } from './utils/panotrackAppearance';
 import { APP_VERSION } from './config/defaults';
 import { ProjectOnboarding, type GateStage } from './components/ProjectOnboarding';
 import { isLightTheme, resolveThemeKey } from './components/ThemeSelector';
@@ -1842,10 +1843,16 @@ export default function App() {
       });
   }, [dailyData, dashDailyFilters]);
   const [isDrawingBBox, setIsDrawingBBox] = useState(false);
-  const [statusFilters, setStatusFilters] = useState<{ published: boolean; defect: boolean; stitching: boolean }>({
+  // `missingFrames` is the fourth trajectory status. Gray means CONFIRMED
+  // missing — a POI with no image behind it. `unverified` and `unrecorded` are
+  // deliberately NOT this bucket: storage being unreachable is not evidence
+  // that frames are missing, and rendering it as such is migration 0032's shape
+  // at point level.
+  const [statusFilters, setStatusFilters] = useState<{ published: boolean; defect: boolean; stitching: boolean; missingFrames: boolean }>({
     published: true,
     defect: true,
-    stitching: true
+    stitching: true,
+    missingFrames: true
   });
 
   // Push the trajectory filter to the embedded map. Scoped to the captured
@@ -2557,11 +2564,22 @@ export default function App() {
           const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
           return {
             ...d,
-            subgrid: nextSubgrid,
+subgrid: nextSubgrid,
             isPublished: isPub,
             status: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
             opacity: isPub ? 1.0 : 0.7,
-            statusColor: isPub ? '#10b981' : '#f59b0b',
+            // Run-level colour follows the same resolver as the points below,
+            // so a run with missing frames does not read as fully published.
+            ...(() => {
+              const runAppearance = resolvePointAppearance({
+                frameState: d.imagesStorageVerified === true
+                  ? (getImagesProcessedCount(d) < getPOICount(d) ? 'missing' : 'present')
+                  : 'unverified',
+                qaState: (d.defectCount ?? 0) > 0 ? 'defect' : 'clean',
+                isPublished: isPub
+              });
+              return { statusColor: runAppearance.color };
+            })(),
             panoramas: (d.panoramas || []).map((p: any) => {
               const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
               const isPtDefect = Boolean(
@@ -2569,14 +2587,25 @@ export default function App() {
                 p.is_defect ||
                 (fnClean && allKnownDefects.some((kd: any) => (kd.point_id || kd.filename || '').split('/').pop()?.toUpperCase().trim() === fnClean))
               );
+              // Resolved, not recomputed. The previous local ternary had no
+              // notion of a missing frame, so it overwrote the correct value
+              // `datasets.ts` had already put on the point.
+              const appearance = resolvePointAppearance({
+                frameState: (p.frameState as FrameState) ?? 'unrecorded',
+                qaState: isPtDefect ? 'defect' : (isPub ? 'clean' : 'unaudited'),
+                isPublished: isPub
+              });
               return {
                 ...p,
                 isPublished: isPub,
                 status: isPtDefect ? 'defect' : (isPub ? 'yes' : 'in process'),
                 isDefect: isPtDefect,
                 is_defect: isPtDefect,
-                color: isPtDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b'),
-                opacity: isPtDefect ? 1.0 : (isPub ? 1.0 : 0.7)
+                color: appearance.color,
+                strokeColor: appearance.strokeColor,
+                frameState: appearance.frameState,
+                qaState: appearance.qaState,
+                opacity: appearance.opacity
               };
             })
           };
@@ -2709,7 +2738,17 @@ export default function App() {
       isPublished: isPub,
       status: isPub ? 'yes' : (daily.publishToWebGIS || 'in process'),
       opacity: isPub ? 1.0 : 0.7,
-      statusColor: isPub ? '#10b981' : '#f59e0b',
+      ...(() => {
+        // Same resolver as the points below; see the note there.
+        const runAppearance = resolvePointAppearance({
+          frameState: daily.imagesStorageVerified === true
+            ? (getImagesProcessedCount(daily) < getPOICount(daily) ? 'missing' : 'present')
+            : 'unverified',
+          qaState: (daily.defectCount ?? 0) > 0 ? 'defect' : 'clean',
+          isPublished: isPub
+        });
+        return { statusColor: runAppearance.color };
+      })(),
       panoramas: pans.map((p: any, pIdx: number) => {
         const actualFn = p.filename || p.image_url || p.point_id || daily.availableFilenames?.[pIdx] || `${normSg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
         const fnClean = (actualFn || '').split('/').pop()?.toUpperCase().trim();
@@ -2735,8 +2774,23 @@ export default function App() {
           status: isPtDefect ? 'defect' : (isPub ? 'yes' : 'in process'),
           isDefect: isPtDefect,
           is_defect: isPtDefect,
-          color: isPtDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b'),
-          opacity: isPtDefect ? 1.0 : (isPub ? 1.0 : 0.7)
+          ...(() => {
+            // Resolved, not recomputed — the local ternary that used to sit
+            // here had no notion of a missing frame and so overwrote the value
+            // `datasets.ts` had already resolved onto the point.
+            const appearance = resolvePointAppearance({
+              frameState: (p.frameState as FrameState) ?? 'unrecorded',
+              qaState: isPtDefect ? 'defect' : (isPub ? 'clean' : 'unaudited'),
+              isPublished: isPub
+            });
+            return {
+              color: appearance.color,
+              strokeColor: appearance.strokeColor,
+              frameState: appearance.frameState,
+              qaState: appearance.qaState,
+              opacity: appearance.opacity
+            };
+          })()
         };
       })
     };
@@ -3282,6 +3336,29 @@ export default function App() {
                                     className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
                                   />
                                 </label>
+
+                                <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
+                                  <div className="flex items-center gap-2">
+                                    {/* Slate, matching POINT_APPEARANCE_COLORS.missing.
+                                        Reserved strictly for a CONFIRMED missing
+                                        frame — an unreachable bucket renders muted
+                                        instead, so an outage never looks like a
+                                        pile of missing images. */}
+                                    <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+                                    <span className="text-[11px]">Missing frames</span>
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={statusFilters.missingFrames}
+                                    disabled={!showPanotrackData}
+                                    onChange={(e) => {
+                                      const next = { ...statusFilters, missingFrames: e.target.checked };
+                                      setStatusFilters(next);
+                                      pushTrajectoryFilter(next, showPanotrackData);
+                                    }}
+                                    className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                                  />
+                                </label>
                               </div>
                             </div>
                           )}
@@ -3297,7 +3374,7 @@ export default function App() {
                           >
                             <Filter size={13} className={isStatusFilterOpen ? 'text-text-base' : 'text-sky-400'} />
                             <span className="hidden sm:inline">Trajectory Status</span>
-                            {(!statusFilters.published || !statusFilters.defect || !statusFilters.stitching || !showPanotrackData) && (
+                            {(!statusFilters.published || !statusFilters.defect || !statusFilters.stitching || !statusFilters.missingFrames || !showPanotrackData) && (
                               <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
                             )}
                           </button>

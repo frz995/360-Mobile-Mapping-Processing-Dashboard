@@ -2,9 +2,10 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { Layers } from 'lucide-react';
 import { extractSubgridName } from '../utils/subgrid';
 import { getItemId } from '../utils/items';
+import { deriveFrameState, resolvePointAppearance } from '../utils/panotrackAppearance';
 import { STORAGE_BUCKET_DEFAULT, REGION_DEFAULTS, DEFAULT_BASEMAP, resolveBasemapId } from '../config/defaults';
 
-const DEFAULT_TRAJECTORY_FILTERS = { published: true, defect: true, stitching: true } as const;
+const DEFAULT_TRAJECTORY_FILTERS = { published: true, defect: true, stitching: true, missingFrames: true } as const;
 import type { Layer, Folder } from '../types/catalog';
 import { ensureDistrictGeometriesLoaded, rehydrateDistrictBoundary } from './boundary/malaysiaDistricts';
 
@@ -43,7 +44,7 @@ export const MapComponent = ({
   /** Master trajectory layer toggle owned by App.tsx. */
   showPanotrackLayer?: boolean;
   /** Per-status trajectory filters owned by App.tsx. */
-  trajectoryStatusFilters?: { published: boolean; defect: boolean; stitching: boolean };
+  trajectoryStatusFilters?: { published: boolean; defect: boolean; stitching: boolean; missingFrames?: boolean };
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -166,9 +167,30 @@ export const MapComponent = ({
           p.qa_status === 'defect' ||
           (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))
         );
-        const pointColorHex = isAfterDeletionPreview
-          ? (isPointSelected ? '#64748b' : (isPointDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b')))
-          : (isPointSelected ? '#38bdf8' : (isPointDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b')));
+        // Colour comes from `resolvePointAppearance`, the ONE place the mapping exists.
+        //
+        // Previously this was a local ternary with no notion of a missing frame,
+        // which meant the resolver's output — computed correctly upstream in
+        // `datasets.ts` and carried on `p` — was overwritten here and the gray
+        // never left the app. Selection and deletion-preview still override,
+        // because those are transient UI states rather than survey facts.
+        const appearance = resolvePointAppearance({
+          frameState: deriveFrameState({
+            recordedFilename: p.filename,
+            verifiedFilenames: item.availableFilenames ?? [],
+            inventoryVerified: item.imagesStorageVerified === true
+          }),
+          qaState: isPointDefect ? 'defect' : (statusVal === 'yes' ? 'clean' : 'unaudited'),
+          isPublished: isPub,
+          isSelected: isPointSelected,
+          dimmed: isAfterDeletionPreview
+        });
+        const pointColorHex = isPointSelected && isAfterDeletionPreview
+          ? '#64748b'
+          : appearance.color;
+        const pointStrokeHex = isPointSelected && isAfterDeletionPreview
+          ? '#64748b'
+          : appearance.strokeColor;
         const pointStatusVal = isAfterDeletionPreview
           ? (isPointSelected ? 'purged' : (isPointDefect ? 'defect' : statusVal))
           : (isPointSelected ? 'selected' : (isPointDefect ? 'defect' : statusVal));
@@ -209,11 +231,16 @@ export const MapComponent = ({
           strokeOpacity: pointOp,
           color: pointColorHex,
           statusColor: pointColorHex,
-          strokeColor: pointColorHex,
+          strokeColor: pointStrokeHex,
           fillColor: pointColorHex,
           trackColor: pointColorHex,
           lineColor: pointColorHex,
-          highlightColor: pointColorHex
+          highlightColor: pointColorHex,
+          // Carried so the external map can FILTER by frame state. It cannot
+          // derive one: `frameState` needs a Storage-bucket inventory that
+          // `useSupabasePoints` never fetches.
+          frameState: appearance.frameState,
+          qaState: appearance.qaState
         };
       });
 

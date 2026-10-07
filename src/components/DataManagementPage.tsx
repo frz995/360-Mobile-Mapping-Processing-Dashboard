@@ -3458,7 +3458,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                             return (
                               <tr
                                 key={batch.id || `b-${index}`}
-                                className="border-t border-subtle hover:bg-inner/60 transition-colors text-text-base"
+                                onClick={() => openIntegrityForBatch(batch)}
+                                title="Click for survey integrity detail"
+                                className="border-t border-subtle hover:bg-inner/60 transition-colors text-text-base cursor-pointer"
                               >
                                 <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                                   <input
@@ -3616,7 +3618,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                             return (
                               <tr
                                 key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`}
-                                className="border-t border-subtle hover:bg-inner/60 transition-colors text-text-base"
+                                onClick={() => openIntegrityForDaily(daily)}
+                                title="Click for survey integrity detail"
+                                className="border-t border-subtle hover:bg-inner/60 transition-colors text-text-base cursor-pointer"
                               >
                                 <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                                   <input

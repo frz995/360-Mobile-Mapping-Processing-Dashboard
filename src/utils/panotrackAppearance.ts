@@ -77,6 +77,14 @@ export interface PointAppearance {
   color: string;
   /** Stroke / ring colour. Carries frame outcome independently of fill. */
   strokeColor: string;
+  /**
+   * Echoed back so a payload can carry the state alongside the colour. A
+   * consumer that only receives the hex would have to re-derive the state to
+   * FILTER on it — and the external WebGIS app cannot derive one, because it
+   * never fetches a Storage inventory.
+   */
+  frameState: FrameState;
+  qaState: QaState;
   /** Map `status` string. Kept compatible with the existing WebGIS contract. */
   status: string;
   /**
@@ -125,6 +133,8 @@ export function resolvePointAppearance({
     return {
       color: PALETTE.dimmed,
       strokeColor: PALETTE.dimmed,
+      frameState,
+      qaState,
       status: qaState === 'defect' ? 'defect' : 'missing',
       opacity: 0.35
     };
@@ -156,13 +166,20 @@ export function resolvePointAppearance({
   // Selection outranks every state, matching the existing behaviour at
   // `MapComponent.tsx:169-171`, where a selected point is blue regardless.
   if (isSelected) {
-    return { color: PALETTE.selected, strokeColor: PALETTE.selected, status, opacity: 1.0 };
+    return {
+      color: PALETTE.selected,
+      strokeColor: PALETTE.selected,
+      frameState,
+      qaState,
+      status,
+      opacity: 1.0
+    };
   }
 
   // Absence and doubt are both drawn faint; presence is drawn solid.
   const opacity = frameState === 'missing' ? 0.75 : frameState === 'present' ? 1.0 : 0.5;
 
-  return { color, strokeColor, status, opacity };
+  return { color, strokeColor, frameState, qaState, status, opacity };
 }
 
 /**
