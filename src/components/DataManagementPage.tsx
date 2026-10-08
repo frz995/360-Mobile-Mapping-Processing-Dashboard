@@ -78,7 +78,20 @@ import {
 } from '../utils/dashboardData';
 import { getItemId } from '../utils/items';
 import type { PanoramaItem, DailyTimeSeries, BatchLog, NotificationItem, AuditLogItem } from '../types/dashboard';
-import { saveSurveyMetadataFilenames } from '../services/api/surveyMetadata';
+import {
+  saveSurveyMetadataFilenames,
+  fetchSurveyMetadataFilenames
+} from '../services/api/surveyMetadata';
+import {
+  createIntegritySources,
+  verifyImportedRun,
+  markPanoramaAvailability,
+  resolveSubgrid,
+  buildDailySubject,
+  collectSubgridSubjects,
+  revalidateSubjects,
+  type IntegritySources
+} from '../utils/integritySubjects';
 import { SurveyIntegrityPanel, buildReports } from './SurveyIntegrityPanel';
 import type { IntegritySubject } from '../utils/surveyIntegrity';
 import { reportWriteFailure } from '../lib/writeFailures';
@@ -453,6 +466,12 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     detail?: string;
     subjects: IntegritySubject[];
   } | null>(null);
+
+  // Mirror of the above for the revalidator. Reading the state directly would
+  // make the callback re-created on every open, and the drawer would then hold a
+  // stale closure that validates a different run than the one on screen.
+  const integrityPanelRef = useRef(integrityPanel);
+  integrityPanelRef.current = integrityPanel;
 
   // Daily Data Column Filters state
   const [isColumnFilterOpen, setIsColumnFilterOpen] = useState(false);
@@ -1254,32 +1273,28 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
         // Verify CSV filenames against Supabase Storage bucket for accurate available image count
         const rowFilenames = d.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn));
-        let verifiedCount = 0;
-        let verifiedFilenamesList: string[] = [];
-        if (rowFilenames.length > 0) {
-          try {
-            const verifyRes = await verifyCsvImageFilenamesInStorage(rowFilenames, projectSettings);
-            verifiedCount = verifyRes.availableCount;
-            verifiedFilenamesList = verifyRes.verifiedFilenames;
-          } catch {
-            verifiedCount = 0;
-            verifiedFilenamesList = [];
-          }
-        }
+        const { verifiedCount, verifiedFilenames: verifiedFilenamesList, storageVerified, bucketFilenames } =
+          await verifyImportedRun(rowFilenames, (sgKey || '').toUpperCase(), integritySources);
 
-        const markedPanoramas = d.panoramas.map(p => ({
-          ...p,
-          isAvailable: verifiedFilenamesList.length > 0
-            ? (p.filename ? (verifiedFilenamesList.includes(p.filename) || verifiedFilenamesList.some(vf => vf.toLowerCase() === p.filename!.toLowerCase())) : false)
-            : true
-        }));
+        const markedPanoramas = markPanoramaAvailability(
+          d.panoramas,
+          verifiedFilenamesList,
+          storageVerified
+        );
 
         imported.push({
           ...d,
           poiCount: panCount,
           imagesProcessed: verifiedCount,
           availableImagesCount: verifiedCount,
-          availableFilenames: verifiedFilenamesList.length > 0 ? verifiedFilenamesList : undefined,
+          // Kept as an array, empty or not. Collapsing an empty result to
+          // `undefined` is what made a reachable-but-empty bucket
+          // indistinguishable from an unreachable one on the integrity panel.
+          availableFilenames: verifiedFilenamesList,
+          imagesStorageVerified: storageVerified,
+          // Retained so the integrity panel can tell an orphan in the bucket from
+          // a name no POI claims. Null when the inventory cannot be attributed.
+          bucketFilenames,
           defectCount: d.defectCount || 0,
           imagesDefected: d.imagesDefected || 0,
           publishToWebGIS: directPublish ? 'yes' : d.publishToWebGIS,
@@ -1691,82 +1706,67 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [publishMessage, setPublishMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // -------------------------------------------------------------------
+// -------------------------------------------------------------------
   // Survey integrity (v27 §4)
   //
-  // Turns a row into an `IntegritySubject`. Two facts have to survive the trip
-  // intact or the panel reports fiction:
-  //
-  //   - `availableFilenames` is the PRESENT subset. The missing set is the
-  //     difference, and is derived inside `surveyIntegrity.ts` rather than
-  //     passed in, because only that module has both halves.
-  //   - `imagesStorageVerified` must travel with them. Without it an empty
-  //     `availableFilenames` is indistinguishable from an unreachable bucket,
-  //     and the panel would report a confirmed zero for a connectivity failure.
+  // How a row becomes an `IntegritySubject` — and which measured fields must
+  // travel with it, or the panel reports fiction — is documented in
+  // `utils/integritySubjects.ts`. This block only wires the services.
   // -------------------------------------------------------------------
-  const openIntegrityForDaily = useCallback((row: DailyTimeSeries) => {
-    const panoramas = row.panoramas ?? [];
-    const recordedFilenames = panoramas
-      .map((p) => p.filename)
-      .filter((fn): fn is string => Boolean(fn));
+  const integritySources = useMemo<IntegritySources>(
+    () =>
+      createIntegritySources(
+        (filenames, settings) => verifyCsvImageFilenamesInStorage(filenames, settings),
+        (subgrid, runId) => fetchSurveyMetadataFilenames(subgrid, runId),
+        projectSettings
+      ),
+    [projectSettings]
+  );
 
-    setIntegrityPanel({
-      isOpen: true,
-      title: 'Survey Integrity',
-      subtitle: (extractSubgridName(row.subgrid) || row.subgrid || 'Run').toUpperCase(),
-      detail: [formatDisplayDate(row.date), row.csvFileName].filter(Boolean).join(', '),
-      subjects: [
-        {
-          runId: row.id ?? null,
-          subgrid: (extractSubgridName(row.subgrid) || row.subgrid || '').toUpperCase().trim(),
-          date: row.date,
-          recordedFilenames,
-          verifiedFilenames: row.availableFilenames ?? [],
-          inventoryVerified: (row as { imagesStorageVerified?: boolean }).imagesStorageVerified === true,
-          metadataFilenames: null,
-          bucketFilenames: null
-        }
-      ]
-    });
-  }, []);
+  const openIntegrityForDaily = useCallback(
+    async (row: DailyTimeSeries) => {
+      // `draftDailyData` supplies the run's peers, so a run whose files are all
+      // absent does not adopt its siblings' images as orphans.
+      const subjects = [await buildDailySubject(row, draftDailyData, integritySources)];
+      setIntegrityPanel({
+        isOpen: true,
+        title: 'Survey Integrity',
+        subtitle: (extractSubgridName(row.subgrid) || row.subgrid || 'Run').toUpperCase(),
+        detail: [formatDisplayDate(row.date), row.csvFileName].filter(Boolean).join(', '),
+        subjects
+      });
+    },
+    [draftDailyData, integritySources]
+  );
 
-  const openIntegrityForBatch = useCallback((row: BatchLog) => {
-    // A subgrid aggregates its runs, so the panel is fed one subject per child.
-    // Aggregating here rather than summing counts keeps the panel's identities
-    // intact across the union.
-    const sg = (extractSubgridName(row.subgrid || row.imageFilename) || row.subgrid || '')
-      .toUpperCase()
-      .trim();
-    const children = draftDailyData.filter(
-      (d) => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === sg
-    );
+  const openIntegrityForBatch = useCallback(
+    async (row: BatchLog) => {
+      const subjects = await collectSubgridSubjects(draftDailyData, row, integritySources);
+      setIntegrityPanel({
+        isOpen: true,
+        title: 'Survey Integrity',
+        subtitle: resolveSubgrid(row),
+        detail: `${subjects.length} run${subjects.length === 1 ? '' : 's'}, ${formatDisplayDate(row.date)}`,
+        subjects
+      });
+    },
+    [draftDailyData, integritySources]
+  );
 
-    const subjects: IntegritySubject[] = (
-      children.length > 0
-        ? children
-        : ([row as unknown as DailyTimeSeries] as DailyTimeSeries[])
-    ).map((child) => {
-      const panoramas = child.panoramas ?? [];
-      return {
-        runId: child.id ?? null,
-        subgrid: sg,
-        date: child.date,
-        recordedFilenames: panoramas.map((p) => p.filename).filter((fn): fn is string => Boolean(fn)),
-        verifiedFilenames: child.availableFilenames ?? [],
-        inventoryVerified: (child as { imagesStorageVerified?: boolean }).imagesStorageVerified === true,
-        metadataFilenames: null,
-        bucketFilenames: null
-      };
-    });
-
-    setIntegrityPanel({
-      isOpen: true,
-      title: 'Survey Integrity',
-      subtitle: sg,
-      detail: `${subjects.length} run${subjects.length === 1 ? '' : 's'}, ${formatDisplayDate(row.date)}`,
-      subjects
-    });
-  }, [draftDailyData]);
+  /**
+   * Re-read the storage inventory and the metadata set for whatever the panel is
+   * currently showing.
+   *
+   * This is what makes "Run validation" mean something. The alternative — the
+   * button rewriting its own timestamp — reports a measurement that never
+   * happened, which is the specific lie this panel exists to prevent.
+   */
+  const revalidateIntegrity = useCallback(async () => {
+    const panel = integrityPanelRef.current;
+    if (!panel) return;
+    const subjects = await revalidateSubjects(panel.subjects, integritySources);
+    setIntegrityPanel((prev) => (prev ? { ...prev, subjects } : prev));
+  }, [integritySources]);
 
   const handlePublishRecord = async (item: BatchLog | DailyTimeSeries) => {
     const id = getItemId(item);
@@ -3458,7 +3458,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                             return (
                               <tr
                                 key={batch.id || `b-${index}`}
-                                onClick={() => openIntegrityForBatch(batch)}
+                                onClick={() => void openIntegrityForBatch(batch)}
                                 title="Click for survey integrity detail"
                                 className="border-t border-subtle hover:bg-inner/60 transition-colors text-text-base cursor-pointer"
                               >
@@ -3481,8 +3481,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                 <td className="px-4 py-3.5 text-xs text-text-base whitespace-nowrap font-medium">
                                   <button
                                     onClick={(e) => {
-                                      e.stopPropagation();
-                                      openIntegrityForBatch(batch);
+e.stopPropagation();
+                                       void openIntegrityForBatch(batch);
                                     }}
                                     className="text-text-base hover:text-sky-300 hover:underline cursor-pointer inline-flex items-center gap-1.5"
                                     title="Click for survey integrity detail"
@@ -3618,7 +3618,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                             return (
                               <tr
                                 key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`}
-                                onClick={() => openIntegrityForDaily(daily)}
+                                onClick={() => void openIntegrityForDaily(daily)}
                                 title="Click for survey integrity detail"
                                 className="border-t border-subtle hover:bg-inner/60 transition-colors text-text-base cursor-pointer"
                               >
@@ -3641,8 +3641,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                 <td className="px-4 py-3.5 text-xs text-text-base whitespace-nowrap font-medium">
                                   <button
                                     onClick={(e) => {
-                                      e.stopPropagation();
-                                      openIntegrityForDaily(daily);
+e.stopPropagation();
+                                       void openIntegrityForDaily(daily);
                                     }}
                                     className="text-text-base hover:text-sky-300 hover:underline cursor-pointer inline-flex items-center gap-1.5"
                                     title="Click for survey integrity detail"
@@ -4094,6 +4094,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
               subtitle={integrityPanel.subtitle}
               detail={integrityPanel.detail}
               reports={buildReports(integrityPanel.subjects)}
+              onRevalidate={revalidateIntegrity}
             />
           )}
 

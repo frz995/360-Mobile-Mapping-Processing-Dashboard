@@ -50,6 +50,13 @@ export interface DailyTimeSeries {
    * it off this type without a cast.
    */
   imagesStorageVerified?: boolean;
+  /**
+   * Bucket files attributable to this record's subgrid, or `null` when the
+   * inventory could not be split by subgrid. The integrity panel needs the
+   * difference between this and `availableFilenames` to tell an orphan image
+   * from a name no POI claims, so `null` must stay distinct from `[]`.
+   */
+  bucketFilenames?: string[] | null;
   panoramas?: PanoramaItem[];
   points?: any[];
   qaqcStatus?: string;

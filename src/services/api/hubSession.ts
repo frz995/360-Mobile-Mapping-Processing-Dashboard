@@ -1,6 +1,18 @@
 import { supabase, scoped, getServiceProjectId } from './client';
+import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
 
 const HUB_SESSION_TABLE = 'hub_session_state';
+
+/**
+ * Stable keys, so a debounced retry loop raises one banner line rather than one
+ * per attempt. `hub_session_state` had no `authenticated` grant until migration
+ * 0035, which is precisely why these reports had to be added alongside it: the
+ * failure was invisible for the whole period the grant was missing.
+ */
+export const HUB_WRITE_OPS = {
+  sessionRead: 'hub.session_read',
+  sessionWrite: 'hub.session_write'
+} as const;
 
 /** Mirror so guest / offline sessions still restore their last activity. */
 function getSessionStorageKey(): string {
@@ -31,10 +43,28 @@ export async function fetchHubSessionFromSupabase(): Promise<Record<string, unkn
       .from(HUB_SESSION_TABLE)
       .select('state, updated_by, updated_at'));
     const { data, error } = await query.maybeSingle();
-    if (!error && data && data.state) {
+    if (error) {
+      // Reported rather than swallowed. A silent fallback here is how the missing
+      // grant went unnoticed: the hub appeared to work while every read failed and
+      // the local mirror answered instead.
+      reportWriteFailure(
+        HUB_WRITE_OPS.sessionRead,
+        'Production hub session (read)',
+        `${error.message} — serving the local mirror instead.`,
+        'warning'
+      );
+    } else if (data && data.state) {
       remote = (typeof data.state === 'string' ? JSON.parse(data.state) : data.state) as Record<string, unknown>;
+      reportWriteSuccess(HUB_WRITE_OPS.sessionRead);
     }
-  } catch (_) { }
+  } catch (err) {
+    reportWriteFailure(
+      HUB_WRITE_OPS.sessionRead,
+      'Production hub session (read)',
+      `${err instanceof Error ? err.message : String(err)} — serving the local mirror instead.`,
+      'warning'
+    );
+  }
   if (remote) {
     setLocalSession(remote);
     return remote;
@@ -60,8 +90,24 @@ export async function saveHubSessionToSupabase(
     const { error } = await supabase
       .from(HUB_SESSION_TABLE)
       .upsert([payload], { onConflict: 'project_id' });
-    return !error;
-  } catch (_) {
+    // A PostgREST builder is thenable: it resolves with `{ data, error }` and
+    // does NOT throw on a rejected write, so `error` must be inspected here.
+    if (error) {
+      reportWriteFailure(
+        HUB_WRITE_OPS.sessionWrite,
+        'Production hub session',
+        `${error.message} — activity is being kept in this browser only.`
+      );
+      return false;
+    }
+    reportWriteSuccess(HUB_WRITE_OPS.sessionWrite);
+    return true;
+  } catch (err) {
+    reportWriteFailure(
+      HUB_WRITE_OPS.sessionWrite,
+      'Production hub session',
+      `${err instanceof Error ? err.message : String(err)} — activity is being kept in this browser only.`
+    );
     return false;
   }
 }

@@ -15,10 +15,11 @@ import {
   computeSurveyIntegrity,
   aggregateSubgridIntegrity,
   checkIntegrityIdentities,
+  MISSING_ROW_DEFINITION,
   type IntegrityReport,
   type IntegritySubject
 } from '../utils/surveyIntegrity';
-import type { FrameState } from '../utils/panotrackAppearance';
+import { parseFlexibleDate, formatDisplayDate } from '../utils/dashboardData';
 
 /** Which figure a filename list belongs to. */
 type ListKey =
@@ -27,6 +28,15 @@ type ListKey =
   | 'invalidFilenames'
   | 'metadataMismatches'
   | 'unlinkedImages';
+
+/** What the survey-date check concluded, and why. */
+interface DateVerdict {
+  state: 'valid' | 'invalid' | 'unknown';
+  /** Copy for the Result cell. */
+  result: string;
+  /** Copy for the Details cell. */
+  detail: string;
+}
 
 export interface SurveyIntegrityPanelProps {
   isOpen: boolean;
@@ -39,8 +49,64 @@ export interface SurveyIntegrityPanelProps {
   subtitle?: string;
   /** Secondary line beneath the subgrid: date, run count, CSV name. */
   detail?: string;
-  /** True when every child run could read the storage inventory. */
-  inventoryVerified?: boolean;
+  /**
+   * Re-read the storage inventory and the persisted metadata set, then push the
+   * refreshed reports in through `reports`.
+   *
+   * The button that calls this is the only way the panel may claim it validated
+   * anything, which is why `lastChecked` is stamped after it resolves rather than
+   * when it is clicked.
+   */
+  onRevalidate?: () => Promise<void> | void;
+}
+
+/**
+ * Decide whether a run's survey date is usable.
+ *
+ * The check used to be a hardcoded "Valid" beside whatever string the row held,
+ * with a literal 2022 date as the fallback — so a run with no date rendered a
+ * green tick next to a fabricated one. This actually parses, and reports
+ * "Not recorded" rather than inventing a value.
+ */
+function resolveSurveyDate(reports: IntegrityReport[]): DateVerdict {
+  const raw = reports.map((r) => r.surveyDate).filter((d): d is string => Boolean(d && d.trim()));
+  if (raw.length === 0) {
+    return { state: 'unknown', result: 'Not recorded', detail: 'No survey date on this run' };
+  }
+
+  const parsed = raw.map((d) => parseFlexibleDate(d));
+  const valid = parsed.filter((d): d is Date => d !== null && !isNaN(d.getTime()));
+  if (valid.length === 0) {
+    return {
+      state: 'invalid',
+      result: 'Unparseable',
+      detail: `Not a readable date: ${raw[0]}`
+    };
+  }
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const latest = valid.reduce((a, b) => (b.getTime() > a.getTime() ? b : a));
+  if (latest.getTime() > today) {
+    return {
+      state: 'invalid',
+      result: 'Future date',
+      detail: `Survey dated ${formatDisplayDate(raw[valid.length - 1])}, after today`
+    };
+  }
+
+  const earliest = valid.reduce((a, b) => (b.getTime() < a.getTime() ? b : a));
+  const span =
+    reports.length > 1 && earliest.getTime() !== latest.getTime()
+      ? `${formatDisplayDate(earliest.toISOString())} to ${formatDisplayDate(latest.toISOString())}`
+      : formatDisplayDate(raw[0]);
+
+  const unparsed = raw.length - valid.length;
+  return {
+    state: 'valid',
+    result: 'Valid',
+    detail: unparsed > 0 ? `${span} (${unparsed} run${unparsed === 1 ? '' : 's'} unreadable)` : span
+  };
 }
 
 export function SurveyIntegrityPanel({
@@ -49,11 +115,15 @@ export function SurveyIntegrityPanel({
   reports,
   title,
   subtitle,
-  detail
+  detail,
+  onRevalidate
 }: SurveyIntegrityPanelProps): React.ReactElement | null {
   const [openList, setOpenList] = useState<ListKey | null>(null);
   const [filter, setFilter] = useState('');
-  const [lastChecked, setLastChecked] = useState<string>('27 Sep 2026 14:32');
+  // Null until a validation has actually run. There is no seeded timestamp,
+  // because a hardcoded one renders as proof that storage was read.
+  const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
   const report = useMemo<IntegrityReport>(
     () => (reports.length === 1 ? reports[0] : aggregateSubgridIntegrity(reports[0]?.subgrid ?? '', reports)),
@@ -72,21 +142,44 @@ export function SurveyIntegrityPanel({
 
   const missingCount = report.missingImages?.length ?? null;
   const duplicateCount = report.duplicates?.length ?? null;
+  const duplicateOccurrences = report.duplicateOccurrences ?? null;
   const invalidCount = report.invalidFilenames?.length ?? null;
   const mismatchCount = report.metadataMismatches?.length ?? null;
   const unlinkedCount = report.unlinkedImages?.length ?? null;
 
-  const expectedCount = report.expectedImages ?? report.poiCount ?? 0;
-  const totalIssuesCount = (duplicateCount ?? 0) + (invalidCount ?? 0) + (mismatchCount ?? 0);
+  const expectedCount = report.expectedImages;
+
+  // Total Issues adds three checks that are INDEPENDENTLY optional. Coercing an
+  // unmeasured one to 0 let a run whose metadata was never captured read
+  // "Total Issues 0" two rows above its own "Not evaluated" cell, and then be
+  // declared clean. So the sum is only published when every term is known.
+  const anomalies = useMemo(() => {
+    const terms: Array<{ label: string; value: number | null }> = [
+      { label: 'Duplicate', value: duplicateCount },
+      { label: 'Invalid filename', value: invalidCount },
+      { label: 'Metadata mismatch', value: mismatchCount }
+    ];
+    const unknownLabels = terms.filter((t) => t.value === null).map((t) => t.label);
+    const total = unknownLabels.length === 0 ? terms.reduce((s, t) => s + (t.value ?? 0), 0) : null;
+    return { total, unknownLabels };
+  }, [duplicateCount, invalidCount, mismatchCount]);
+
+  const totalIssuesCount = anomalies.total;
+
+  // Every check must have been MEASURED before "clean" means anything. Missing
+  // an unknown term is not a pass.
+  const allAnomaliesKnown = totalIssuesCount !== null;
 
   const isClean =
     report.inventoryVerified &&
-    (missingCount === 0 || (missingCount === null && report.expectedImages === 0)) &&
-    totalIssuesCount === 0;
+    missingCount === 0 &&
+    totalIssuesCount === 0 &&
+    report.metadataCaptured;
 
   const isWarning =
     report.inventoryVerified &&
-    (missingCount === 0) &&
+    missingCount === 0 &&
+    totalIssuesCount !== null &&
     totalIssuesCount > 0;
 
   const accentBorderColor = isClean
@@ -97,19 +190,21 @@ export function SurveyIntegrityPanel({
     ? 'border-rose-500'
     : 'border-slate-500';
 
-  // Format date display
-  const displayDate = useMemo(() => {
-    if (report.surveyDate) return report.surveyDate;
-    if (detail && detail.includes(',')) return detail.split(',')[0].trim();
-    return '08 Apr 2022';
-  }, [report.surveyDate, detail]);
+  const dateVerdict = useMemo(() => resolveSurveyDate(reports), [reports]);
 
-  // Linked frames count and percentage
-  const linkedCount = report.gpsLinkedImages ?? report.foundImages ?? 0;
+  // Linked frames count and percentage.
+  //
+  // When the bucket contents are unknown, `found` is only the GPS-linked count,
+  // so the percentage is a LOWER BOUND and is labelled as one. When storage could
+  // not be reached there is no percentage at all: the previous code returned 0,
+  // which prints "0% linked" for a run nobody looked at.
+  const linkageKnown = report.foundImages !== null && report.gpsLinkedImages !== null;
+  const linkageIsLowerBound = report.inventoryVerified && report.unlinkedImages === null;
+  const linkedCount = report.gpsLinkedImages ?? 0;
   const percentLinked = useMemo(() => {
-    if (!expectedCount || expectedCount === 0 || report.foundImages === null) return 0;
+    if (!linkageKnown || expectedCount <= 0) return 0;
     return Math.min(100, Math.max(0, Math.round((linkedCount / expectedCount) * 100)));
-  }, [linkedCount, expectedCount, report.foundImages]);
+  }, [linkageKnown, linkedCount, expectedCount]);
 
   // Filename drilldown list
   const listRows = useMemo<{ key: string; primary: string; secondary?: string }[]>(() => {
@@ -150,7 +245,12 @@ export function SurveyIntegrityPanel({
   }, [listRows, filter]);
 
   const handleCopy = useCallback(() => {
-    const text = visibleListRows.map((r) => r.primary).join('\n');
+    // The secondary column carries the reason (x3), the failing rule, and the
+    // metadata name a frame disagrees with. Copying the name alone handed the
+    // operator a list they could not act on.
+    const text = visibleListRows
+      .map((r) => (r.secondary ? `${r.primary}\t${r.secondary}` : r.primary))
+      .join('\n');
     if (!text) return;
     void navigator.clipboard
       ?.writeText(text)
@@ -158,16 +258,38 @@ export function SurveyIntegrityPanel({
       .catch(() => toast.error('Clipboard unavailable'));
   }, [visibleListRows]);
 
-  const handleRunValidation = useCallback(() => {
-    const now = new Date();
-    const formatted = `${now.getDate()} ${now.toLocaleString('default', { month: 'short' })} ${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    setLastChecked(formatted);
-    toast.success('Validation checks refreshed');
-  }, []);
+  const handleRunValidation = useCallback(async () => {
+    if (isValidating) return;
+    if (!onRevalidate) {
+      toast.info('Re-validation needs a storage re-read; open this panel from a loaded run.');
+      return;
+    }
+    setIsValidating(true);
+    try {
+      await onRevalidate();
+      // Stamped only after the re-read resolves. The previous version stamped on
+      // click and reported success, so the timestamp recorded intent, not a
+      // measurement.
+      const now = new Date();
+      setLastChecked(
+        `${now.getDate()} ${now.toLocaleString('en-GB', { month: 'short' })} ${now.getFullYear()} ${now
+          .getHours()
+          .toString()
+          .padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+      );
+      toast.success('Storage inventory re-read');
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? `Validation failed: ${err.message}` : 'Validation failed'
+      );
+    } finally {
+      setIsValidating(false);
+    }
+  }, [isValidating, onRevalidate]);
 
-  const drawerDetailText = detail
-    ? detail
-    : `Capture: ${displayDate}, ${reports.length} run${reports.length === 1 ? '' : 's'}`;
+  const drawerDetailText =
+    detail ??
+    `Capture: ${dateVerdict.detail}, ${reports.length} run${reports.length === 1 ? '' : 's'}`;
 
   // Portalled to document.body to avoid clipping inside animated containers
   return typeof document !== 'undefined'
@@ -207,13 +329,25 @@ export function SurveyIntegrityPanel({
                     Metadata records and image filenames are completely linked, valid, and matched with storage inventory.
                   </p>
                 </>
-              ) : report.inventoryVerified ? (
+              ) : report.inventoryVerified && totalIssuesCount !== null && totalIssuesCount > 0 ? (
                 <>
                   <h3 className="text-xs sm:text-sm font-bold text-text-base text-amber-400">
                     {totalIssuesCount} anomaly issue{totalIssuesCount === 1 ? '' : 's'} detected
                   </h3>
                   <p className="text-[11px] text-text-muted mt-0.5 leading-relaxed">
                     All expected frames are present, but review the anomaly checks below.
+                  </p>
+                </>
+              ) : report.inventoryVerified ? (
+                // Storage was read, nothing is missing, and at least one check
+                // could not be evaluated. Silence here would read as a pass.
+                <>
+                  <h3 className="text-xs sm:text-sm font-bold text-text-base text-amber-400">
+                    Anomaly checks incomplete
+                  </h3>
+                  <p className="text-[11px] text-text-muted mt-0.5 leading-relaxed">
+                    All {expectedCount.toLocaleString()} expected frames are present. {anomalies.unknownLabels.join(' and ')}{' '}
+                    could not be evaluated for this run, so this is not a clean result.
                   </p>
                 </>
               ) : (
@@ -239,7 +373,7 @@ export function SurveyIntegrityPanel({
                   </span>
                 </div>
                 <span className="text-[9px] text-text-muted truncate">
-                  Based on {report.poiCount ?? 0} survey POIs
+                  One per recorded POI
                 </span>
               </div>
 
@@ -252,7 +386,11 @@ export function SurveyIntegrityPanel({
                   </span>
                 </div>
                 <span className="text-[9px] text-text-muted truncate">
-                  Found in storage
+                  {linkageIsLowerBound
+                    ? 'Lower bound, bucket unread'
+                    : (unlinkedCount ?? 0) > 0
+                    ? 'Linked + unclaimed strays'
+                    : 'POI-matched in storage'}
                 </span>
               </div>
 
@@ -269,7 +407,11 @@ export function SurveyIntegrityPanel({
                   </span>
                 </div>
                 <span className="text-[9px] text-text-muted truncate">
-                  {(missingCount ?? 0) > 0 ? 'No matching files' : 'All accounted for'}
+                  {missingCount === null
+                    ? 'Not measured'
+                    : (missingCount ?? 0) > 0
+                    ? 'Expected minus GPS-linked'
+                    : 'All accounted for'}
                 </span>
               </div>
 
@@ -279,14 +421,16 @@ export function SurveyIntegrityPanel({
                 <div className="my-0.5">
                   <span
                     className={`text-lg sm:text-xl font-bold tabular-nums ${
-                      totalIssuesCount > 0 ? 'text-amber-400' : 'text-text-base'
+                      totalIssuesCount !== null && totalIssuesCount > 0 ? 'text-amber-400' : 'text-text-base'
                     }`}
                   >
-                    {totalIssuesCount.toLocaleString()}
+                    {totalIssuesCount !== null ? totalIssuesCount.toLocaleString() : '-'}
                   </span>
                 </div>
                 <span className="text-[9px] text-text-muted truncate">
-                  (excluding missing)
+                  {allAnomaliesKnown
+                    ? '(excluding missing)'
+                    : `not evaluated: ${anomalies.unknownLabels.join(', ')}`}
                 </span>
               </div>
             </div>
@@ -295,12 +439,22 @@ export function SurveyIntegrityPanel({
             <div className="flex items-center gap-3 pt-0.5">
               <div className="flex-1 h-1.5 rounded-full bg-inner overflow-hidden border border-subtle/60">
                 <div
-                  className="h-full bg-gradient-to-r from-sky-500 to-cyan-400 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(56,189,248,0.35)]"
-                  style={{ width: `${percentLinked}%` }}
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    linkageKnown
+                      ? 'bg-gradient-to-r from-sky-500 to-cyan-400 shadow-[0_0_8px_rgba(56,189,248,0.35)]'
+                      : 'bg-slate-500/40'
+                  }`}
+                  style={{ width: `${linkageKnown ? percentLinked : 100}%` }}
                 />
               </div>
-              <span className="text-[11px] font-semibold text-text-base tabular-nums shrink-0">
-                {percentLinked}% linked
+              <span
+                className={`text-[11px] font-semibold tabular-nums shrink-0 ${
+                  linkageKnown ? 'text-text-base' : 'text-text-muted italic font-normal'
+                }`}
+              >
+                {linkageKnown
+                  ? `${percentLinked}% linked${linkageIsLowerBound ? ' (lower bound)' : ''}`
+                  : 'Linkage not verified'}
               </span>
             </div>
           </div>
@@ -314,12 +468,15 @@ export function SurveyIntegrityPanel({
                 <h3 className="text-xs sm:text-sm font-bold text-text-base">Validation Checks</h3>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-text-muted">Last checked: {lastChecked}</span>
+                <span className="text-[10px] text-text-muted">
+                  {lastChecked ? `Last checked: ${lastChecked}` : 'Not yet checked against storage'}
+                </span>
                 <button
-                  onClick={handleRunValidation}
-                  className="px-2 py-0.5 rounded border border-subtle bg-inner hover:bg-inner/80 hover:border-text-muted text-[10px] font-medium text-text-base transition-colors flex items-center gap-1 cursor-pointer"
+                  onClick={() => void handleRunValidation()}
+                  disabled={isValidating}
+                  className="px-2 py-0.5 rounded border border-subtle bg-inner hover:bg-inner/80 hover:border-text-muted text-[10px] font-medium text-text-base transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Run validation
+                  {isValidating ? 'Re-reading storage...' : 'Run validation'}
                 </button>
               </div>
             </div>
@@ -340,13 +497,31 @@ export function SurveyIntegrityPanel({
                   <tr className="hover:bg-inner/40 transition-colors">
                     <td className="py-1.5 px-2 font-medium text-text-base">
                       <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            dateVerdict.state === 'valid'
+                              ? 'bg-emerald-400'
+                              : dateVerdict.state === 'invalid'
+                              ? 'bg-rose-400'
+                              : 'bg-slate-500'
+                          }`}
+                        />
                         <span>Survey date</span>
                         <span className="sr-only">Survey Date Capture</span>
                       </div>
                     </td>
-                    <td className="py-1.5 px-2 font-semibold text-emerald-400">Valid</td>
-                    <td className="py-1.5 px-2 text-[10px] text-text-muted">{displayDate}</td>
+                    <td
+                      className={`py-1.5 px-2 font-semibold ${
+                        dateVerdict.state === 'valid'
+                          ? 'text-emerald-400'
+                          : dateVerdict.state === 'invalid'
+                          ? 'text-rose-400'
+                          : 'text-text-muted'
+                      }`}
+                    >
+                      {dateVerdict.result}
+                    </td>
+                    <td className="py-1.5 px-2 text-[10px] text-text-muted">{dateVerdict.detail}</td>
                     <td className="py-1.5 px-2 text-right text-text-muted">-</td>
                   </tr>
 
@@ -361,7 +536,13 @@ export function SurveyIntegrityPanel({
                     <td className="py-1.5 px-2 font-semibold tabular-nums text-text-base">
                       {report.poiCount !== null ? report.poiCount.toLocaleString() : 'No POI coordinates'}
                     </td>
-                    <td className="py-1.5 px-2 text-[10px] text-text-muted">Survey coordinate locations</td>
+                    <td className="py-1.5 px-2 text-[10px] text-text-muted">
+                      {report.poiCount === null
+                        ? 'Not measured for this run'
+                        : identities.framesWithoutPoi === 0
+                        ? 'Distinct coordinate locations'
+                        : `${identities.framesWithoutPoi} of ${expectedCount} frames have no located POI`}
+                    </td>
                     <td className="py-1.5 px-2 text-right text-text-muted">-</td>
                   </tr>
 
@@ -374,9 +555,11 @@ export function SurveyIntegrityPanel({
                       </div>
                     </td>
                     <td className="py-1.5 px-2 font-semibold tabular-nums text-text-base">
-                      {report.expectedImages !== null ? report.expectedImages.toLocaleString() : '-'}
+                      {report.expectedImages.toLocaleString()}
                     </td>
-                    <td className="py-1.5 px-2 text-[10px] text-text-muted">One frame per POI</td>
+                    <td className="py-1.5 px-2 text-[10px] text-text-muted">
+                      {MISSING_ROW_DEFINITION.expectedImages}
+                    </td>
                     <td className="py-1.5 px-2 text-right text-text-muted">-</td>
                   </tr>
 
@@ -395,7 +578,9 @@ export function SurveyIntegrityPanel({
                         <span className="text-text-muted italic font-normal">{storageUnknown}</span>
                       )}
                     </td>
-                    <td className="py-1.5 px-2 text-[10px] text-text-muted">Matching files in storage</td>
+                    <td className="py-1.5 px-2 text-[10px] text-text-muted">
+                      {MISSING_ROW_DEFINITION.foundImages}
+                    </td>
                     <td className="py-1.5 px-2 text-right text-text-muted">-</td>
                   </tr>
 
@@ -429,7 +614,7 @@ export function SurveyIntegrityPanel({
                       ) : missingCount === 0 ? (
                         <span className="text-text-muted">All corresponding images found</span>
                       ) : (
-                        <span className="text-rose-400">No corresponding image in storage</span>
+                        <span className="text-rose-400">{MISSING_ROW_DEFINITION.missingImages}</span>
                       )}
                     </td>
                     <td className="py-1.5 px-2 text-right">
@@ -474,7 +659,9 @@ export function SurveyIntegrityPanel({
                       )}
                     </td>
                     <td className="py-1.5 px-2 text-[10px] text-text-muted">
-                      {(duplicateCount ?? 0) === 0 ? 'No duplicate files found' : `${duplicateCount} duplicate occurrences`}
+                      {(duplicateCount ?? 0) === 0
+                        ? 'No repeated filenames in the run metadata'
+                        : `${duplicateCount} filename${duplicateCount === 1 ? '' : 's'} claimed by more than one POI, ${duplicateOccurrences} extra claim${duplicateOccurrences === 1 ? '' : 's'}`}
                     </td>
                     <td className="py-1.5 px-2 text-right">
                       {(duplicateCount ?? 0) > 0 ? (
@@ -594,7 +781,7 @@ export function SurveyIntegrityPanel({
                     </td>
                     <td className="py-1.5 px-2 text-[10px] text-text-muted">
                       {report.gpsLinkedImages !== null
-                        ? `${report.gpsLinkedImages} images with valid GPS/trajectory`
+                        ? MISSING_ROW_DEFINITION.gpsLinkedImages
                         : storageUnknown}
                     </td>
                     <td className="py-1.5 px-2 text-right">
@@ -636,10 +823,10 @@ export function SurveyIntegrityPanel({
                     </td>
                     <td className="py-1.5 px-2 text-[10px] text-text-muted">
                       {report.unlinkedImages === null
-                        ? 'Not available for this run'
+                        ? bucketUnknown
                         : (unlinkedCount ?? 0) === 0
-                        ? 'No unlinked images in bucket'
-                        : `${unlinkedCount} orphan images with no POI claim`}
+                        ? 'Every image here is claimed by some run'
+                        : `${unlinkedCount} images no run of this subgrid claims`}
                     </td>
                     <td className="py-1.5 px-2 text-right">
                       {(unlinkedCount ?? 0) > 0 ? (
@@ -659,6 +846,34 @@ export function SurveyIntegrityPanel({
               </table>
             </div>
 
+            {/* Identity failure. `checkIntegrityIdentities` returns these so the
+                panel can show WHICH relationship broke; without this the rows
+                could disagree with each other and nothing would say so. */}
+            {(identities.missingEqualsExpectedMinusLinked === false ||
+              identities.gpsPlusUnlinkedEqualsFound === false) && (
+              <div className="rounded-lg border border-rose-500/50 bg-rose-500/10 px-2.5 py-2 text-[11px] text-rose-300">
+                <div className="font-semibold mb-0.5 flex items-center gap-1.5">
+                  <AlertTriangle size={12} className="shrink-0" />
+                  <span>Figures do not reconcile</span>
+                </div>
+                <div>
+                  {identities.missingEqualsExpectedMinusLinked === false && (
+                    <p>
+                      Missing frames ({missingCount?.toLocaleString()}) does not equal expected minus
+                      GPS-linked ({identities.actualPoiGap?.toLocaleString()}).
+                    </p>
+                  )}
+                  {identities.gpsPlusUnlinkedEqualsFound === false && (
+                    <p>
+                      GPS-linked plus unlinked does not equal Found ({report.foundImages?.toLocaleString()}).
+                    </p>
+                  )}
+                  The rows above cannot all be correct. Treat the counts as unreliable and re-read
+                  storage before acting on them.
+                </div>
+              </div>
+            )}
+
             {/* Reconciliation Note if orphans exist */}
             {identities.undercountedByUnlinked !== null && identities.undercountedByUnlinked > 0 && (
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-300">
@@ -667,9 +882,10 @@ export function SurveyIntegrityPanel({
                   <span>Reconciliation note</span>
                 </div>
                 <div>
-                  {identities.undercountedByUnlinked} unlinked image
-                  {identities.undercountedByUnlinked === 1 ? '' : 's'} sit in the bucket without a POI, so they
-                  count toward <em>Found</em> while filling no gap. Expected minus Found reads{' '}
+                  {identities.undercountedByUnlinked} image
+                  {identities.undercountedByUnlinked === 1 ? '' : 's'} sit in the bucket that no run
+                  of this subgrid claims, so {identities.undercountedByUnlinked === 1 ? 'it counts' : 'they count'}{' '}
+                  toward <em>Found</em> while filling no gap. Expected minus Found reads{' '}
                   {identities.naiveGap?.toLocaleString()}; the number of POIs actually without an image is{' '}
                   <strong>{identities.actualPoiGap?.toLocaleString()}</strong>.
                 </div>
@@ -751,15 +967,21 @@ export function SurveyIntegrityPanel({
               <div className="space-y-1 text-[10px]">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-text-muted">Storage bucket</span>
-                  <span className="text-text-base font-medium">-</span>
+                  <span className="text-text-base font-medium">
+                    {report.inventoryVerified ? 'Read successfully' : 'Unreachable'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-text-muted">Bucket contents</span>
+                  <span className="text-text-base font-medium">
+                    {report.unlinkedImages === null ? 'Not attributed to subgrid' : 'Attributed'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-text-muted">Metadata source</span>
-                  <span className="text-text-base font-medium">Import migration 0034</span>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-text-muted">File structure</span>
-                  <span className="text-text-base font-medium">N/A</span>
+                  <span className="text-text-base font-medium">
+                    {report.metadataCaptured ? 'Import migration 0034' : 'Not captured for this run'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -772,7 +994,12 @@ export function SurveyIntegrityPanel({
                   <h4 className="text-[10px] font-bold uppercase tracking-wider text-text-base">Validation Basis</h4>
                 </div>
                 <p className="text-[10px] text-text-muted leading-relaxed">
-                  Frame counts are based on the storage inventory. Metadata checks are only available for runs imported after migration 0034. Duplicate, Invalid filename and Metadata mismatch are anomalies found within the images that were found. They are not part of the Expected minus Found arithmetic.
+                  Frame counts are based on the storage inventory. Missing frames is Expected minus
+                  GPS-linked, not Expected minus Found: an unlinked image in the bucket counts as
+                  Found while filling no gap. Duplicate, Invalid filename and Metadata mismatch are
+                  anomalies found within the images that were found, and are not part of that
+                  arithmetic. Metadata checks are only available for runs imported after migration
+                  0034.
                 </p>
               </div>
               <div className="flex justify-end pt-0.5">
@@ -805,5 +1032,3 @@ export default SurveyIntegrityPanel;
 export function buildReports(subjects: IntegritySubject[]): IntegrityReport[] {
   return subjects.map((s) => computeSurveyIntegrity(s));
 }
-
-export type { FrameState };

@@ -88,7 +88,12 @@ describe('computeSurveyIntegrity — the arithmetic relationships', () => {
     const s = bigRun();
     // 10 bucket images nobody claims. found splits 856 linked + 10 unlinked.
     const orphans = Array.from({ length: 10 }, (_, i) => `N93E70-ORPHAN-${i}.jpg`);
-    const subject = { ...s, bucketFilenames: [...s.verifiedFilenames, ...orphans] };
+    const subject = {
+      ...s,
+      bucketFilenames: [...s.verifiedFilenames, ...orphans],
+      // A single-run subgrid: nothing else in the folder is claimed elsewhere.
+      siblingFilenames: []
+    };
 
     const r = computeSurveyIntegrity(subject);
     expect(r.gpsLinkedImages).toBe(866);
@@ -120,7 +125,8 @@ describe('computeSurveyIntegrity — the arithmetic relationships', () => {
 
     const r = computeSurveyIntegrity({
       ...exampleSubject({ recordedFilenames: recorded, verifiedFilenames: verified }),
-      bucketFilenames: [...verified, ...orphans]
+      bucketFilenames: [...verified, ...orphans],
+      siblingFilenames: []
     });
 
     // The naive subtraction the original table used.
@@ -137,7 +143,11 @@ describe('computeSurveyIntegrity — the arithmetic relationships', () => {
 
   it('has no undercount when every bucket image is claimed by a POI', () => {
     const s = bigRun();
-    const r = computeSurveyIntegrity({ ...s, bucketFilenames: s.verifiedFilenames });
+    const r = computeSurveyIntegrity({
+      ...s,
+      bucketFilenames: s.verifiedFilenames,
+      siblingFilenames: []
+    });
     const ids = checkIntegrityIdentities(r);
 
     expect(ids.undercountedByUnlinked).toBe(0);
@@ -234,6 +244,35 @@ describe('computeSurveyIntegrity — metadata rows', () => {
     expect(r.metadataMismatches).toHaveLength(1);
     expect(r.metadataMismatches![0].recordedFilename).toBe('N93E70-0002.jpg');
   });
+it('treats an empty metadata set as never captured, not as a clean run', () => {
+    // Migration 0035 made the table readable, so a run with no captured rows now
+    // returns `[]` rather than an error. Reading `[]` as "captured" reported
+    // every recorded name as a mismatch — 196 phantom mismatches for a run whose
+    // metadata was never captured, which is a worse lie than "not captured".
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: ['N93E70-0001.jpg', 'N93E70-0002.jpg'],
+        verifiedFilenames: ['N93E70-0001.jpg', 'N93E70-0002.jpg'],
+        metadataFilenames: []
+      })
+    );
+
+    expect(r.metadataCaptured).toBe(false);
+    expect(r.metadataMismatches).toBeNull();
+  });
+
+it('still evaluates the check once any metadata row exists', () => {
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: ['N93E70-0001.jpg', 'N93E70-0002.jpg'],
+        verifiedFilenames: ['N93E70-0001.jpg', 'N93E70-0002.jpg'],
+        metadataFilenames: ['N93E70-0001.jpg']
+      })
+    );
+
+    expect(r.metadataCaptured).toBe(true);
+    expect(r.metadataMismatches).toHaveLength(1);
+  });
 });
 
 describe('computeSurveyIntegrity — duplicates and invalid names', () => {
@@ -268,6 +307,134 @@ describe('computeSurveyIntegrity — duplicates and invalid names', () => {
   });
 });
 
+describe('computeSurveyIntegrity — orphans belong to the subgrid, not the run', () => {
+  /**
+   * THE CASE, as reported: subgrid N93E70 has two runs. The April run owns 92
+   * frames; the September run recorded 196 names and uploaded none of them.
+   *
+   * `bucketFilenames` is subgrid-scoped, so it holds the APRIL frames. Treating
+   * "not named by this run" as "orphan of this run" reported all 92 as September
+   * orphans, which made Available read 92 while the run's own figures said zero,
+   * and inflated the reconciliation note by the sibling's whole library.
+   */
+  const september = Array.from({ length: 196 }, (_, i) => `N93E70-${String(i + 93).padStart(4, '0')}.jpg`);
+  const april = Array.from({ length: 92 }, (_, i) => `N93E70-${String(i + 1).padStart(4, '0')}.jpg`);
+
+  it('does not adopt a sibling run images as orphans', () => {
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: september,
+        verifiedFilenames: [],
+        bucketFilenames: april,
+        siblingFilenames: april
+      })
+    );
+
+    // The run owns nothing, so it must report nothing.
+    expect(r.gpsLinkedImages).toBe(0);
+    expect(r.unlinkedImages).toEqual([]);
+    expect(r.foundImages).toBe(0);
+    expect(r.missingImages).toHaveLength(196);
+    // And no phantom reconciliation gap.
+    expect(checkIntegrityIdentities(r).undercountedByUnlinked).toBe(0);
+  });
+
+  it('still reports a file that no run claims', () => {
+    const stray = 'N93E70-9999.jpg';
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: september,
+        verifiedFilenames: [],
+        bucketFilenames: [...april, stray],
+        siblingFilenames: april
+      })
+    );
+
+    expect(r.unlinkedImages).toHaveLength(1);
+    expect(r.unlinkedImages?.map((u) => u.filename)).toEqual([stray]);
+    // It counts toward Found without filling any POI, which is the note's point.
+    expect(r.foundImages).toBe(1);
+    expect(r.missingImages).toHaveLength(196);
+    expect(checkIntegrityIdentities(r).undercountedByUnlinked).toBe(1);
+  });
+
+  it('is unknown rather than a number when the sibling set is not supplied', () => {
+    // Bucket contents without a peer list cannot distinguish a peer's image from
+    // a stray, so the honest answer is unknown.
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: september,
+        verifiedFilenames: [],
+        bucketFilenames: april
+      })
+    );
+
+    expect(r.unlinkedImages).toBeNull();
+    // `found` degrades to a lower bound rather than inventing an orphan count.
+    expect(r.foundImages).toBe(0);
+  });
+
+  it('does not let a run exclude its own names by listing them as siblings', () => {
+    // Self-exclusion is the caller's job; if it is missed, every name is
+    // "claimed elsewhere" and a genuine stray is masked.
+    const stray = 'N93E70-9999.jpg';
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: september,
+        verifiedFilenames: [],
+        bucketFilenames: [...september, stray],
+        siblingFilenames: september
+      })
+    );
+
+    expect(r.unlinkedImages).toHaveLength(1);
+    expect(r.unlinkedImages?.map((u) => u.filename)).toEqual([stray]);
+  });
+
+  it('dedupes a stray that several runs each observed', () => {
+    // A stray belongs to the subgrid, so every child sees it. Concatenating
+    // would list one file twice and inflate Found twice.
+    const stray = 'N93E70-9999.jpg';
+    const a = computeSurveyIntegrity(
+      exampleSubject({
+        runId: 'run-a',
+        recordedFilenames: ['A-0001.jpg'],
+        verifiedFilenames: [],
+        bucketFilenames: ['A-0001.jpg', stray],
+        siblingFilenames: ['B-0001.jpg']
+      })
+    );
+    const b = computeSurveyIntegrity(
+      exampleSubject({
+        runId: 'run-b',
+        recordedFilenames: ['B-0001.jpg'],
+        verifiedFilenames: [],
+        bucketFilenames: ['B-0001.jpg', stray],
+        siblingFilenames: ['A-0001.jpg']
+      })
+    );
+
+    const agg = aggregateSubgridIntegrity('N93E70', [a, b]);
+    expect(agg.unlinkedImages).toHaveLength(1);
+    expect(agg.foundImages).toBe(1);
+  });
+
+  it('keeps per-run gaps concatenating, so the identity still holds', () => {
+    // The mirror of the dedupe above: two runs each missing the SAME filename
+    // are two POIs that each lack an image, so these must NOT be deduped.
+    const a = computeSurveyIntegrity(
+      exampleSubject({ runId: 'run-a', recordedFilenames: ['X-0001.jpg'], verifiedFilenames: [], bucketFilenames: [], siblingFilenames: [] })
+    );
+    const b = computeSurveyIntegrity(
+      exampleSubject({ runId: 'run-b', recordedFilenames: ['X-0001.jpg'], verifiedFilenames: [], bucketFilenames: [], siblingFilenames: [] })
+    );
+
+    const agg = aggregateSubgridIntegrity('N93E70', [a, b]);
+    expect(agg.missingImages).toHaveLength(2);
+    expect(checkIntegrityIdentities(agg).missingEqualsExpectedMinusLinked).toBe(true);
+  });
+});
+
 describe('aggregateSubgridIntegrity', () => {
   const child = (over: Partial<IntegritySubject>) =>
     computeSurveyIntegrity(exampleSubject(over));
@@ -298,13 +465,150 @@ describe('aggregateSubgridIntegrity', () => {
     expect(agg.foundImages).toBeNull();
   });
 
-  it('unions the filename lists rather than concatenating duplicates', () => {
-    const a = child({ recordedFilenames: ['A-0001.jpg'], verifiedFilenames: [] });
-    const b = child({ recordedFilenames: ['A-0001.jpg'], verifiedFilenames: [] });
-    const c = child({ recordedFilenames: ['B-0001.jpg'], verifiedFilenames: [] });
+  it('counts a shared missing frame once per run, not once per file', () => {
+    // WHY THIS IS NOT A UNION. Two runs each record a POI naming the same absent
+    // frame X. `expected` sums to 2 and `gpsLinked` to 0, so the gap is 2: two
+    // POIs, each lacking an image. Deduplicating X out of the missing list would
+    // report 1 and silently contradict the two rows above it.
+    //
+    // The old test asserted only `new Set(names).size`, which passes whether or
+    // not the list is deduplicated, so it could not have caught a change in
+    // either direction. This asserts the count AND the identity together.
+    const a = child({ runId: 'run-a', recordedFilenames: ['A-0001.jpg'], verifiedFilenames: [] });
+    const b = child({ runId: 'run-b', recordedFilenames: ['A-0001.jpg'], verifiedFilenames: [] });
+    const c = child({ runId: 'run-c', recordedFilenames: ['B-0001.jpg'], verifiedFilenames: [] });
 
     const agg = aggregateSubgridIntegrity('N93E70', [a, b, c]);
-    const names = agg.missingImages!.map((m) => m.filename);
-    expect(new Set(names).size).toBe(2);
+    expect(agg.expectedImages).toBe(3);
+    expect(agg.missingImages).toHaveLength(3);
+    expect(new Set(agg.missingImages!.map((m) => m.filename)).size).toBe(2);
+    // And the identity that makes the count meaningful still holds.
+    expect(checkIntegrityIdentities(agg).missingEqualsExpectedMinusLinked).toBe(true);
+  });
+
+  it('keeps the run id on each entry so an aggregate stays traceable', () => {
+    const a = child({ runId: 'run-a', recordedFilenames: ['A-0001.jpg'], verifiedFilenames: [] });
+    const agg = aggregateSubgridIntegrity('N93E70', [a]);
+    expect(agg.missingImages![0].runId).toBe('run-a');
+  });
+
+  it('reports unknown rather than clean when there are no runs at all', () => {
+    // THE CASE. Returning a fabricated all-zero report here told the operator a
+    // subgrid had zero missing frames because we had zero runs to look at.
+    const agg = aggregateSubgridIntegrity('N93E70', []);
+
+    expect(agg.missingImages).toBeNull();
+    expect(agg.foundImages).toBeNull();
+    expect(agg.gpsLinkedImages).toBeNull();
+    expect(agg.inventoryVerified).toBe(false);
+    expect(agg.defectDataReadable).toBe(false);
+  });
+});
+
+describe('computeSurveyIntegrity — POI count is independent of expected frames', () => {
+  const coords = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ lat: 3 + i * 0.001, lon: 101 + i * 0.001 }));
+
+  it('reports expected frames from the recorded list, not from the POI count', () => {
+    // The aliasing this replaces made `missing === expected - gpsLinked` a
+    // tautology and let the panel caption a filename count as "coordinate
+    // locations".
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: ['A-0001.jpg', 'A-0002.jpg', 'A-0003.jpg'],
+        verifiedFilenames: ['A-0001.jpg'],
+        poiCoordinates: coords(1)
+      })
+    );
+
+    expect(r.expectedImages).toBe(3);
+    expect(r.poiCount).toBe(1);
+    expect(r.missingImages).toHaveLength(2);
+    expect(checkIntegrityIdentities(r).missingEqualsExpectedMinusLinked).toBe(true);
+  });
+
+  it('reads unknown, not zero, when no coordinates were supplied', () => {
+    const r = computeSurveyIntegrity(
+      exampleSubject({ recordedFilenames: ['A-0001.jpg'], verifiedFilenames: [] })
+    );
+    expect(r.poiCount).toBeNull();
+    // Expected stays knowable: it comes from the run, not the coordinates.
+    expect(r.expectedImages).toBe(1);
+  });
+
+  it('does not count a coordinate entry that has no position', () => {
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: ['A-0001.jpg', 'A-0002.jpg', 'A-0003.jpg'],
+        verifiedFilenames: [],
+        poiCoordinates: [{ lat: 3, lon: 101 }, { lat: undefined, lon: 101 }, { lat: NaN, lon: 101 }]
+      })
+    );
+    expect(r.poiCount).toBe(1);
+  });
+
+  it('collapses the same stop recorded twice into one POI', () => {
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: ['A-0001.jpg', 'A-0002.jpg'],
+        verifiedFilenames: [],
+        poiCoordinates: [{ lat: 3, lon: 101 }, { lat: 3, lon: 101 }]
+      })
+    );
+    expect(r.poiCount).toBe(1);
+  });
+
+  it('exposes frames whose POI was never located', () => {
+    const allLocated = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: ['A-0001.jpg', 'A-0002.jpg'],
+        verifiedFilenames: [],
+        poiCoordinates: coords(2)
+      })
+    );
+    expect(checkIntegrityIdentities(allLocated).framesWithoutPoi).toBe(0);
+
+    const oneUnlocated = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: ['A-0001.jpg', 'A-0002.jpg'],
+        verifiedFilenames: [],
+        poiCoordinates: coords(1)
+      })
+    );
+    expect(checkIntegrityIdentities(oneUnlocated).framesWithoutPoi).toBe(1);
+  });
+});
+
+describe('computeSurveyIntegrity — duplicate occurrences are a separate figure', () => {
+  it('separates distinct repeated filenames from extra claims', () => {
+    // Three POIs claiming one image is ONE duplicated filename but TWO extra
+    // claims. The panel used to caption the former with the latter's noun.
+    const r = computeSurveyIntegrity(
+      exampleSubject({
+        recordedFilenames: ['A-0001.jpg', 'A-0001.jpg', 'A-0001.jpg']
+      })
+    );
+
+    expect(r.duplicates).toHaveLength(1);
+    expect(r.duplicateOccurrences).toBe(2);
+  });
+
+  it('reports zero occurrences when nothing repeats', () => {
+    const r = computeSurveyIntegrity(
+      exampleSubject({ recordedFilenames: ['A-0001.jpg', 'A-0002.jpg'] })
+    );
+    expect(r.duplicateOccurrences).toBe(0);
+  });
+});
+
+describe('frameKey — names that must never match a real frame', () => {
+  it('rejects a leading-dot name instead of treating the extension as the stem', () => {
+    expect(frameKey('.jpg')).toBe('');
+    expect(frameKey('.gitignore')).toBe('');
+    expect(frameKey('.JPG')).toBe('');
+  });
+
+  it('still reads a normal name', () => {
+    expect(frameKey('N93E70-0001.jpg')).toBe('N93E70-0001');
   });
 });

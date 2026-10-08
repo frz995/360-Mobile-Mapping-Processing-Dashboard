@@ -366,7 +366,14 @@ describe('DataManagementPage smoke', () => {
 
     beforeEach(() => {
       vi.mocked(fetchStagingPanoramasFromSupabase).mockResolvedValue([])
-      vi.mocked(verifyCsvImageFilenamesInStorage).mockResolvedValue({ availableCount: 0, verifiedFilenames: [] })
+      vi.mocked(verifyCsvImageFilenamesInStorage).mockResolvedValue({
+        availableCount: 0,
+        verifiedFilenames: [],
+        // Reachable-but-empty: the inventory WAS read and held none of these
+        // frames. `verified: false` would mean storage was never reached.
+        verified: true,
+        fileSet: new Set<string>()
+      })
     })
 
     it('takes the subgrid from row filenames, not from date-only CSV names', async () => {

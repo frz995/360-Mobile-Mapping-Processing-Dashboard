@@ -231,8 +231,26 @@ export async function ensureManifestSettings(settings?: ExtendedProjectSettings)
   return candidate;
 }
 
-export async function verifyCsvImageFilenamesInStorage(filenames: string[], settings?: any): Promise<{ availableCount: number; verifiedFilenames: string[] }> {
-  if (!filenames || filenames.length === 0) return { availableCount: 0, verifiedFilenames: [] };
+/**
+ * Verify a run's recorded filenames against the storage inventory.
+ *
+ * `verified` is the whole point of this returning a third field: an empty
+ * `verifiedFilenames` is ambiguous on its own. It means either "the bucket was
+ * read and holds none of these" or "the bucket was never reached". Collapsing
+ * the second into the first is how a storage outage gets reported as a complete
+ * zero, which is the failure migration 0032 documented. Callers need
+ * `resolveStorageFiles().listingOk` and were throwing it away.
+ */
+export async function verifyCsvImageFilenamesInStorage(
+  filenames: string[],
+  settings?: any
+): Promise<{ availableCount: number; verifiedFilenames: string[]; verified: boolean; fileSet: Set<string> }> {
+  if (!filenames || filenames.length === 0) {
+    // Nothing to check is not the same as "checked and found none". With no
+    // filenames there is nothing to verify, so report unverified rather than
+    // claiming a clean result.
+    return { availableCount: 0, verifiedFilenames: [], verified: false, fileSet: new Set<string>() };
+  }
 
   const primaryBucket = settings?.supabaseBucket || (settings as any)?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || STORAGE_BUCKET_DEFAULT;
   const candidateLocations: Array<{ bucket: string; path: string }> = [
@@ -249,6 +267,7 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
 
   const storageResolved = await resolveStorageFiles(uniqueLocations);
   const fileSet = storageResolved.fileSet;
+  const verified = storageResolved.listingOk === true;
 
   if (fileSet.size > 0) {
     const verifiedFilenames: string[] = [];
@@ -260,10 +279,46 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
         verifiedFilenames.push(fn);
       }
     });
-    return { availableCount, verifiedFilenames };
+    return { availableCount, verifiedFilenames, verified, fileSet };
   }
 
-  return { availableCount: 0, verifiedFilenames: [] };
+  return { availableCount: 0, verifiedFilenames: [], verified, fileSet };
+}
+
+/**
+ * The bucket files that belong to one subgrid, as bare file names.
+ *
+ * This is what turns the "Unlinked images" row from permanently unknown into a
+ * real figure: an orphan is a file in the subgrid's folder that no POI claims,
+ * and you cannot see one without knowing which files the folder holds.
+ *
+ * `addFile` puts BOTH the path-prefixed key and the bare basename into
+ * `fileSet`, so the same physical file is present twice. Only the basename is
+ * returned, which collapses that pair — otherwise one orphan would be counted
+ * and listed twice.
+ *
+ * Returns `null` — NOT `[]` — when the inventory cannot be attributed to
+ * subgrids. A public provider manifest (R2, S3, CDN) yields a flat frame list
+ * with no folder structure, so `[]` there would be a fabricated "this subgrid
+ * has no orphans".
+ */
+export function listSubgridFilenamesFromInventory(
+  resolved: FileInventoryResult | null | undefined,
+  subgrid: string
+): string[] | null {
+  if (!resolved || !resolved.listingOk) return null;
+  if (resolved.fromManifest) return null;
+  const target = (subgrid ?? '').trim().toUpperCase();
+  if (!target || target === 'N/A') return null;
+
+  const out = new Set<string>();
+  for (const token of resolved.fileSet) {
+    // Match on the subgrid code embedded in the name. `extractSubgrid` reads the
+    // basename first, so a path-prefixed bucket key and a bare basename resolve
+    // to the same code.
+    if (extractSubgrid(token) === target) out.add(token.split('/').pop() ?? token);
+  }
+  return Array.from(out);
 }
 
 /**

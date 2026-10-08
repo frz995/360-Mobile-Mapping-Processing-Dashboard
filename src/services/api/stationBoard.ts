@@ -1,7 +1,19 @@
 import { supabase, scoped, getServiceProjectId } from './client';
+import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
 import type { StationBoardRow, StationBoardMetricUnit } from '../../types/production';
 
 const STATION_BOARD_TABLE = 'station_board_items';
+
+/**
+ * Stable keys, so a poll loop that fails repeatedly raises one banner line.
+ * `station_board_items` had no `authenticated` grant until migration 0035; the
+ * board looked healthy throughout because every failure resolved to the local
+ * mirror without a word.
+ */
+export const STATION_WRITE_OPS = {
+  boardRead: 'station_board.read',
+  boardWrite: 'station_board.write'
+} as const;
 
 function getBoardStorageKey(): string {
   const pid = getServiceProjectId();
@@ -35,20 +47,46 @@ function sameKey(a: StationBoardRow, b: StationBoardRow): boolean {
 export async function fetchStationBoardItemsFromSupabase(subgrid?: string): Promise<StationBoardRow[]> {
   const local = getLocalBoardRows();
   const target = (subgrid || '').trim().toUpperCase();
+  const fromLocal = () =>
+    target
+      ? local.filter((r) => (r.subgrid || '').trim().toUpperCase() === target)
+      : local;
+
   try {
     const query = scoped(supabase
       .from(STATION_BOARD_TABLE)
       .select('*'));
     const { data, error } = await query;
-    if (!error && Array.isArray(data) && data.length >= 0) {
-      setLocalBoardRows(data as StationBoardRow[]);
+    if (error) {
+      // The local mirror is a legitimate offline cache, but answering from it
+      // without saying so makes an unreachable database indistinguishable from a
+      // healthy one. Reported at warning severity so a guest/offline session
+      // still reads normally while a real outage is visible.
+      reportWriteFailure(
+        STATION_WRITE_OPS.boardRead,
+        'Station board (read)',
+        `${error.message} — showing the browser-local cache instead.`,
+        'warning'
+      );
+      return fromLocal();
     }
-    let rows = (!error && Array.isArray(data) ? data : local) as StationBoardRow[];
-    if (target) rows = rows.filter((r) => (r.subgrid || '').trim().toUpperCase() === target);
-    return rows;
-  } catch (_) {
-    if (target) return local.filter((r) => (r.subgrid || '').trim().toUpperCase() === target);
-    return local;
+    if (Array.isArray(data)) {
+      setLocalBoardRows(data as StationBoardRow[]);
+      reportWriteSuccess(STATION_WRITE_OPS.boardRead);
+      const rows = data as StationBoardRow[];
+      return target
+        ? rows.filter((r) => (r.subgrid || '').trim().toUpperCase() === target)
+        : rows;
+    }
+    return fromLocal();
+  } catch (err) {
+    reportWriteFailure(
+      STATION_WRITE_OPS.boardRead,
+      'Station board (read)',
+      `${err instanceof Error ? err.message : String(err)} — showing the browser-local cache instead.`,
+      'warning'
+    );
+    return fromLocal();
   }
 }
 
@@ -75,8 +113,24 @@ export async function upsertStationBoardItemInSupabase(
     const { error } = await supabase
       .from(STATION_BOARD_TABLE)
       .upsert([payload], { onConflict: 'project_id,subgrid,station_id' });
-    return !error;
-  } catch (_) {
+    // A PostgREST builder is thenable: it resolves with `{ data, error }` and
+    // does NOT throw on a rejected write, so `error` must be inspected here.
+    if (error) {
+      reportWriteFailure(
+        STATION_WRITE_OPS.boardWrite,
+        'Station board',
+        `${error.message} — this station's snapshot is being kept in this browser only.`
+      );
+      return false;
+    }
+    reportWriteSuccess(STATION_WRITE_OPS.boardWrite);
+    return true;
+  } catch (err) {
+    reportWriteFailure(
+      STATION_WRITE_OPS.boardWrite,
+      'Station board',
+      `${err instanceof Error ? err.message : String(err)} — this station's snapshot is being kept in this browser only.`
+    );
     return false;
   }
 }
