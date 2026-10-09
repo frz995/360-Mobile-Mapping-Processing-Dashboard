@@ -13,6 +13,8 @@
 //   VITE_ROAD_EXTRACTION_KEY   : optional API key for non-default providers
 // =====================================================================
 
+import { fetchDashboardApi } from './cloudflareApi';
+
 export interface RoadExtractionBBox {
   minLng: number;
   minLat: number;
@@ -284,7 +286,10 @@ const overpassAdapter: RoadExtractionAdapter = {
 async function fetchViaProxy(endpoint: string, bbox: RoadExtractionBBox, query: string): Promise<any | null> {
   let res: Response;
   try {
-    res = await fetch(endpoint, {
+    // fetchDashboardApi attaches the Supabase bearer, which the Pages Function
+    // requires now that /api/road-extraction is a guarded route. It is also a
+    // no-op locally, where the Vite middleware does not check auth.
+    res = await fetchDashboardApi(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bbox, query })
@@ -297,6 +302,11 @@ async function fetchViaProxy(endpoint: string, bbox: RoadExtractionBBox, query: 
 
   // 404 means the proxy route doesn't exist → local dev without the vite middleware
   if (res.status === 404) return null;
+
+  // Guests reach Road Analysis without a session, so they cannot present a
+  // bearer. Fall back to the direct Overpass path rather than failing the
+  // workspace with an auth error that reads like a misconfiguration.
+  if (res.status === 401 || res.status === 403) return null;
 
   if (!res.ok) {
     // Proxy returned a proper error (5xx, 400, etc.) — surface it directly so

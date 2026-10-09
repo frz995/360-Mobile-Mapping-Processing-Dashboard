@@ -97,7 +97,7 @@ const round = (v: number, dp = 2) => Number(Number(v).toFixed(dp));
 
 const ZERO_CORRIDOR: MeshCorridorBreakdown = { shortKm: 0, mediumKm: 0, arterialKm: 0, trunkKm: 0 };
 const ZERO_JUNCTIONS: MeshJunctionBreakdown = { deadEnd: 0, threeWay: 0, fourWay: 0, fivePlus: 0 };
-const ZERO_FRAMES: MeshFrameBreakdown = { verified: 0, defect: 0, transit: 0, mismatch: 0 };
+const ZERO_FRAMES: MeshFrameBreakdown = { verified: 0, defect: 0, transit: 0, mismatch: 0, missing: 0 };
 
 /** Percentage of `part` out of `whole`, or null when `whole` is zero. */
 function pct(part: number, whole: number): number | null {

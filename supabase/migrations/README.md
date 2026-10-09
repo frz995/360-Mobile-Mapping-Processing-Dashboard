@@ -41,6 +41,8 @@ REPLACE`) and safe to re-run from the Supabase SQL Editor or `psql`.
 | 0031 | `0031_rls_completeness_backstop.sql` | Closes two RLS gaps a from-empty install leaves: `survey_recycle_bin` never had RLS enabled, and `batch_logs` had RLS but **no policies** (deny-all). Additive and guarded; never loosens an existing policy. Apply **after** 0030. |
 | 0032 | `0032_qa_defects_run_scope.sql` | Adds `qa_defects.run_id` and widens the unique key to `(project_id, subgrid, run_id, point_id)`, so two survey runs of one subgrid can each hold a defect for the same filename. **Required by the app** — `datasets.ts` selects `run_id` and both defect writers upsert on it; without this the select fails (every run reads 0 defects) and every defect write is rejected. No backfill: existing rows keep `run_id` NULL and are treated as subgrid-level. |
 | 0033 | `0033_qa_defects_item_key.sql` | Formalises `qa_defects.item_key`, which was NOT NULL on at least one live database while appearing in **no migration** and being **written by no code** — every `qa_defects` write was rejected with a not-null violation. Adds the column where missing, backfills it from `point_id`, then enforces NOT NULL. |
+| 0034 | `0034_survey_metadata_filenames.sql` | Stores the survey metadata filename set per run so Data Management integrity checks (duplicates, invalid filenames, metadata mismatch) can be evaluated permanently for both staged and published runs. |
+| 0035 | `0035_repair_privileges_and_rls.sql` | **Critical privilege repair.** Repairs PostgreSQL table-level `GRANT`s on `survey_metadata_filenames`, `hub_session_state`, and `station_board_items` to `authenticated` and `service_role`, and repairs the metadata delete policy from the non-existent `editData` capability to `deleteData`. **Must not be skipped** — without 0035, CSV imports fail with table permission denied. |
 
 ## Ordering rule
 
@@ -62,6 +64,8 @@ REPLACE`) and safe to re-run from the Supabase SQL Editor or `psql`.
   **Consequence: do not fail fast at `0004`.** Use the loop below, which keeps
   going and lets `0012` create the tables `0004` wanted. Fixing this properly
   means guarding ~55 statements across `0004`/`0007`/`0010`; tracked separately.
+
+> 🚀 **Turnkey Bootstrap Alternative:** For fresh database setups, execute [`supabase/bootstrap.sql`](../bootstrap.sql) in one step in your Supabase SQL Editor. It consolidates all 35 migrations into a single, conflict-free transaction verified by automated unit tests.
 
 ## How to apply
 

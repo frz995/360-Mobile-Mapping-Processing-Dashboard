@@ -24,6 +24,7 @@ section (§) so you can link straight to the part you need.
 | 1 | [01-Infrastructure.md](01-Infrastructure.md) | Accounts, database, storage buckets, first administrator, Cloudflare Tunnel, Pages deploy |
 | 2 | [02-Operations.md](02-Operations.md) | NAS layout, worker, station agents, first-run configuration, verification |
 | 3 | [03-Reference.md](03-Reference.md) | Known limitations, troubleshooting, every environment variable, schema and API index |
+| 4 | [CHANGELOG.md](CHANGELOG.md) | Release history, bug fixes, architecture improvements, and new capabilities |
 
 Annexes (deeper reference, kept with the original sources):
 
@@ -119,7 +120,7 @@ Do these in sequence. Each step depends on the previous one.
 | :-- | :--- | :--- | :--- |
 | 1 | Create Cloudflare + Supabase accounts, buy/attach a domain | `01` §1 | 1 day |
 | 2 | Create the Supabase project; **enable PostGIS first** | `01` §2 | 30 min |
-| 3 | Apply migrations `0001`–`0010`, then `0012`–`0029` | `01` §2 | 45 min |
+| 3 | Apply migrations `0001`–`0035` (or run `bootstrap.sql`) | `01` §2 | 15 min |
 | 4 | Create the `MMS_PIC` storage bucket (**public**) | `01` §3 | 5 min |
 | 5 | Create the first Administrator | `01` §4 | 15 min |
 | 6 | Build the NAS folder tree | `02` §1 | 1 day |

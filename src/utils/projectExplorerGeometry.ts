@@ -975,6 +975,7 @@ export interface MeshFrameBreakdown {
   defect: number;
   transit: number;
   mismatch: number;
+  missing: number;
 }
 
 export interface MeshCellData {
@@ -1003,6 +1004,7 @@ export interface MeshCellData {
  */
 export function classifyFrameStatus(pt: any): keyof MeshFrameBreakdown {
   if (pt?.status === 'defect' || pt?.color === '#ef4444') return 'defect';
+  if (pt?.status === 'missing' || pt?.frameState === 'missing' || pt?.color === '#94a3b8') return 'missing';
   if (pt?.relationType === 'INTERSECT' || pt?.isTransit) return 'transit';
   if (pt?.relationType === 'MISMATCH') return 'mismatch';
   return 'verified';
@@ -1167,7 +1169,7 @@ export function buildMeshRoadChoroplethGeojson(
     const density = Number((planKm / areaKm2).toFixed(2));
 
     // Panotrack survey frames inside cell, split by capture status.
-    const frames: MeshFrameBreakdown = { verified: 0, defect: 0, transit: 0, mismatch: 0 };
+    const frames: MeshFrameBreakdown = { verified: 0, defect: 0, transit: 0, mismatch: 0, missing: 0 };
     let cellPanoCount = 0;
     for (let i = 0; i < validPoints.length; i++) {
       const pt = validPoints[i];

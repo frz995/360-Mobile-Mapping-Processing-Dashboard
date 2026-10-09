@@ -30,7 +30,6 @@ import {
 import { LayoutGroup, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useScroll, useSpring } from 'framer-motion';
 import Lenis from 'lenis';
 import Snap from 'lenis/snap';
-import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { StarsBackground } from './common/StarsBackground';
 import { GeoSphereFullLogo } from './common/GeoSphereLogo';
 import { EarthGlobe } from './common/EarthGlobe';
@@ -59,6 +58,16 @@ import { HERO_SECTION, globePoseFor, globeFitScale, springGlide } from './showca
 export type { SectionHotspot, SystemModule, WorkflowStep };
 
 const VECTOR_DEFAULT_ZOOM = 1.05;
+
+/**
+ * Zoom at which the tour stops counting itself "at overview" and starts pinning the
+ * HUD beacon to the selected district. Sits midway between the resting pose
+ * (INTRO_ZOOM, the backdrop globe in modules mode) and the district dive
+ * (SATELLITE_FOCUS_ZOOM), because INTRO_ZOOM itself is already 2.41 — a hardcoded
+ * 2.0 threshold was below the resting zoom, so the overview pose was unreachable
+ * and the beacon sat on the district from the very first frame.
+ */
+const INSPECTING_ZOOM = (INTRO_ZOOM + SATELLITE_FOCUS_ZOOM) / 2;
 
 /** Fallback so a WebGL/tile/runtime hiccup inside the MapLibre globe can never
  *  leave the showcase blank — errors degrade back to the vector SVG EarthGlobe.
@@ -221,8 +230,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         // wheel/trackpad input (touch is passed straight through), yet the Snap
         // plugin would still fire `scrollTo` against the finger's momentum —
         // the two fight, and the result is the shake/vibration seen during fast
-        // flick scrolling. CSS `snap-start` on the sections still gives touch
-        // users landing points, handled by the compositor instead of JS.
+        // flick scrolling. CSS `scroll-snap-type: y proximity` on the scroll port
+        // (see `.showcase-scrollport`) still gives touch users landing points,
+        // handled by the compositor instead of JS.
         const coarsePointer =
             typeof window !== 'undefined' &&
             typeof window.matchMedia === 'function' &&
@@ -311,6 +321,17 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     // While the globe container animates between the corner park and full-screen (700ms),
     // hold the globe's rotation off so the two animations don't fight and stall.
     const prevViewModeRef = useRef(viewMode);
+    // Held in a ref rather than cleared by this effect's cleanup: the effect also
+    // re-runs when showDistrictPopup/atomicGlobeFocus/showAtomicGlobe change, and a
+    // cleanup-scoped clearTimeout would cancel the reset without re-arming it,
+    // latching viewTransitioning true (which permanently disables globe auto-rotation).
+    const viewTransitionTimerRef = useRef<number | null>(null);
+    useEffect(() => () => {
+        if (viewTransitionTimerRef.current !== null) {
+            window.clearTimeout(viewTransitionTimerRef.current);
+            viewTransitionTimerRef.current = null;
+        }
+    }, []);
     useEffect(() => {
         if (prevViewModeRef.current !== viewMode) {
             const prev = prevViewModeRef.current;
@@ -330,8 +351,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         timestamp: Date.now(),
                     });
                 }
-                const t = window.setTimeout(() => setViewTransitioning(false), 1600);
-                return () => window.clearTimeout(t);
+                viewTransitionTimerRef.current = window.setTimeout(() => setViewTransitioning(false), 1600);
             } else if (prev === 'globe') {
                 // Clicking back to modules:
                 setViewTransitioning(true);
@@ -346,8 +366,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     zoom: returnZoom,
                     timestamp: Date.now(),
                 });
-                const t = window.setTimeout(() => setViewTransitioning(false), 1600);
-                return () => window.clearTimeout(t);
+                viewTransitionTimerRef.current = window.setTimeout(() => setViewTransitioning(false), 1600);
             }
         }
     }, [viewMode, showAtomicGlobe, showDistrictPopup, atomicGlobeFocus]);
@@ -362,9 +381,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         const t = window.setTimeout(() => setTitleSparklesReady(true), 400);
         return () => window.clearTimeout(t);
     }, [viewMode]);
-
-    // Dynamic Viewer Selection
-    const { viewerDisplayName } = usePanoramaViewer(projectSettings);
 
     // Glide the scroll story to a section (-1 hero, 0..5 modules, 6 outro).
     const scrollToSection = useCallback((idx: number) => {
@@ -397,15 +413,26 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     // Keyboard arrow navigation
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+            // The scroll story owns the arrows only while it is the visible view —
+            // otherwise they would yank the user out of the 3D Earth.
+            if (viewMode !== 'modules') return;
+            // CoverflowGallery binds the same keys to browse screenshots while its
+            // lightbox is open; without this the story jumps a section per press.
+            if (document.body.classList.contains('gallery-lightbox-open')) return;
+            // Never steal the arrows from a text field or a modified chord.
+            const el = e.target as HTMLElement | null;
+            if (e.altKey || e.ctrlKey || e.metaKey) return;
+            if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
             if (e.key === 'ArrowRight') {
                 handleModuleChange((activeIndex + 1) % SYSTEM_MODULES.length);
-            } else if (e.key === 'ArrowLeft') {
+            } else {
                 handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeIndex]);
+    }, [activeIndex, viewMode]);
 
     // Track which scroll-story section owns the viewport mid-band.
     useEffect(() => {
@@ -501,17 +528,25 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const computedDefects = dailyData.reduce((acc, item) => acc + (Number(item.imagesDefected || item.defectCount) || 0), 0);
     const computedPoi = dailyData.reduce((acc, item) => acc + getPOICount(item), 0);
     const activeJobs = batchLogs.filter((b: any) => b.status === 'In Progress' || b.status === 'Ongoing').length;
-    const targetDistance = Number(projectSettings?.targetKm) || Number(projectSettings?.targetDistanceKm) || (computedDistance > 0 ? computedDistance : 0);
-    const pctTarget = targetDistance > 0 ? Math.min(100, (computedDistance / targetDistance) * 100).toFixed(1) : '0.0';
-    const slaPercent = computedFrames > 0
-        ? Math.max(0, ((computedFrames - computedDefects) / computedFrames) * 100).toFixed(1)
-        : '100.0';
+// A target distance that was never configured is 0 (unknown), NOT the distance
+// surveyed so far — falling back to computedDistance made pctTarget a permanent
+// 100.0%, i.e. a confident "target met" claim for a target that does not exist.
+const targetDistance = Number(projectSettings?.targetKm) || Number(projectSettings?.targetDistanceKm) || 0;
+const hasTarget = targetDistance > 0;
+const pctTarget: string | null = hasTarget
+    ? Math.min(100, (computedDistance / targetDistance) * 100).toFixed(1)
+    : null;
+// No frames measured means no quality figure — never report a perfect 100% SLA for
+// an unmeasured run. `null` renders as unknown (see the consumers below).
+const slaPercent: string | null = computedFrames > 0
+    ? Math.max(0, ((computedFrames - computedDefects) / computedFrames) * 100).toFixed(1)
+    : null;
 
     const projectCreatedLabel = activeProject?.createdAt && !isNaN(new Date(activeProject.createdAt).getTime())
         ? new Date(activeProject.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         : '—';
 
-    const SYSTEM_MODULES: SystemModule[] = [
+    const SYSTEM_MODULES = useMemo<SystemModule[]>(() => [
         // MODULE 1: PROJECT MANAGEMENT  → workspace `project`
         {
             id: 'project',
@@ -584,7 +619,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             subtitle: 'See published survey coverage on the map and keep the masterlist and daily records in order',
             description: 'The published face of the project. Survey trajectories, subgrid boundaries and frame points render on a MapLibre basemap with a 360° viewer HUD and the Operational Action Center. Behind it, Data Management holds the Subgrid Masterlist, Daily field records and Dataset Recovery. CSV imports map their columns automatically, records publish to WebGIS individually or in bulk, and deletions pass through approval and the recycle bin.',
             metricLabel: 'Total Distance Mapped',
-            metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}% of target)`,
+            metricValue: hasTarget ? `${computedDistance.toFixed(1)} km (${pctTarget}% of target)` : `${computedDistance.toFixed(1)} km`,
             statusBadge: 'Published View',
             images: MODULE_MEDIA.dashboard,
             icon: Compass,
@@ -666,7 +701,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             subtitle: 'Compare surveyed coverage against the planned road network and share the results',
             description: 'Import a road plan from GeoJSON, CSV, KML/KMZ, GPX or zipped archives, decoded off the main thread and clipped to the project districts, then promote it as the baseline. Coverage is traced against the network to expose surveyed roads and gaps. The Project Explorer breaks the area down by Roads, Density, Complexity, Panotrack and Coverage with choropleth classes and operator-defined grids, and results leave as print layouts, 3D Map Studio scenes or password-protected share links.',
             metricLabel: 'Plan Coverage',
-            metricValue: `${pctTarget}% of target`,
+            metricValue: pctTarget === null ? '—' : `${pctTarget}% of target`,
             statusBadge: 'Coverage Analysis',
             images: MODULE_MEDIA.roadAnalysis,
             icon: MapPin,
@@ -912,7 +947,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             subtitle: 'Measure progress and quality, export formal reports and control who can do what',
             description: 'Survey Analytics turns the live records into overview, ledger, coverage and quality panels. Reports export Executive, Daily, Subgrid, QA and Lineage reports as print-ready PDFs. Administration manages users and role permissions, approves deletion requests, keeps the audit log and reports system health, so every change to project data is accounted for.',
             metricLabel: 'Data Quality',
-            metricValue: `${slaPercent}% SLA`,
+            metricValue: slaPercent === null ? '—' : `${slaPercent}% SLA`,
             statusBadge: 'Governance',
             images: MODULE_MEDIA.insights,
             icon: Shield,
@@ -985,7 +1020,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 }
             ]
         }
-    ];
+    // Memoised, because the array identity is a dependency of ModuleTourCards'
+    // layout memo AND of the effect that owns its window mousemove/click
+    // listeners. Rebuilding it every render tore those listeners down and back on
+    // every parent render. Deps are the scalar figures actually interpolated above.
+    ], [computedDistance, pctTarget, hasTarget, activeJobs, slaPercent, activeProject?.name, projectSettings?.projectName]);
 
     // Preload screenshot assets into memory
     useEffect(() => {
@@ -995,7 +1034,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 img.src = src;
             });
         });
-    }, []);
+    }, [SYSTEM_MODULES]);
 
     // Toggle html class so themes.css !important rules don't block the background image
     useEffect(() => {
@@ -1285,14 +1324,17 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             pipelineSla: slaPercent,
             publishedCount,
             stagingCount,
-            defectCount: defectCount > 0 ? defectCount : computedDefects,
+            // A district that was measured and is clean reports 0 — that is a real
+            // measurement, not "unknown". Substituting the project-wide defect count
+            // whenever the local count was zero made a clean district look defective.
+            defectCount,
             subgrids,
             trackPoints: trackPoints.length >= 2 ? trackPoints : undefined,
             boundaryGeojson: committedBoundary?.geojson,
             boundaryBbox: committedBoundary?.bbox,
             panotrackPoints: panotrackInProject,
         };
-    }, [showDistrictPopup, activeDistrict, panotrackInProject, panotrackData, computedFrames, computedPoi, computedDistance, computedDefects, slaPercent, projectSettings, committedBoundary]);
+    }, [showDistrictPopup, activeDistrict, panotrackInProject, panotrackData, computedFrames, computedPoi, computedDistance, slaPercent, projectSettings, committedBoundary]);
 
     // Track active marker projected 2D position from EarthGlobe
     const [markerProjectedPos, setMarkerProjectedPos] = useState<{ x: number; y: number; visible: boolean } | null>(null);
@@ -1308,55 +1350,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     }, []);
 
 
-    const globeMarkers = useMemo<GlobeMarker[]>(() => {
-        // The globe shows ONLY the committed state — a single region pin. District-level
+const globeMarkers = useMemo<GlobeMarker[]>(() => {
+        // One pin per district the project actually covers. District-level
         // granularity (Segamat / Tangkak) lives in the HUD card, not on the globe.
-        const stateName = activeDistrict?.state ||
-            (projectSettings?.projectBoundary as any)?.regionName ||
-            'Malaysia';
-        const stateSlug = stateName.trim().toLowerCase();
-
-        let lat = NaN;
-        let lng = NaN;
-
-        // 1. Always anchor to the full STATE boundary geometry — the area-weighted
-        //    centroid of the real Malaysian state shape (MALAYSIA_REGIONS). This keeps
-        //    the "Johor" label at the exact visual center of the state at every zoom
-        //    level, instead of jumping to the committed-district corner (Segamat +
-        //    Tangkak in Johor's northwest) that only matters when inspecting a district.
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-            const region = MALAYSIA_REGIONS.find((r) => r.name.trim().toLowerCase() === stateSlug);
-            lat = region?.center ? region.center[0] : NaN;
-            lng = region?.center ? region.center[1] : NaN;
-        }
-
-        // 2. Fall back to the average of the committed districts' centres — still
-        //    guaranteed to sit inside the state.
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-            if (resolvedDistricts.length > 0) {
-                lat = resolvedDistricts.reduce((acc, d) => acc + d.lat, 0) / resolvedDistricts.length;
-                lng = resolvedDistricts.reduce((acc, d) => acc + d.lng, 0) / resolvedDistricts.length;
-            }
-        }
-
-        // 3. Then to the fixed state metadata (guaranteed to sit inside the state),
-        // so a label like "JOHOR" is never pinned to the project location outside it.
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-            const stateMetas = DISTRICT_METADATA.filter(
-                (m) => (m.stateName || m.group || '').trim().toLowerCase() === stateSlug
-            );
-            if (stateMetas.length > 0) {
-                lat = stateMetas.reduce((acc, m) => acc + m.center[0], 0) / stateMetas.length;
-                lng = stateMetas.reduce((acc, m) => acc + m.center[1], 0) / stateMetas.length;
-            }
-        }
-
-        // Last resort: the project location.
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-            lat = projectLocation.latitude;
-            lng = projectLocation.longitude;
-        }
-
         if (resolvedDistricts.length > 0) {
             return resolvedDistricts.map((d) => ({
                 kind: 'district',
@@ -1368,14 +1364,16 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             }));
         }
 
-        const n = resolvedDistricts.length;
-        const description = `${stateName} • ${n} ${n === 1 ? 'district' : 'districts'} committed`;
+        // No districts resolved at all — a single project-area pin at the survey
+        // centroid. There is no district count to report here (a count of zero was
+        // previously hard-coded into the label), so the description is just the region.
+        const regionName = (projectSettings?.projectBoundary as any)?.regionName || 'Malaysia';
         return [{
             kind: 'district',
-            label: activeDistrict?.name || stateName,
-            description,
-            latitude: Number.isFinite(lat) ? lat : 3.8,
-            longitude: Number.isFinite(lng) ? lng : 109.5,
+            label: activeDistrict?.name || regionName,
+            description: regionName,
+            latitude: projectLocation.latitude,
+            longitude: projectLocation.longitude,
             color: '#1d4ed8',
         }];
     }, [activeDistrict, resolvedDistricts, projectSettings, projectLocation.latitude, projectLocation.longitude]);
@@ -1396,7 +1394,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         Number.isFinite(activeDistrict.lng) && (activeDistrict.lat !== 0 || activeDistrict.lng !== 0)
             ? activeDistrict.lng
             : (globeMarkers[0]?.longitude ?? activeDistrict.lng);
-    const inspectingDistrict = atomicGlobeFocus !== null || globeZoom >= 2.0;
+    const inspectingDistrict = atomicGlobeFocus !== null || globeZoom >= INSPECTING_ZOOM;
     const activeLat = customCenter
         ? customCenter.lat
         : inspectingDistrict
@@ -1434,13 +1432,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     }, [activeDistrict]);
 
     // Cinematic planetary camera dive handler
-    const handleInspectDistrict = useCallback((districtNameOverride?: string) => {
+    const handleInspectDistrict = useCallback(() => {
         if (isFlyingIn || isZoomedToDistrict) return;
         setAutoRotate(false);
-        if (typeof districtNameOverride === 'string') {
-            const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === districtNameOverride.toLowerCase());
-            if (idx >= 0) setSelectedDistrictIdx(idx);
-        }
         setShowProjectPicker(false);
         // Align globe directly over target survey coordinates
         setCustomCenter({ lat: activeDistrict.lat, lng: activeDistrict.lng });
@@ -1451,7 +1445,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             setIsZoomedToDistrict(true);
             setIsFlyingIn(false);
         }, 650);
-    }, [isFlyingIn, isZoomedToDistrict, activeDistrict, inspectableDistricts]);
+    }, [isFlyingIn, isZoomedToDistrict, activeDistrict]);
 
     const handleReturnToGlobe = useCallback(() => {
         setIsZoomedToDistrict(false);
@@ -1461,7 +1455,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
     // Select a district: deep-zoom the globe onto it (smooth 60 FPS fly) and open the details card
     const handleSelectDistrict = useCallback((idx: number) => {
-        const d = inspectableDistricts[idx] || activeDistrict;
+        // resolvedDistricts is the one list the operator can actually pick from —
+        // the popup chips, the picker and the globe pins all index it. It is a
+        // superset of inspectableDistricts (a whole-state boundary expands to every
+        // district in that state), so resolving against the committed-only list
+        // silently fell back to the previously active district on every click.
+        const d = resolvedDistricts[idx] || activeDistrict;
         if (!d) return;
         setSelectedDistrictIdx(idx);
         setShowProjectPicker(false);
@@ -1477,7 +1476,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         });
         if (Number.isFinite(d.lat) && Number.isFinite(d.lng)) setAtomicGlobeFocus({ lat: d.lat, lng: d.lng });
         setShowDistrictPopup(true);
-    }, [inspectableDistricts, activeDistrict, showDistrictPopup, globeZoom]);
+    }, [resolvedDistricts, activeDistrict, showDistrictPopup, globeZoom]);
 
     // Deselect: close the details card and glide the globe back out to the project overview
     const handleDeselectDistrict = useCallback(() => {
@@ -1619,7 +1618,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     activeMarkerLabel={activeDistrict.name}
                                     onActiveMarkerProjected={handleActiveMarkerProjected}
                                     onMarkerClick={(marker) => {
-                                        const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
+                                        const idx = resolvedDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
                                         if (idx >= 0) {
                                             if (showDistrictPopup && idx === selectedDistrictIdx) {
                                                 handleDeselectDistrict();
@@ -1672,7 +1671,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 onActiveMarkerProjected={handleActiveMarkerProjected}
                                 onZoomIn={() => handleInspectDistrict()}
                                 onMarkerClick={(marker) => {
-                                    const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
+                                    const idx = resolvedDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
                                     if (idx >= 0) {
                                         // Toggle: clicking the already-selected district again → deselect + zoom out
                                         if (showDistrictPopup && idx === selectedDistrictIdx) {
@@ -2119,10 +2118,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                             title={`Inspect ${activeDistrict ? activeDistrict.name : 'District'} Boundary`}
                                         >
                                             <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                            <span className="hidden min-[420px]:inline">Inspect {inspectableDistricts.length > 1 ? activeDistrict.name : (resolvedDistricts.length > 0 ? (activeDistrict?.name || 'District') : 'District')}</span>
+                                            <span className="hidden min-[420px]:inline">Inspect {activeDistrict?.name || 'District'}</span>
                                             <span className="min-[420px]:hidden">Inspect</span>
                                         </button>
-                                        {inspectableDistricts.length > 1 && (
+                                        {resolvedDistricts.length > 1 && (
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -2139,13 +2138,13 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     </div>
 
                                     {/* Multi-Project District Popover */}
-                                    {showProjectPicker && inspectableDistricts.length > 1 && (
+                                    {showProjectPicker && resolvedDistricts.length > 1 && (
                                         <div className="absolute bottom-full mb-2 right-0 w-60 rounded-2xl bg-black/90 backdrop-blur-xl border border-white/15 shadow-2xl p-1.5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
                                             <div className="px-2.5 py-1 text-[10px] font-mono text-neutral-400 uppercase tracking-wider border-b border-white/10 mb-1 flex items-center justify-between">
                                                 <span>Select Project</span>
-                                                <span className="text-white/60">{inspectableDistricts.length} Districts</span>
+                                                <span className="text-white/60">{resolvedDistricts.length} Districts</span>
                                             </div>
-                                            {inspectableDistricts.map((d, idx) => (
+                                            {resolvedDistricts.map((d, idx) => (
                                                 <button
                                                     key={d.id}
                                                     onClick={() => {
@@ -2196,11 +2195,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     }`}
             >
                 <HeroSection
-                    distanceKm={computedDistance}
-                    frames={computedFrames}
-                    activeJobs={activeJobs}
                     sparklesReady={titleSparklesReady}
-                    viewerName={viewerDisplayName}
                     onExplorePlatform={() => handleModuleChange(0)}
                     onExploreEarth={() => setViewMode('globe')}
                 />

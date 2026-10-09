@@ -114,7 +114,7 @@ field still sees one authoritative state instead of a blank board.
   Monitor already pings. Default port is `8000`.
 - Optional shared secret: set `AGENT_TOKEN` in each PC's `.env` and the same
   value in the dashboard's project settings under the station's agent token
-  (`stationAgentToken`) — probes then send `Authorization: Bearer <token>`.
+  (`agentToken`) — probes then send `Authorization: Bearer <token>`.
 - Handles `/health` (worker-compatible shape, consumed by Worker Monitor) and
   `/api/station` (auto-detection payload).
 

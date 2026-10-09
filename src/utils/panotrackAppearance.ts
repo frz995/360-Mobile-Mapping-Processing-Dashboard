@@ -70,6 +70,12 @@ export interface PointAppearanceInput {
   isSelected?: boolean;
   /** Renders unpresentable points in the muted slate. */
   dimmed?: boolean;
+  /**
+   * When true (default), confirmed missing frames render as gray (#94a3b8) with
+   * status 'missing'. When false, missing frames fall back to their pipeline
+   * status color: yellow (#f59e0b) if staging, green (#10b981) if published.
+   */
+  highlightMissingFrames?: boolean;
 }
 
 export interface PointAppearance {
@@ -127,7 +133,8 @@ export function resolvePointAppearance({
   qaState,
   isPublished,
   isSelected = false,
-  dimmed = false
+  dimmed = false,
+  highlightMissingFrames = true
 }: PointAppearanceInput): PointAppearance {
   if (dimmed) {
     return {
@@ -142,26 +149,40 @@ export function resolvePointAppearance({
 
   // ---- fill: the QA outcome --------------------------------------------
   let color: string;
-  if (qaState === 'defect') color = PALETTE.defect;
-  else if (frameState === 'missing') color = PALETTE.missing;
-  else if (frameState === 'unverified' || frameState === 'unrecorded') color = PALETTE.unknown;
-  else color = isPublished ? PALETTE.published : PALETTE.staging;
+  if (qaState === 'defect') {
+    color = PALETTE.defect;
+  } else if (frameState === 'missing') {
+    color = highlightMissingFrames ? PALETTE.missing : (isPublished ? PALETTE.published : PALETTE.staging);
+  } else if (frameState === 'unverified' || frameState === 'unrecorded') {
+    color = PALETTE.unknown;
+  } else {
+    color = isPublished ? PALETTE.published : PALETTE.staging;
+  }
 
   // ---- stroke: the frame outcome, independent of the fill --------------
   let strokeColor: string;
-  if (frameState === 'missing') strokeColor = PALETTE.missing;
-  else if (frameState === 'unverified' || frameState === 'unrecorded') strokeColor = PALETTE.unknown;
-  else strokeColor = color;
+  if (frameState === 'missing') {
+    strokeColor = highlightMissingFrames ? PALETTE.missing : color;
+  } else if (frameState === 'unverified' || frameState === 'unrecorded') {
+    strokeColor = PALETTE.unknown;
+  } else {
+    strokeColor = color;
+  }
 
   // ---- status string: the existing WebGIS contract ---------------------
   // `status` is a loose string everywhere it matters, and the external map
   // switches on it. `missing` is a new value; the WebGIS app needs a legend
   // entry for it. Until then it degrades to the colour we send alongside it.
   let status: string;
-  if (qaState === 'defect') status = 'defect';
-  else if (frameState === 'missing') status = 'missing';
-  else if (frameState === 'unverified' || frameState === 'unrecorded') status = 'unverified';
-  else status = isPublished ? 'published' : 'staging';
+  if (qaState === 'defect') {
+    status = 'defect';
+  } else if (frameState === 'missing') {
+    status = highlightMissingFrames ? 'missing' : (isPublished ? 'published' : 'staging');
+  } else if (frameState === 'unverified' || frameState === 'unrecorded') {
+    status = 'unverified';
+  } else {
+    status = isPublished ? 'published' : 'staging';
+  }
 
   // Selection outranks every state, matching the existing behaviour at
   // `MapComponent.tsx:169-171`, where a selected point is blue regardless.
@@ -177,7 +198,9 @@ export function resolvePointAppearance({
   }
 
   // Absence and doubt are both drawn faint; presence is drawn solid.
-  const opacity = frameState === 'missing' ? 0.75 : frameState === 'present' ? 1.0 : 0.5;
+  const opacity = frameState === 'missing'
+    ? (highlightMissingFrames ? 0.75 : (isPublished ? 1.0 : 0.7))
+    : (frameState === 'present' ? 1.0 : 0.5);
 
   return { color, strokeColor, frameState, qaState, status, opacity };
 }

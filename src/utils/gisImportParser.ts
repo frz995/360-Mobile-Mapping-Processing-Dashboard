@@ -466,6 +466,20 @@ export function normalizeGeoJsonCoordinates(geojson: any, warnings: string[]): a
 
   const [minLng, minLat, maxLng, maxLat] = bbox;
 
+  // Local projected grid coordinate check (e.g. MRSO EPSG:3375, Cassini, or UTM meters: [500 to 2,000,000])
+  // DO NOT treat these as Web Mercator, which would project Asian/Malaysian coordinates into the Atlantic Ocean.
+  const isLikelyLocalGrid =
+    (Math.abs(minLng) > 180 || Math.abs(maxLng) > 180 || Math.abs(minLat) > 90 || Math.abs(maxLat) > 90) &&
+    Math.abs(minLng) >= 500 && Math.abs(maxLng) <= 2000000 &&
+    Math.abs(minLat) >= 500 && Math.abs(maxLat) <= 2000000;
+
+  if (isLikelyLocalGrid) {
+    warnings.push(
+      `Detected local projected grid coordinates (e.g. MRSO/Cassini/UTM meters: [${minLng.toFixed(0)}, ${minLat.toFixed(0)}]). Re-export from GIS as WGS84 (EPSG:4326) with latitude and longitude for accurate map overlay.`
+    );
+    return geojson;
+  }
+
   // Web Mercator coordinate check (meters: X in [-20037508, 20037508], Y in [-20037508, 20037508])
   const isWebMercator =
     (Math.abs(minLng) > 180 || Math.abs(maxLng) > 180 || Math.abs(minLat) > 90 || Math.abs(maxLat) > 90) &&

@@ -57,7 +57,18 @@ API_TOKEN = os.environ.get("NAS_WORKER_TOKEN", "")  # optional shared secret
 _WORKER_ID = os.environ.get("NAS_WORKER_ID") or platform.node() or "nas-worker"
 
 
-app = FastAPI(title="GeoSphere 360 NAS Worker", version="1.0.0")
+# The interactive schema UIs are disabled deliberately. This service is reached
+# through a Cloudflare Tunnel, and the documented contract is that /health is the
+# ONLY unauthenticated route (see worker/README.md) — FastAPI's defaults would
+# quietly publish the full route table, including filesystem parameters, to
+# anyone who can reach the port.
+app = FastAPI(
+    title="GeoSphere 360 NAS Worker",
+    version="1.0.0",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 app.add_middleware(
     CORSMiddleware,

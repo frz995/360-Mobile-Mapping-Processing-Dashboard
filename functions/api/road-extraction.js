@@ -105,7 +105,6 @@ function jsonResponse(data, status, headers = {}) {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
       ...headers
     }
   });
@@ -184,14 +183,7 @@ export async function onRequestPost(context) {
     details: errors
   }, 502);
 }
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-    }
-  });
-}
+// No onRequestOptions handler: this route is now a guarded, same-origin call
+// (see functions/_middleware.js PRIVATE_API_PATHS), exactly like every other
+// /api/* route here, so there is no cross-origin preflight to answer and no
+// wildcard origin to advertise.

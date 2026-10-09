@@ -53,7 +53,33 @@ function nasWorkerDevProxy(target: string, token: string): Record<string, any> {
     '/api/nas-image': {
       target: origin,
       changeOrigin: true,
-      rewrite: (p: string) => p.replace(/^\/api\/nas-image/, '/api/images'),
+      // The worker exposes images as a PATH segment
+      // (`GET /api/images/{rel_path:path}`, worker/app.py), but the browser
+      // addresses them as a QUERY param (`/api/nas-image?path=…`,
+      // src/services/nasImageToken.ts). A bare prefix swap left the value in
+      // the query string, so every preview 404'd in dev-proxy mode. Lift the
+      // param into the path here, mirroring functions/api/nas-image.js.
+      rewrite: (p: string) => {
+        const query = p.split('?')[1] || '';
+        const rel = query
+          .split('&')
+          .map((pair: string) => pair.split('='))
+          .find((pair: string[]) => pair[0] === 'path');
+        if (!rel || rel.length < 2) return '/api/images';
+        let decoded = '';
+        try {
+          decoded = decodeURIComponent(rel.slice(1).join('='));
+        } catch {
+          return '/api/images';
+        }
+        const segments = decoded.split('/').filter(Boolean);
+        if (!segments.length || segments.some((s: string) => s === '.' || s === '..' || s.includes('\\'))) {
+          // Same traversal guard as the Pages Function; let the worker 404 it
+          // rather than proxying a path that escapes NAS_BASE_PATH.
+          return '/api/images';
+        }
+        return `/api/images/${segments.map(encodeURIComponent).join('/')}`;
+      },
       configure: authorize,
     },
     '/api/worker': {

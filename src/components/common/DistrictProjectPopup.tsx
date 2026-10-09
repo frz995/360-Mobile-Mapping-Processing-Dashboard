@@ -22,8 +22,9 @@ export interface DistrictGalleryItem {
   lng: number;
   totalFrames?: number;
   totalPoi?: number;
-  surveyMileage?: number;
-  pipelineSla?: string;
+surveyMileage?: number;
+    /** Null when no frames have been measured yet — renders as unknown, not 0%. */
+    pipelineSla?: string | null;
   subgrids?: string[];
   trackPoints?: Array<[number, number]>;
 }
@@ -35,8 +36,8 @@ export interface PanotrackPopupData {
   longitude: number;
   totalFrames: number;
   totalPoi: number;
-  surveyMileage: number;
-  pipelineSla: string;
+surveyMileage: number;
+    pipelineSla: string | null;
   publishedCount?: number;
   stagingCount?: number;
   defectCount?: number;
@@ -176,7 +177,9 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
   const safeFrames = Number(data.totalFrames ?? 0);
   const safePoi = Number(data.totalPoi ?? 0);
   const safeMileage = Number(data.surveyMileage ?? 0);
-  const pipelineSla = data.pipelineSla ?? '—';
+  // A null SLA means no frames were measured — it must never be coerced into a
+// number, and the literal '%' suffix must not attach to the unknown marker.
+const pipelineSla = data.pipelineSla ?? null;
 
   const subgrids = data.subgrids || [];
   const hasBoundary = Boolean(data.boundaryGeojson && Array.isArray(data.boundaryGeojson.features) && data.boundaryGeojson.features.length > 0);
@@ -550,7 +553,8 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
               and <span className="text-white font-semibold">{safePoi.toLocaleString()} platform POIs</span>{' '}
               across {scopeText}, covering{' '}
               <span className="text-white font-semibold">{safeMileage.toFixed(1)} km</span> of surveyed route
-              with a pipeline SLA of <span className="text-white font-semibold">{pipelineSla}%</span>.
+              with a pipeline SLA of{' '}
+              <span className="text-white font-semibold">{pipelineSla === null ? '—' : `${pipelineSla}%`}</span>.
             </p>
           )}
 

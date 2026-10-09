@@ -151,7 +151,7 @@ type Layer = CatalogLayer;
 type Folder = CatalogFolder;
 export type { Layer, Folder };
 
-import { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, reconcileBatchLogs } from './utils/dashboardData';
+import { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, resolveRunCounts, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, reconcileBatchLogs } from './utils/dashboardData';
 export { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, reconcileBatchLogs };
 import { getItemId, resolveAuditForRun } from './utils/items';
 export { getItemId, resolveAuditForRun };
@@ -1252,16 +1252,41 @@ export default function App() {
     document.removeEventListener('visibilitychange', onVisibility);
     document.addEventListener('visibilitychange', onVisibility);
 
-    // Map/QA panels render inside iframes, which swallow pointer/keyboard events
-    // from the parent window. Listen for focus/entry crossing so sustained work
-    // inside those panes is not mistaken for idle.
+    // Map/QA panels render inside iframes or WebGL canvases, which swallow pointer/keyboard
+    // events from the parent window. Listen for focus/entry crossing, window blur into iframes,
+    // postMessage heartbeats from viewers, and custom app activity events so sustained work
+    // inside those panes is never mistaken for idle.
+    const onWindowBlur = () => {
+      if (document.activeElement?.tagName === 'IFRAME') {
+        markActive();
+      }
+    };
+
+    const onWindowMessage = (e: MessageEvent) => {
+      if (
+        e.data === 'geosphere:activity' ||
+        e.data?.type === 'geosphere:activity' ||
+        e.data?.type === 'GEOSPHERE_ACTIVITY'
+      ) {
+        markActive();
+      }
+    };
+
     window.addEventListener('focus', notifyActivityFromIframe);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('message', onWindowMessage);
+    window.addEventListener('geosphere:activity', markActive as EventListener);
     document.addEventListener('mouseenter', notifyActivityFromIframe);
+    document.addEventListener('pointerenter', notifyActivityFromIframe);
 
     return () => {
       ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, markActive));
       window.removeEventListener('focus', notifyActivityFromIframe);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('message', onWindowMessage);
+      window.removeEventListener('geosphere:activity', markActive as EventListener);
       document.removeEventListener('mouseenter', notifyActivityFromIframe);
+      document.removeEventListener('pointerenter', notifyActivityFromIframe);
       document.removeEventListener('visibilitychange', onVisibility);
       window.clearInterval(interval);
       if (writeDebounce) clearTimeout(writeDebounce);
@@ -1327,8 +1352,7 @@ export default function App() {
         date: d.date,
         subgrid: `${d.subgrid} (Run ${index + 1})`,
         imageFilename: (d as any).imageFilename || (d as any).filename || `${d.subgrid}.jpg`,
-        images: d.imagesProcessed || d.poiCount || 0,
-        poiCount: d.poiCount || d.imagesProcessed || 0,
+        ...resolveRunCounts(d as any),
         kmProcessed: d.kmProcessed || 0,
         captureEquipment: d.captureEquipment || 'MMS',
         pic: d.pic || '',
@@ -3303,24 +3327,6 @@ subgrid: nextSubgrid,
 
                                 <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
                                   <div className="flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                                    <span className="text-[11px]">Defect / Flags</span>
-                                  </div>
-                                  <input
-                                    type="checkbox"
-                                    checked={statusFilters.defect}
-                                    disabled={!showPanotrackData}
-                                    onChange={(e) => {
-                                      const next = { ...statusFilters, defect: e.target.checked };
-                                      setStatusFilters(next);
-                                      pushTrajectoryFilter(next, showPanotrackData);
-                                    }}
-                                    className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
-                                  />
-                                </label>
-
-                                <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
-                                  <div className="flex items-center gap-2">
                                     <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
                                     <span className="text-[11px]">Staging</span>
                                   </div>
@@ -3330,6 +3336,24 @@ subgrid: nextSubgrid,
                                     disabled={!showPanotrackData}
                                     onChange={(e) => {
                                       const next = { ...statusFilters, stitching: e.target.checked };
+                                      setStatusFilters(next);
+                                      pushTrajectoryFilter(next, showPanotrackData);
+                                    }}
+                                    className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                                  />
+                                </label>
+
+                                <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                                    <span className="text-[11px]">Defect / Flags</span>
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={statusFilters.defect}
+                                    disabled={!showPanotrackData}
+                                    onChange={(e) => {
+                                      const next = { ...statusFilters, defect: e.target.checked };
                                       setStatusFilters(next);
                                       pushTrajectoryFilter(next, showPanotrackData);
                                     }}

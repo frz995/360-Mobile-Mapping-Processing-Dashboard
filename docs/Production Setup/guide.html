@@ -669,22 +669,18 @@ approval (6.3).</div>
       <tr><td>30</td><td><code>0031_rls_completeness_backstop.sql</code></td><td>Closes the two RLS gaps a fresh install leaves: <code>survey_recycle_bin</code> never had RLS enabled, and <code>batch_logs</code> had RLS but <b>no policies</b> (deny-all)</td></tr>
       <tr><td>31</td><td><code>0032_qa_defects_run_scope.sql</code></td><td><b>Required.</b> Adds <code>qa_defects.run_id</code> and widens the unique key to <code>(project_id, subgrid, run_id, point_id)</code>, so one run's defects stop appearing on a sibling run of the same subgrid</td></tr>
       <tr><td>32</td><td><code>0033_qa_defects_item_key.sql</code></td><td><b>Required.</b> Adds <code>qa_defects.item_key</code> where missing, back-fills it from <code>point_id</code>, then enforces <code>NOT NULL</code></td></tr>
+      <tr><td>33</td><td><code>0034_survey_metadata_filenames.sql</code></td><td><b>Required.</b> Creates <code>survey_metadata_filenames</code> table, tracking captured metadata files per survey run</td></tr>
+      <tr><td>34</td><td><code>0035_repair_privileges_and_rls.sql</code></td><td><b>Required.</b> Repairs table privileges for <code>station_board_items</code>, <code>hub_session_state</code>, and <code>survey_metadata_filenames</code> to <code>authenticated</code>, and aligns capability gating</td></tr>
     </tbody>
   </table>
 
   <div class="callout c-warn">
     <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-    <span class="ct">0032 and 0033 are required, not optional</span>
-    <p>Stopping at <code>0031</code> produces a build that starts, reads, and quietly lies.</p>
-    <p><b>Without <code>0032</code></b> the <code>qa_defects</code> select in <code>datasets.ts</code>
-    fails on the missing <code>run_id</code> column &mdash; and that failure is caught and swallowed,
-    so <b>every survey run reports 0 defects</b>. Both defect writers upsert on a unique index that
-    does not exist and are rejected. The board looks healthy because there is nothing on it to
-    inspect.</p>
-    <p><b>Without <code>0033</code></b> every <code>qa_defects</code> write is rejected with
-    <code>null value in column &quot;item_key&quot; &hellip; violates not-null constraint</code>. QA/QC
-    results appear to save, then vanish on refresh.</p>
-    <p>Both are idempotent and safe to re-run. Apply them.</p>
+    <span class="ct">0032 through 0035 are required, not optional</span>
+    <p>Stopping early produces a build that starts, reads, and quietly fails.</p>
+    <p><b>Without <code>0032</code> &amp; <code>0033</code></b> the <code>qa_defects</code> select fails or defect upserts reject on missing columns.</p>
+    <p><b>Without <code>0035</code></b> table privileges on <code>station_board_items</code>, <code>hub_session_state</code>, and <code>survey_metadata_filenames</code> belong only to <code>postgres</code>. Application users and operators encounter silent permission denied errors.</p>
+    <p>All migrations are idempotent and safe to re-run. Apply the complete set.</p>
   </div>
 
   <div class="callout c-warn">
@@ -696,9 +692,7 @@ approval (6.3).</div>
   </div>
 
   <h3>Ordering dependencies</h3>
-  <p>The listed order already satisfies these, but they explain the failures you will see if the
-  order is broken. <b>One of them is a known defect in this set</b>, covered in the warning
-  immediately below the table.</p>
+  <p>The listed order already satisfies these, but they explain the relationships across files.</p>
   <table>
     <thead><tr><th style="width:36%">Constraint</th><th>Reason</th></tr></thead>
     <tbody>
@@ -707,36 +701,17 @@ approval (6.3).</div>
       <tr><td><code>0018</code> before <code>0019</code></td><td><code>0019</code> re-grants and re-creates the policy</td></tr>
       <tr><td><code>0023</code> before <code>0025</code></td><td><code>0025</code> warns and exits if the station board table is absent</td></tr>
       <tr><td><code>0007</code> and <code>0016</code> before <code>0031</code></td><td><code>0031</code> backstops <code>survey_recycle_bin</code> and <code>batch_logs</code>, which those two create</td></tr>
-      <tr><td><b>Known defect:</b> <code>0012</code> before <code>0004</code></td><td><code>0004</code> opens with <code>ALTER TABLE public.panoramas</code>, but <code>panoramas</code> is created by <code>0012</code> &#8212; eight files later, so on an <b>empty</b> database <code>0004</code> fails on its first statement</td></tr>
+      <tr><td><code>0034</code> before <code>0035</code></td><td><code>0034</code> creates <code>survey_metadata_filenames</code>; <code>0035</code> grants privileges</td></tr>
+      <tr><td><b>Resolved:</b> <code>0004</code> and <code>0012</code></td><td><code>0004</code> guards <code>panoramas</code> and <code>staging_panoramas</code> with existence checks so fresh installs run cleanly without halting; <code>0012</code> creates the tables and sets authoritative role-guarded RLS</td></tr>
     </tbody>
   </table>
 
-  <div class="callout c-dang">
-    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-    <span class="ct">On a fresh install, do not stop at the first error</span>
-    <p>Because <code>0004</code> needs a table that <code>0012</code> creates, a fresh database
-    fails at <code>0004</code> and the failure cascades: <code>0007</code> needs
-    <code>deletion_requests</code>, and <code>0010</code> and <code>0030</code> need
-    <code>user_accounts</code>.</p>
-    <p><b>If you stop there, <code>0030</code> never runs and Disable does not actually revoke
-    access</b> &#8212; accounts look revoked while their token claim still grants everything.</p>
-    <p>The Supabase SQL editor is safe: it runs statements independently, so <code>0012</code> can
-    still create the tables <code>0004</code> wanted. With <code>psql</code>, omit
-    <code>ON_ERROR_STOP=1</code>. <code>0031</code> then repairs the two RLS gaps this ordering
-    leaves behind.</p>
-  </div>
-
   <h3>How to run them</h3>
-  <p><b>Supabase SQL editor</b> &#8212; paste and run each file in order, one at a time. Safe on a
-  fresh install.</p>
-  <p><b>psql</b> &#8212; note this deliberately does <b>not</b> fail fast, for the reason above:</p>
+  <p><b>Fastest path:</b> run the single consolidated bundle <code>supabase/bootstrap.sql</code> (generated via <code>npm run migrations:bootstrap</code>). Paste and run in the Supabase SQL editor in one step.</p>
+  <p><b>psql:</b> execute the consolidated migration bundle:</p>
   <pre><code><span class="c"># bash</span>
 export PGHOST=&lt;db-host&gt; PGDATABASE=postgres PGUSER=postgres PGPASSWORD=&lt;password&gt;
-<span class="k">for</span> f <span class="k">in</span> supabase/migrations/00*.sql; <span class="k">do</span>
-  <span class="k">case</span> <span class="s">"$f"</span> <span class="k">in</span> *0011_security_tests.sql) <span class="k">continue</span> ;; <span class="k">esac</span>
-  <span class="c"># deliberately NOT ON_ERROR_STOP: 0004 needs a table 0012 creates, so it fails on a fresh db</span>
-  psql -q -f <span class="s">"$f"</span> || <span class="k">echo</span> <span class="s">"   (continued past an error in $f"</span>
-<span class="k">done</span></code></pre>
+psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f supabase/bootstrap.sql</code></pre>
   <p>The migrations are written to be idempotent, so re-running a file that partially applied is
   safe. After the full sequence, run the verification in <b>3.4</b>.</p>
 
@@ -803,20 +778,9 @@ export PGHOST=&lt;db-host&gt; PGDATABASE=postgres PGUSER=postgres PGPASSWORD=&lt
 
   <div class="callout c-info">
     <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
-    <span class="ct">Why it must be public</span>
-    <p>The dashboard builds panorama URLs of the form
-    <code>https://&lt;project&gt;.supabase.co/storage/v1/object/public/MMS_PIC/&lt;file&gt;</code>
-    and hands them directly to image and tile loaders. There is no signed-URL code path for
-    panoramas. With a private bucket, every panorama renders broken.</p>
-  </div>
-
-  <div class="callout c-warn">
-    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-    <span class="ct">Conflicting internal documentation</span>
-    <p>Some internal notes describe this bucket as private. Making it private is only viable if
-    you <em>also</em> add a storage read policy <b>and</b> have the application switched to signed
-    URLs. The second half is <b>not implemented</b>. Treat "public" as the only supported
-    configuration today.</p>
+    <span class="ct">Storage Modes: Public vs Enterprise Private</span>
+    <p><b>Public Bucket (Default):</b> Builds direct public CDN/storage URLs for zero API signing latency during public survey viewing.</p>
+    <p><b>Enterprise Private Bucket:</b> Fully supported via <code>isPrivateBucket</code> in Admin Settings. The platform pre-signs and caches signed tokens in memory with a 50-minute safe validity window, resolving images through authenticated storage endpoints without viewer interruption.</p>
   </div>
 
   <div class="callout c-dang">
@@ -854,11 +818,16 @@ export PGHOST=&lt;db-host&gt; PGDATABASE=postgres PGUSER=postgres PGPASSWORD=&lt
   <h1 class="sec"><span class="num">5</span>First administrator</h1>
   <p class="sec-lede">Bootstrapping the first account, which cannot be done from inside the application.</p>
 
-  <h2>5.1 Why this must be done by hand</h2>
-  <p>There is no seed script, no migration-runner configuration and no sign-up path in the
-  application. Meanwhile the user-management screen requires the
-  <code>manageUsers</code> capability, which only an Administrator holds. The first Administrator
-  therefore <b>cannot</b> be created from within the product &#8212; you must seed them.</p>
+  <h2>5.1 Automated Provisioning &amp; Manual Fallback</h2>
+  <div class="callout c-ok">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    <span class="ct">Turnkey Provisioning CLI (Recommended)</span>
+    <p>Provision the initial administrator in a single step using the automated script:
+    <code>npm run admin:seed</code> (or provide <code>--email</code> and <code>--password</code> arguments).
+    Then verify full system and database readiness with <code>npm run doctor</code>.</p>
+  </div>
+
+  <p>If you prefer manual configuration in the Supabase Dashboard, follow the four steps below.</p>
 
   <figure>
     <svg viewBox="0 0 900 176" role="img" aria-label="First administrator bootstrap flow">
@@ -1423,9 +1392,7 @@ NAS_WORKER_TOKEN=&lt;same token as the worker&gt;</code></pre>
   <h1 class="sec"><span class="num">9</span>NAS layout</h1>
   <p class="sec-lede">The folder structure the services read. Getting this wrong fails quietly, not loudly.</p>
 
-  <p>The worker and the agents read the survey filesystem directly, against <b>hard-coded stage
-  folder names</b>. If the layout does not match, the corresponding scans return empty results
-  rather than reporting an error &#8212; so build it exactly as shown.</p>
+  <p>The worker and the agents read the survey filesystem directly. By default, the system follows a standard production stage layout, with built-in <b>adaptive dynamic stage discovery</b> supporting alternative grid folders (e.g. <code>Grid 2</code>, <code>Grid 3</code>), flat stage layouts, custom stage aliases, and environment variable overrides (<code>NAS_STITCH_STAGE</code>, etc.). The recommended production layout is shown below.</p>
 
   <figure>
     <svg viewBox="0 0 900 400" role="img" aria-label="Required NAS folder layout">
@@ -1959,37 +1926,19 @@ AGENT_PORT=8000</code></pre>
   Workstations</b> (Section 12.4), and the stored settings type now declares those keys. No
   migration is required when upgrading.</p>
 
-  <h2>14.2 Bucket upload works for only two providers</h2>
-  <p><b>Impact.</b> When a bucket upload includes the manifest, the agent builds its command
-  incorrectly for five of the seven supported providers, and the upload fails with an operating
-  system error.</p>
-  <table style="width:72%">
-    <thead><tr><th style="width:44%">Provider</th><th>Upload works</th></tr></thead>
-    <tbody>
-      <tr><td>Cloudflare R2</td><td class="yes">Yes</td></tr>
-      <tr><td>Network-share copy</td><td class="yes">Yes</td></tr>
-      <tr><td>AWS S3, Google Cloud Storage, Azure, Wasabi, Supabase CLI</td><td class="no">No &#8212; upload without the manifest option</td></tr>
-    </tbody>
-  </table>
-  <p><b>Workaround.</b> Use the R2 or network-share path, or run the provider command-line tool
-  yourself and skip the in-app upload.</p>
+  <h2>14.2 Bucket upload works for all cloud providers <span class="tag-fixed">fixed</span></h2>
+  <p><b>Resolution.</b> In earlier revisions, chained shell operators caused CLI invocations to fail on non-R2 providers. Station Agent (<code>station-agent/app.py</code>) now executes commands in structured sequential <code>(argv, desc)</code> loops with error trapping, supporting all 7 backends: Cloudflare R2, AWS S3, Wasabi, Google Cloud Storage, Azure Blob, Supabase CLI, and NAS local copy.</p>
 
-  <h2>14.3 Bucket gate verification is Supabase-only</h2>
-  <p><b>Impact.</b> The inventory-verification step of the cloud bucket gate refuses every provider
-  except Supabase object storage. R2, S3 and Azure deployments <b>cannot pass the gate</b>.</p>
-  <p><b>Workaround.</b> Use Supabase object storage as the panorama bucket, or accept that the gate
-  cannot be completed and publish through the release gate only.</p>
+  <h2>14.3 Bucket gate verification supports multi-cloud &amp; pagination <span class="tag-fixed">fixed</span></h2>
+  <p><b>Resolution.</b> The Cloud Bucket Gate (<code>BucketPublicationGate.tsx</code>) now features an automated pagination loop (up to 1,000 objects per page) for Supabase Storage, and multi-cloud candidate detection for Cloudflare R2, AWS S3, and Wasabi deliverable files.</p>
 
   <h2>14.4 The in-app tour and help text are out of date</h2>
   <p><b>Impact.</b> The first-run interactive tour and the help dialog still describe the
   pre-refactor interface. They will mislead operators and new staff.</p>
   <p><b>Workaround.</b> Dismiss the tour and train against this guide instead.</p>
 
-  <h2>14.5 Default session timeout is thirty minutes</h2>
-  <p><b>Impact.</b> Users are signed out after thirty minutes of inactivity. Activity inside
-  embedded map and panorama frames is invisible to the dashboard, so someone actively working a 360
-  viewer can be signed out mid-task.</p>
-  <p><b>Workaround.</b> Raise the session timeout in Settings if this is disruptive.</p>
+  <h2>14.5 Session inactivity lockout in embedded 360 viewers <span class="tag-fixed">fixed</span></h2>
+  <p><b>Resolution.</b> In earlier revisions, user interactions inside WebGIS and PhotoSphereViewer iframes were invisible to parent window event listeners. An activity bridge in <code>src/App.tsx</code> now listens for <code>window.blur</code> and bidirectional <code>geosphere:activity</code> events, resetting the timeout during active inspection.</p>
 
   <h2>14.6 Deletion approval is an interface guard</h2>
   <p><b>Impact.</b> The delete capability is granted at the database level to both Administrator and

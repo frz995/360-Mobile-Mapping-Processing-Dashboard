@@ -6,7 +6,8 @@ import {
   parseCsvToGeoJson,
   isImportMemoryError,
   IMPORT_MEMORY_ERROR_MESSAGE,
-  MAX_IMPORT_FILE_BYTES
+  MAX_IMPORT_FILE_BYTES,
+  normalizeGeoJsonCoordinates
 } from '../gisImportParser';
 
 describe('gisImportParser', () => {
@@ -295,6 +296,58 @@ describe('gisImportParser', () => {
       expect(isImportMemoryError(new Error('File not found'))).toBe(false);
       expect(isImportMemoryError(new Error('Unknown error'))).toBe(false);
       expect(IMPORT_MEMORY_ERROR_MESSAGE).toMatch(/ran out of memory/i);
+    });
+
+    it('guards local projected grid coordinates (e.g. MRSO/Cassini meters) from false Web Mercator distortion', () => {
+      const mrsoGeoJson = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [412345, 345678] // Typical MRSO / Cassini Easting/Northing in meters
+            },
+            properties: { asset: 'TNB Pole' }
+          }
+        ]
+      };
+
+      const warnings: string[] = [];
+      const result = normalizeGeoJsonCoordinates(mrsoGeoJson, warnings);
+
+      // Coordinates remain uncorrupted (not projected into the Atlantic)
+      expect(result.features[0].geometry.coordinates).toEqual([412345, 345678]);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatch(/local projected grid coordinates/i);
+      expect(warnings[0]).toMatch(/EPSG:4326/i);
+    });
+
+    it('reprojects genuine Web Mercator coordinates to WGS84 lat/lng', () => {
+      const webMercatorGeoJson = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              // Longitude 101.6869, Latitude 3.1390 in Web Mercator (EPSG:3857) meters
+              coordinates: [11320000, 350000]
+            },
+            properties: {}
+          }
+        ]
+      };
+
+      const warnings: string[] = [];
+      const result = normalizeGeoJsonCoordinates(webMercatorGeoJson, warnings);
+
+      const [lng, lat] = result.features[0].geometry.coordinates;
+      expect(lng).toBeGreaterThan(100);
+      expect(lng).toBeLessThan(105);
+      expect(lat).toBeGreaterThan(2);
+      expect(lat).toBeLessThan(4);
+      expect(warnings[0]).toMatch(/EPSG:3857 Web Mercator/i);
     });
   });
 });

@@ -71,6 +71,15 @@ export const CoverflowGallery: React.FC<CoverflowGalleryProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [expanded, images.length]);
 
+    // The showcase binds ArrowLeft/ArrowRight to its own section navigation on
+    // window. Flag the open lightbox so that handler stands down while this one
+    // has the keys; a press must not both page the screenshot and jump a section.
+    useEffect(() => {
+        if (!expanded) return;
+        document.body.classList.add('gallery-lightbox-open');
+        return () => document.body.classList.remove('gallery-lightbox-open');
+    }, [expanded]);
+
     // Non-passive native wheel listener: isolates gallery scrolling and prevents outer page scroll
     useEffect(() => {
         const el = galleryWrapperRef.current;
@@ -351,7 +360,7 @@ export const CoverflowGallery: React.FC<CoverflowGalleryProps> = ({
                                             : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.05]'
                                     }`}
                                 >
-                                    {h.title.split(':')[0].replace(/Station \d+: /, '')}
+                                    {h.title.split(':')[0]}
                                 </button>
                             </React.Fragment>
                         );

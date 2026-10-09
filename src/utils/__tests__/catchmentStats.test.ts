@@ -21,7 +21,7 @@ function cell(over: Partial<MeshCellData> & { subgrid: string }): MeshCellData {
     bbox: [0, 0, 1, 1],
     corridor: { shortKm: 0, mediumKm: 0, arterialKm: 0, trunkKm: 0 },
     junctions: { deadEnd: 0, threeWay: 0, fourWay: 0, fivePlus: 0 },
-    frames: { verified: 0, defect: 0, transit: 0, mismatch: 0 },
+    frames: { verified: 0, defect: 0, transit: 0, mismatch: 0, missing: 0 },
     ...over
   } as MeshCellData;
 }
@@ -80,7 +80,7 @@ describe('summarizeMeshCells', () => {
         panotrack: 30,
         corridor: { shortKm: 1, mediumKm: 2, arterialKm: 3, trunkKm: 4 },
         junctions: { deadEnd: 5, threeWay: 4, fourWay: 3, fivePlus: 2 },
-        frames: { verified: 10, defect: 8, transit: 7, mismatch: 5 }
+        frames: { verified: 10, defect: 8, transit: 7, mismatch: 5, missing: 0 }
       }),
       cell({
         subgrid: 'B',
@@ -89,13 +89,13 @@ describe('summarizeMeshCells', () => {
         panotrack: 10,
         corridor: { shortKm: 0, mediumKm: 0, arterialKm: 0, trunkKm: 0 },
         junctions: { deadEnd: 1, threeWay: 1, fourWay: 1, fivePlus: 0 },
-        frames: { verified: 0, defect: 0, transit: 0, mismatch: 0 }
+        frames: { verified: 0, defect: 0, transit: 0, mismatch: 0, missing: 0 }
       })
     ]);
 
     expect(totals.corridor).toEqual({ shortKm: 1, mediumKm: 2, arterialKm: 3, trunkKm: 4 });
     expect(totals.junctions).toEqual({ deadEnd: 6, threeWay: 5, fourWay: 4, fivePlus: 2 });
-    expect(totals.frames).toEqual({ verified: 10, defect: 8, transit: 7, mismatch: 5 });
+    expect(totals.frames).toEqual({ verified: 10, defect: 8, transit: 7, mismatch: 5, missing: 0 });
     expect(totals.panotrackFrames).toBe(40);
   });
 

@@ -241,7 +241,7 @@ describe('mapShares project explorer block', () => {
         areaKm2: 3.6,
         corridor: { shortKm: 1, mediumKm: 3, arterialKm: 2, trunkKm: 1 },
         junctions: { deadEnd: 6, threeWay: 8, fourWay: 4, fivePlus: 2 },
-        frames: { verified: 150, defect: 60, transit: 50, mismatch: 40 },
+        frames: { verified: 150, defect: 60, transit: 50, mismatch: 40, missing: 0 },
         bbox: [101.4, 2.9, 101.44, 2.94],
         bbox_str: '[101.4,2.9,101.44,2.94]'
       },

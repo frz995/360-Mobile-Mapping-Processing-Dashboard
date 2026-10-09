@@ -19,7 +19,7 @@ export interface SharePoint {
   lat: number;
   lng: number;
   subgrid?: string;
-  status?: 'published' | 'staging' | 'in-process' | 'defect';
+  status?: 'published' | 'staging' | 'in-process' | 'defect' | 'missing';
   color?: string;
 }
 
@@ -539,12 +539,12 @@ export interface BuildRoadSnapshotOptions {
   planName?: string;
   projectSettings?: any;
   capturedPoints?: Array<{
-    lat?: number;
-    lng?: number;
+    lat?: number; lng?: number;
     subgrid?: string;
     status?: string;
     isPublished?: boolean;
     color?: string;
+    frameState?: string;
   }>;
   capturedTracks?: Array<Array<[number, number]> | { coords: Array<[number, number]>; subgrid?: string }>;
   catalogLayers?: ShareCatalogLayerInput[];
@@ -609,9 +609,11 @@ export function buildRoadSnapshot(
       const rLat = roundCoord(rawLat);
       const rLng = roundCoord(rawLng);
 
-      let status: 'published' | 'staging' | 'defect' = 'staging';
+      let status: 'published' | 'staging' | 'defect' | 'missing' = 'staging';
       if (p.color === '#ef4444' || p.status === 'defect') {
         status = 'defect';
+      } else if (p.frameState === 'missing' || p.status === 'missing' || p.color === '#94a3b8') {
+        status = 'missing';
       } else if (p.color === '#10b981' || p.isPublished || p.status === 'published') {
         status = 'published';
       }

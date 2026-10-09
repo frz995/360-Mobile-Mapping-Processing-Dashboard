@@ -447,7 +447,16 @@ def detection_loop() -> None:
         time.sleep(max(0.5, SCAN_INTERVAL_SEC - elapsed))
 
 
-app = FastAPI(title="GeoSphere 360 Station Agent", version=AGENT_VERSION)
+# Schema UIs disabled for the same reason as the worker: the agent is exposed on
+# the LAN/tunnel and the documented contract is that /health is the only route
+# reachable without the bearer token.
+app = FastAPI(
+    title="GeoSphere 360 Station Agent",
+    version=AGENT_VERSION,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -509,8 +518,8 @@ class RenameRequest(BaseModel):
 def rename_files(req: RenameRequest, authorization: Optional[str] = Header(default=None)) -> dict:
     """Batch-rename stitched outputs to their metadata names on the NAS.
 
-    Safety: stage_dir must resolve inside WATCH_ROOT; every src/dst is reduced
-    to a bare filename inside that folder; existing dst files are skipped
+    Safety: stage_dir must resolve inside WATCH_ROOT; every src/dst must be a
+    bare filename with no directory component; existing dst files are skipped
     (idempotent re-runs), missing src files are reported.
     """
     _guard(authorization)
@@ -528,20 +537,29 @@ def rename_files(req: RenameRequest, authorization: Optional[str] = Header(defau
     skipped: List[dict] = []
     missing: List[str] = []
     for entry in req.renames:
-        src = os.path.join(base, os.path.basename((entry.src or "").replace("\\", "/")))
-        dst = os.path.join(base, os.path.basename((entry.dst or "").replace("\\", "/")))
+        # Reduce to a bare filename, then reject the names that reduce to
+        # themselves and re-point the join at the parent directory. os.path.basename("..")
+        # is "..", so basename() alone is not containment — this mirrors
+        # worker/nas_scan.py::_safe_segment.
+        src_name = os.path.basename((entry.src or "").replace("\\", "/")).strip()
+        dst_name = os.path.basename((entry.dst or "").replace("\\", "/")).strip()
         if not entry.src or not entry.dst:
             skipped.append({"src": entry.src, "reason": "empty name"})
-        elif not os.path.exists(src):
-            missing.append(entry.src)
-        elif os.path.exists(dst):
-            skipped.append({"src": entry.src, "reason": "target already exists"})
+        elif src_name in {"", ".", ".."} or dst_name in {"", ".", ".."}:
+            skipped.append({"src": entry.src, "reason": "invalid name"})
         else:
-            try:
-                os.rename(src, dst)
-                renamed += 1
-            except OSError as exc:
-                skipped.append({"src": entry.src, "reason": str(exc)})
+            src = os.path.join(base, src_name)
+            dst = os.path.join(base, dst_name)
+            if not os.path.exists(src):
+                missing.append(entry.src)
+            elif os.path.exists(dst):
+                skipped.append({"src": entry.src, "reason": "target already exists"})
+            else:
+                try:
+                    os.rename(src, dst)
+                    renamed += 1
+                except OSError as exc:
+                    skipped.append({"src": entry.src, "reason": str(exc)})
     return {
         "ok": True,
         "renamed": renamed,
@@ -607,10 +625,10 @@ _sync_jobs_lock = threading.RLock()
 CLI_BUILDERS: Dict[str, callable] = {}
 
 
-def _build_cli(req: SyncBucketRequest, base: str) -> Tuple[List[str], str]:
-    """Return (argv, human description). Raises ValueError for unknown
-    providers or missing binaries. Providers map 1:1 to the dashboard's
-    sync-script block so the executed command is always inspectable."""
+def _build_cli(req: SyncBucketRequest, base: str) -> Tuple[List[Tuple[List[str], str]], str]:
+    """Return (steps, human description) where steps is a list of (argv, step_desc).
+    Raises ValueError for unknown providers or missing binaries. Providers map
+    1:1 to the dashboard's sync-script block so executed commands are inspectable."""
     sg = (req.subgrid or "").strip("/")
     if not sg:
         raise ValueError("subgrid is required")
@@ -624,73 +642,134 @@ def _build_cli(req: SyncBucketRequest, base: str) -> Tuple[List[str], str]:
             raise ValueError(f"'{binary}' CLI is not installed or not on PATH on this PC ({platform.node()}).")
         return found
 
+    steps: List[Tuple[List[str], str]] = []
+
     if provider == "r2":
-        argv = [which("rclone"), "copy", src, f"r2:{req.bucket}/{sg}/", "--transfers=16", "--checkers=32", "--fast-list"]
+        steps.append((
+            [which("rclone"), "copy", src, f"r2:{req.bucket}/{sg}/", "--transfers=16", "--checkers=32", "--fast-list"],
+            f"rclone copy → r2:{req.bucket}/{sg}/"
+        ))
+        if req.include_manifest and os.path.isfile(manifest_src):
+            steps.append((
+                [which("rclone"), "copyto", manifest_src, f"r2:{req.bucket}/manifest.json"],
+                f"rclone copyto manifest.json → r2:{req.bucket}/manifest.json"
+            ))
         desc = f"rclone copy → r2:{req.bucket}/{sg}/"
     elif provider == "s3":
-        argv = [which("aws"), "s3", "sync", src, f"s3://{req.bucket}/{sg}/", "--region", req.region or "ap-southeast-1", "--acl", "public-read"]
+        steps.append((
+            [which("aws"), "s3", "sync", src, f"s3://{req.bucket}/{sg}/", "--region", req.region or "ap-southeast-1", "--acl", "public-read"],
+            f"aws s3 sync → s3://{req.bucket}/{sg}/"
+        ))
+        if req.include_manifest and os.path.isfile(manifest_src):
+            steps.append((
+                [which("aws"), "s3", "cp", manifest_src, f"s3://{req.bucket}/manifest.json", "--region", req.region or "ap-southeast-1"],
+                f"aws s3 cp manifest.json → s3://{req.bucket}/manifest.json"
+            ))
         desc = f"aws s3 sync → s3://{req.bucket}/{sg}/"
     elif provider == "wasabi":
-        argv = [which("aws"), "s3", "sync", src, f"s3://{req.bucket}/{sg}/",
-                "--endpoint-url", f"https://s3.{req.region or 'us-east-1'}.wasabisys.com", "--acl", "public-read"]
+        steps.append((
+            [which("aws"), "s3", "sync", src, f"s3://{req.bucket}/{sg}/",
+             "--endpoint-url", f"https://s3.{req.region or 'us-east-1'}.wasabisys.com", "--acl", "public-read"],
+            f"aws s3 sync → wasabi s3://{req.bucket}/{sg}/"
+        ))
+        if req.include_manifest and os.path.isfile(manifest_src):
+            steps.append((
+                [which("aws"), "s3", "cp", manifest_src, f"s3://{req.bucket}/manifest.json",
+                 "--endpoint-url", f"https://s3.{req.region or 'us-east-1'}.wasabisys.com"],
+                f"aws s3 cp manifest.json → wasabi s3://{req.bucket}/manifest.json"
+            ))
         desc = f"aws s3 sync → wasabi s3://{req.bucket}/{sg}/"
     elif provider == "gcs":
-        argv = [which("gsutil"), "-m", "rsync", "-r", src, f"gs://{req.bucket}/{sg}/"]
+        steps.append((
+            [which("gsutil"), "-m", "rsync", "-r", src, f"gs://{req.bucket}/{sg}/"],
+            f"gsutil rsync → gs://{req.bucket}/{sg}/"
+        ))
+        if req.include_manifest and os.path.isfile(manifest_src):
+            steps.append((
+                [which("gsutil"), "cp", manifest_src, f"gs://{req.bucket}/manifest.json"],
+                f"gsutil cp manifest.json → gs://{req.bucket}/manifest.json"
+            ))
         desc = f"gsutil rsync → gs://{req.bucket}/{sg}/"
     elif provider == "azure":
         endpoint = (req.endpoint or "").rstrip("/") or f"https://{req.account or ''}.blob.core.windows.net"
-        argv = [which("azcopy"), "copy", f"{src}*", f"{endpoint}/{sg}/", "--recursive"]
+        steps.append((
+            [which("azcopy"), "copy", f"{src}*", f"{endpoint}/{sg}/", "--recursive"],
+            f"azcopy copy → {endpoint}/{sg}/"
+        ))
+        if req.include_manifest and os.path.isfile(manifest_src):
+            steps.append((
+                [which("azcopy"), "copy", manifest_src, f"{endpoint}/manifest.json"],
+                f"azcopy copy manifest.json → {endpoint}/manifest.json"
+            ))
         desc = f"azcopy copy → {endpoint}/{sg}/"
     elif provider == "supabase_cli":
-        argv = [which("supabase"), "storage", "cp", "-r", src, f"ss://{req.bucket}/{sg}/"]
+        steps.append((
+            [which("supabase"), "storage", "cp", "-r", src, f"ss://{req.bucket}/{sg}/"],
+            f"supabase storage cp -r → ss://{req.bucket}/{sg}/"
+        ))
+        if req.include_manifest and os.path.isfile(manifest_src):
+            steps.append((
+                [which("supabase"), "storage", "cp", manifest_src, f"ss://{req.bucket}/manifest.json"],
+                f"supabase storage cp manifest.json → ss://{req.bucket}/manifest.json"
+            ))
         desc = f"supabase storage cp -r → ss://{req.bucket}/{sg}/"
     elif provider == "nas_local":
         dest_root = (req.endpoint or "").rstrip("\\/") or "\\\\NAS\\360_images"
-        # No /MT with redirected stdout: multithreaded robocopy buffers output
-        # on a separate thread and can deadlock reading the pipe line-by-line.
-        argv = ["robocopy", src, os.path.join(dest_root, sg), "/E", "/NJH", "/NJS"]
+        robocopy_bin = shutil.which("robocopy") or "robocopy"
+        steps.append((
+            [robocopy_bin, src, os.path.join(dest_root, sg), "/E", "/NJH", "/NJS"],
+            f"robocopy {sg} → {dest_root}\\{sg}"
+        ))
+        if req.include_manifest and os.path.isfile(manifest_src):
+            steps.append((
+                [robocopy_bin, base, dest_root, "manifest.json", "/NJH", "/NJS"],
+                f"robocopy manifest.json → {dest_root}\\manifest.json"
+            ))
         desc = f"robocopy {sg} → {dest_root}\\{sg}"
     else:
         raise ValueError(f"Unsupported provider '{provider}' (whitelist: r2, s3, wasabi, gcs, azure, supabase_cli, nas_local)")
 
-    if req.include_manifest and provider not in ("r2", "nas_local"):
-        if provider == "s3":
-            argv += ["&&", which("aws"), "s3", "cp", manifest_src, f"s3://{req.bucket}/manifest.json"]
-        elif provider == "wasabi":
-            argv += ["&&", which("aws"), "s3", "cp", manifest_src, f"s3://{req.bucket}/manifest.json",
-                     "--endpoint-url", f"https://s3.{req.region or 'us-east-1'}.wasabisys.com"]
-        elif provider == "gcs":
-            argv += ["&&", which("gsutil"), "cp", manifest_src, f"gs://{req.bucket}/manifest.json"]
-        elif provider == "azure":
-            endpoint = (req.endpoint or "").rstrip("/") or f"https://{req.account or ''}.blob.core.windows.net"
-            argv += ["&&", which("azcopy"), "copy", manifest_src, f"{endpoint}/manifest.json"]
-        elif provider == "supabase_cli":
-            argv += ["&&", which("supabase"), "storage", "cp", manifest_src, f"ss://{req.bucket}/manifest.json"]
-    return argv, desc
+    return steps, desc
 
 
-def _run_sync_job(job: SyncJob, argv: List[str]) -> None:
+def _run_sync_job(job: SyncJob, steps: List[Tuple[List[str], str]]) -> None:
     try:
-        proc = subprocess.Popen(
-            argv,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        assert proc.stdout is not None
-        for line in proc.stdout:
+        last_code = 0
+        for step_idx, (argv, step_desc) in enumerate(steps, 1):
             with _sync_jobs_lock:
-                job.lines.append(line.rstrip())
-        code = proc.wait(timeout=3600)
-        with _sync_jobs_lock:
-            job.exit_code = code
+                if len(steps) > 1:
+                    job.lines.append(f"[*] Step {step_idx}/{len(steps)}: {step_desc}")
+                else:
+                    job.lines.append(f"[*] Executing: {step_desc}")
+
+            proc = subprocess.Popen(
+                argv,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                with _sync_jobs_lock:
+                    job.lines.append(line.rstrip())
+            code = proc.wait(timeout=3600)
+            last_code = code
+
             # robocopy exit codes 0-7 are success grades; >=8 is failure.
-            ok = code == 0 or (job.command_desc.startswith("robocopy") and 0 <= code < 8)
-            job.status = "DONE" if ok else "FAILED"
+            ok = code == 0 or (step_desc.startswith("robocopy") and 0 <= code < 8)
             if not ok:
-                job.error = f"CLI exited with code {code}"
+                with _sync_jobs_lock:
+                    job.exit_code = code
+                    job.status = "FAILED"
+                    job.error = f"Step '{step_desc}' exited with code {code}"
+                    job.finished_at = _now_iso()
+                return
+
+        with _sync_jobs_lock:
+            job.exit_code = last_code
+            job.status = "DONE"
             job.finished_at = _now_iso()
     except Exception as exc:
         with _sync_jobs_lock:
@@ -713,7 +792,7 @@ def start_sync_bucket(req: SyncBucketRequest, authorization: Optional[str] = Hea
         raise HTTPException(status_code=400, detail=f"stage_dir not listable: {rel}")
 
     try:
-        argv, desc = _build_cli(req, base)
+        steps, desc = _build_cli(req, base)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -721,7 +800,7 @@ def start_sync_bucket(req: SyncBucketRequest, authorization: Optional[str] = Hea
     job = SyncJob(job_id, desc)
     with _sync_jobs_lock:
         _sync_jobs[job_id] = job
-    threading.Thread(target=_run_sync_job, args=(job, argv), daemon=True).start()
+    threading.Thread(target=_run_sync_job, args=(job, steps), daemon=True).start()
     return {"ok": True, "job_id": job_id, "command_desc": desc, "status": "RUNNING"}
 
 

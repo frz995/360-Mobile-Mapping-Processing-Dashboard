@@ -15,8 +15,16 @@ vi.mock('../common/Sparkles', () => ({
 // The pose constants are plain numbers derived in that module, so mirror the real
 // values rather than omitting them: SystemShowcase seeds its shared zoom from
 // INTRO_ZOOM and reads SATELLITE_FOCUS_ZOOM when the renderer toggle is used.
+// focusTarget is echoed onto the DOM because it is the only place the camera
+// target a district selection resolves to becomes observable in jsdom.
 vi.mock('../common/MapLibreGlobe', () => ({
-  MapLibreGlobe: () => <div data-testid="maplibre-globe-mock" />,
+  MapLibreGlobe: ({ focusTarget }: { focusTarget?: { lat: number; lng: number } | null }) => (
+    <div
+      data-testid="maplibre-globe-mock"
+      data-focus-lat={focusTarget ? String(focusTarget.lat) : ''}
+      data-focus-lng={focusTarget ? String(focusTarget.lng) : ''}
+    />
+  ),
   INTRO_ZOOM: 2.41,
   SATELLITE_FOCUS_ZOOM: 2.69,
   FULL_GLOBE_ZOOM: 1.85,
@@ -314,6 +322,65 @@ describe('SystemShowcase Component', () => {
     });
     expect(within(popup).getByText(/Snapshot 1 of/i)).toBeInTheDocument();
     expect(within(popup).getByAltText(/Project Management screenshot 1/i)).toBeInTheDocument();
+  });
+
+  it('flies the camera to the district the operator picked, not the previously active one', async () => {
+    render(
+      <SystemShowcase
+        onEnterDashboard={vi.fn()}
+        projectSettings={{
+          projectName: 'Johor Region-Wide',
+          projectBoundary: {
+            // A whole-state commit: no per-district ids, so the selectable list
+            // expands to every district in Johor. Selection has to resolve against
+            // that expanded list — resolving against the (empty) committed-id list
+            // silently re-flew to whichever district was already active.
+            districtIds: [],
+            regionId: 'johor',
+            regionName: 'Johor',
+            bbox: [102.509, 2.29, 104.0, 2.65]
+          }
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: /3D Earth/i })[0]);
+    fireEvent.click(screen.getByTitle(/Click to rotate globe and center on project location/i));
+
+    const popupDialog = screen.getByRole('dialog', { name: /Johor Project Area/i });
+    // Johor Bahru sits at the far south-west of the state — a target no accident
+    // of the default selection could ever land on.
+    fireEvent.click(within(popupDialog).getByText('Johor Bahru'));
+
+    const globe = screen.getByTestId('maplibre-globe-mock');
+    await waitFor(() => {
+      expect(Number(globe.getAttribute('data-focus-lat'))).toBeCloseTo(1.480505, 4);
+      expect(Number(globe.getAttribute('data-focus-lng'))).toBeCloseTo(103.782305, 4);
+    });
+  });
+
+  it('leaves the scroll story alone while the screenshot lightbox owns the arrow keys', () => {
+    render(<SystemShowcase onEnterDashboard={vi.fn()} />);
+
+    const galleryCard = document.getElementById('module-gallery-card-0');
+    fireEvent.click(galleryCard!);
+
+    const popup = screen.getByTestId('gallery-image-popup');
+    expect(within(popup).getByText(/Snapshot 1 of/i)).toBeInTheDocument();
+
+    // ArrowRight belongs to the lightbox here: it pages the screenshot and must
+    // NOT also advance the scroll story a module.
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+
+    expect(within(popup).getByText(/Snapshot 2 of/i)).toBeInTheDocument();
+    // The rail keys off the scroll position, which starts on the hero (-1), so no
+    // module dot is current yet. Advancing the story would light section 2 up.
+    expect(
+      screen.getByRole('button', { name: /Go to section 2: WebGIS Dashboard/i })
+    ).not.toHaveAttribute('aria-current');
+    expect(
+      screen.getByRole('button', { name: /Go to section 1: Project Management/i })
+    ).not.toHaveAttribute('aria-current');
   });
 
   it('renders the logo lockup from branding, not a hardcoded wordmark', () => {

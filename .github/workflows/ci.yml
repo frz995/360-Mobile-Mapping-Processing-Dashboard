@@ -85,10 +85,17 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest fastapi httpx python-dotenv
 
-      - name: Compile check (worker)
-        run: python -m py_compile worker/app.py worker/nas_scan.py worker/tests/test_image_cache.py worker/tests/test_nas_scan.py
+      - name: Compile check (worker & station-agent)
+        run: |
+          python -m py_compile worker/app.py worker/nas_scan.py worker/tests/test_image_cache.py worker/tests/test_nas_scan.py
+          python -m py_compile station-agent/app.py station-agent/tests/test_sync_cli.py
 
       - name: Run worker unit tests
         run: |
           cd worker
           PYTHONPATH=. python -m pytest tests/test_image_cache.py tests/test_nas_scan.py -q
+
+      - name: Run station-agent unit tests
+        run: |
+          cd station-agent
+          PYTHONPATH=. python -m pytest tests/test_sync_cli.py -q

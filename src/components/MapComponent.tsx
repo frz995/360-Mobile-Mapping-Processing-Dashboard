@@ -49,6 +49,10 @@ export const MapComponent = ({
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const stagedDataRafRef = useRef<number | null>(null);
+  const trajectoryStatusFiltersRef = useRef(trajectoryStatusFilters);
+  trajectoryStatusFiltersRef.current = trajectoryStatusFilters;
+  const showPanotrackLayerRef = useRef(showPanotrackLayer);
+  showPanotrackLayerRef.current = showPanotrackLayer;
 
   // Loading/preparing overlay: shown while the embedded WebGIS applies the
   // project basemap + boundary + settings on cold boot and on every project
@@ -183,7 +187,8 @@ export const MapComponent = ({
           qaState: isPointDefect ? 'defect' : (statusVal === 'yes' ? 'clean' : 'unaudited'),
           isPublished: isPub,
           isSelected: isPointSelected,
-          dimmed: isAfterDeletionPreview
+          dimmed: isAfterDeletionPreview,
+          highlightMissingFrames: trajectoryStatusFilters?.missingFrames !== false
         });
         const pointColorHex = isPointSelected && isAfterDeletionPreview
           ? '#64748b'
@@ -285,7 +290,7 @@ export const MapComponent = ({
         points: formattedPans
       };
     });
-  }, [stagedItems, defectsList, selectedSubgrids, selectedPoints, isAfterDeletionPreview]);
+  }, [stagedItems, defectsList, selectedSubgrids, selectedPoints, isAfterDeletionPreview, trajectoryStatusFilters?.missingFrames]);
 
   const sendStagedDataImmediate = useCallback(() => {
     if (iframeRef.current && iframeRef.current.contentWindow && formattedStagedItems.length > 0) {
@@ -335,8 +340,8 @@ export const MapComponent = ({
         // an unchecked status or an unchecked master layer toggle.
         iframeRef.current.contentWindow.postMessage({
           type: 'FILTER_STATUS_TYPES',
-          statusFilters: { ...(trajectoryStatusFilters || DEFAULT_TRAJECTORY_FILTERS), selected: true },
-          showPanotrackData: showPanotrackLayer
+          statusFilters: { ...(trajectoryStatusFiltersRef.current || DEFAULT_TRAJECTORY_FILTERS), selected: true },
+          showPanotrackData: showPanotrackLayerRef.current
         }, '*');
 
         // 4. Send QAQC_DEFECTS_SYNC with all known defect items
@@ -352,7 +357,7 @@ export const MapComponent = ({
         }
       } catch (e) { }
     }
-  }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId, selectedSubgridFilter, selectedSubgrids, isAfterDeletionPreview, selectedDateFilter, showPanotrackLayer, trajectoryStatusFilters]);
+  }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId, selectedSubgridFilter, selectedSubgrids, isAfterDeletionPreview, selectedDateFilter]);
 
   // Push the trajectory filter state on its own so toggling a status takes
   // effect immediately instead of waiting for the next staged-data push.

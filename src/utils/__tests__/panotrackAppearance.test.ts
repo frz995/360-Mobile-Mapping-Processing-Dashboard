@@ -272,6 +272,39 @@ describe('resolvePointAppearance', () => {
     expect(op('missing')).toBeLessThan(1.0);
     expect(op('unverified')).toBeLessThan(op('missing'));
   });
+
+  it('falls back to staging yellow or published green when highlightMissingFrames is false', () => {
+    // When missingFrames legend is turned off, missing points fall back to workflow status
+    const stagingMissing = resolvePointAppearance({
+      frameState: 'missing',
+      qaState: 'clean',
+      isPublished: false,
+      highlightMissingFrames: false
+    });
+    expect(stagingMissing.color).toBe('#f59e0b');
+    expect(stagingMissing.strokeColor).toBe('#f59e0b');
+    expect(stagingMissing.status).toBe('staging');
+
+    const publishedMissing = resolvePointAppearance({
+      frameState: 'missing',
+      qaState: 'clean',
+      isPublished: true,
+      highlightMissingFrames: false
+    });
+    expect(publishedMissing.color).toBe('#10b981');
+    expect(publishedMissing.strokeColor).toBe('#10b981');
+    expect(publishedMissing.status).toBe('published');
+
+    // A defect always remains red even when highlightMissingFrames is false
+    const defectMissing = resolvePointAppearance({
+      frameState: 'missing',
+      qaState: 'defect',
+      isPublished: false,
+      highlightMissingFrames: false
+    });
+    expect(defectMissing.color).toBe('#ef4444');
+    expect(defectMissing.status).toBe('defect');
+  });
 })
 
 describe('isAvailableFromFrameState', () => {

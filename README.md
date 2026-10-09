@@ -60,7 +60,7 @@ The GeoSphere 360 ecosystem operates as an end-to-end processing pipeline, trans
 +------------------------------------------+----------------------------------------+
 |                   4. QUALITY ASSURANCE & AUDITING (QA/QC)                         |
 |  - PhotoSphereViewer v5 WebGL Panoramic Inspector                                 |
-|  - Frame-by-frame visual audit: Blurry Frame, Obstruction, Camera Tilt, Bad GPS   |
+|  - Frame-by-frame visual audit: Blurry Frame, Obstruction, Solar Glare, Bad GPS  |
 |  - Approval Gate: Release writes approved frames into `panoramas`          |
 +------------------------------------------+----------------------------------------+
                                            |
@@ -94,10 +94,10 @@ The frontend application is built on React 18, TypeScript, and Vite, packaged wi
 
 ### Component Structure and Responsibilities
 
-* `src/components/SystemShowcase.tsx`: High-impact landing portal highlighting the five major subsystems, live telemetry stats, and instant module launching.
+* `src/components/SystemShowcase.tsx`: High-impact landing portal highlighting the six major subsystems and instant module launching.
 * `src/components/ProjectOnboarding.tsx`: Campaign initialization gateway supporting regional presets across Malaysia, coordinate system configuration, and fast project resume.
 * `src/components/PhotoSphereViewerComponent.tsx`: High-performance WebGL 360-degree panorama viewer supporting equirectangular projections and multi-resolution tiled cubemaps.
-* `src/components/MapComponent.tsx`: Interactive WebGIS map wrapper utilizing an asynchronous postMessage handshake bridge (`VIEWER_READY` / `VIEWER_ACK`) with exponential backoff retries to guarantee synchronization without race conditions.
+* `src/components/MapComponent.tsx`: Interactive WebGIS map wrapper using a `postMessage` handshake bridge (`VIEWER_READY`, acknowledged with `MAP_READY`). The remote WebGIS sends no acknowledgement of its own, so dismissal is timer-driven and the retries are fixed delays (350 ms, 1 s), not exponential backoff.
 * `src/components/QAQCWorkbench.tsx`: Comprehensive defect management studio allowing auditors to flag and categorize imaging issues frame by frame, and export the audit.
 * `src/components/DataManagementPage.tsx`: Data grid controller managing subgrid clusters, batch logs, and publishing states.
 * `src/components/common/GeoSphereLogo.tsx`: Custom scalable vector mark with dynamic theme color inheritance (`fill="currentColor"`).
@@ -134,247 +134,57 @@ It does **not** perform image processing. Panorama QA/QC (sharpness, blur, obstr
 
 ## Database Schema and PostGIS Integration
 
-The database layer runs on PostgreSQL 15 with the PostGIS 3.3 extension. All spatial entities are stored in standard coordinate systems (WGS84 EPSG:4326) with automatic spatial indexing.
+The database layer runs on PostgreSQL 15 with PostGIS. Spatial entities are
+stored in WGS84 (EPSG:4326) with spatial indexing.
 
-### Database Tables
+> **This section used to carry hand-written `CREATE TABLE` and `CREATE POLICY`
+> blocks. They have been removed deliberately.** Two of the documented policies
+> were weaker than the ones the migrations actually install — one granted
+> anonymous public read of published panoramas, and one granted every
+> signed-in user write access to the staging pipeline — so following them would
+> have downgraded the database's security posture.
+>
+> **The migrations are the schema.** Read `supabase/migrations/` (applied
+> top-to-bottom, `0001`-`0035`) and `supabase/migrations/README.md` for the
+> authoritative table list, the apply sequence, and the idempotency notes. There
+> is no `supabase db push` in this project: migrations are applied by hand in
+> the documented order.
 
-#### 1. `public.panoramas` (Published WebGIS Panoramas)
-Contains all verified, published StreetView frames visible to the WebGIS client.
+### Tables
 
-```sql
-CREATE TABLE public.panoramas (
-    id BIGSERIAL PRIMARY KEY,
-    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
-    subgrid VARCHAR(50) NOT NULL,
-    filename VARCHAR(255) NOT NULL,
-    image_url TEXT,
-    latitude DOUBLE PRECISION NOT NULL,
-    longitude DOUBLE PRECISION NOT NULL,
-    heading DOUBLE PRECISION DEFAULT 0,
-    pitch DOUBLE PRECISION DEFAULT 0,
-    roll DOUBLE PRECISION DEFAULT 0,
-    is_fallback_coord BOOLEAN DEFAULT false,
-    geom GEOMETRY(Point, 4326),
-    captured_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    status VARCHAR(50) DEFAULT 'yes',
-    qa_status VARCHAR(50) DEFAULT 'published',
-    defect_flags JSONB DEFAULT '{}'::jsonb,
-    defect_count INT DEFAULT 0,
-    description TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT panoramas_project_filename_unique UNIQUE (project_id, filename)
-);
+Grouped by purpose; column-level detail lives in the migrations.
 
-CREATE INDEX idx_panoramas_geom ON public.panoramas USING GIST (geom);
-CREATE INDEX idx_panoramas_subgrid ON public.panoramas (subgrid);
-CREATE INDEX idx_panoramas_project_id ON public.panoramas (project_id);
-```
+| Group | Tables |
+| --- | --- |
+| Projects and scope | `projects`, `subgrids`, `project_settings` |
+| Published WebGIS data | `panoramas`, `map_shares`, `file_inventory` |
+| Field intake and processing | `staging_panoramas`, `datasets`, `processing_jobs` |
+| Production pipeline | `production_runs`, `production_releases`, `production_release_files`, `production_run_attempts`, `station_board_items`, `stage_event_ledger`, `hub_session_state` |
+| Quality | `qa_defects`, `qaqc_audit_runs`, `survey_metadata_filenames` |
+| Deletion and recovery | `recycle_bin`, `survey_recycle_bin`, `deletion_requests` |
+| Identity and governance | `user_accounts`, `audit_logs`, `notifications` |
 
-#### 2. `public.staging_panoramas` (Operator Staging Pipeline)
-Holds newly ingested panoramas undergoing QA inspection prior to publication.
+### Row Level Security
 
-```sql
-CREATE TABLE public.staging_panoramas (
-    id BIGSERIAL PRIMARY KEY,
-    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
-    subgrid VARCHAR(50) NOT NULL,
-    filename VARCHAR(255) NOT NULL,
-    image_url TEXT,
-    latitude DOUBLE PRECISION NOT NULL,
-    longitude DOUBLE PRECISION NOT NULL,
-    heading DOUBLE PRECISION DEFAULT 0,
-    pitch DOUBLE PRECISION DEFAULT 0,
-    roll DOUBLE PRECISION DEFAULT 0,
-    is_fallback_coord BOOLEAN DEFAULT false,
-    geom GEOMETRY(Point, 4326),
-    captured_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    stage_status VARCHAR(50) DEFAULT 'staged',
-    validation_errors JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT staging_project_filename_unique UNIQUE (project_id, filename)
-);
+RLS is enforced at the PostgreSQL engine level and is **the** security
+boundary — the TypeScript permission matrix in `src/lib/authz.ts` decides only
+what to show or hide.
 
-CREATE INDEX idx_staging_panoramas_geom ON public.staging_panoramas USING GIST (geom);
-CREATE INDEX idx_staging_panoramas_subgrid ON public.staging_panoramas (subgrid);
-```
+Policies call `sec.can('<capability>')`, defined in migration
+`0009_security_functions.sql` as `SECURITY DEFINER` + `stable` with a pinned
+`search_path`. Eight capabilities are actually enforced in SQL
+(`ENFORCED_CAPABILITIES` in `src/lib/authz.ts`); the rest of the matrix is
+advisory UI gating. From migration `0030` the `user_accounts` row wins whenever
+one exists — the JWT claim is only the no-row bootstrap fallback.
 
-#### 3. `public.batch_logs` (Survey Telemetry and KPIs)
-Tracks survey runs, operator performance, and trajectory health.
+**Do not hand-write policy blocks.** Two of the examples this section used to
+carry (`USING (qa_status = 'published')` for `anon`, and
+`USING (auth.jwt() ->> 'email' IS NOT NULL)`) are weaker than the installed
+policies, and the first is publicly readable. Add capabilities to `sec.can()`
+in a migration and to `src/lib/authz.ts`; never relax a policy in the client.
 
-```sql
-CREATE TABLE public.batch_logs (
-    id BIGSERIAL PRIMARY KEY,
-    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
-    subgrid VARCHAR(50) NOT NULL,
-    survey_date DATE NOT NULL,
-    total_panoramas INT NOT NULL DEFAULT 0,
-    total_distance_km DOUBLE PRECISION NOT NULL DEFAULT 0,
-    health_score INT NOT NULL DEFAULT 100,
-    operator_name VARCHAR(100),
-    vehicle_unit VARCHAR(50),
-    notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
-
-#### 4. `public.qa_defects` (Defect Audit Records)
-Maintains defect logs flagged by QA inspectors during 360-degree review.
-
-```sql
-CREATE TABLE public.qa_defects (
-    id BIGSERIAL PRIMARY KEY,
-    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
-    panorama_id BIGINT REFERENCES public.panoramas(id) ON DELETE CASCADE,
-    defect_type VARCHAR(50) NOT NULL,
-    severity VARCHAR(20) DEFAULT 'medium',
-    notes TEXT,
-    resolved BOOLEAN DEFAULT false,
-    created_by UUID,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
-
-#### 5. `public.vector_layers_meta` (Geospatial Vector Catalog)
-Tracks uploaded GeoJSON, Shapefile, KML, and GPX layers.
-
-```sql
-CREATE TABLE public.vector_layers_meta (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
-    layer_name VARCHAR(255) NOT NULL,
-    file_format VARCHAR(20) NOT NULL,
-    storage_path TEXT NOT NULL,
-    feature_count INT DEFAULT 0,
-    bounds JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
-
-#### 6. `public.projects` (Multi-Campaign Isolation)
-Stores project campaign scopes, regional boundaries, and theme settings.
-
-```sql
-CREATE TABLE public.projects (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL,
-    code VARCHAR(50) UNIQUE NOT NULL,
-    scope JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
-
----
-
-## Production Database Queries
-
-### 1. Spatial Trajectory Query (Bounding Box Filtering)
-Queries published panorama frames within an active map bounding box for WebGL trajectory reconstruction.
-
-```sql
-SELECT 
-    id, 
-    subgrid, 
-    filename, 
-    latitude, 
-    longitude, 
-    heading, 
-    qa_status,
-    image_url
-FROM public.panoramas
-WHERE project_id = :active_project_id
-  AND geom && ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)
-ORDER BY captured_at ASC;
-```
-
-### 2. Subgrid Coverage and Distance Aggregation
-Calculates completed survey distance and frame volume per subgrid.
-
-```sql
-SELECT 
-    subgrid,
-    COUNT(id) AS total_frames,
-    ROUND(SUM(calculate_distance_km)::numeric, 2) AS total_km,
-    COUNT(CASE WHEN qa_status = 'published' THEN 1 END) AS approved_frames,
-    COUNT(CASE WHEN defect_count > 0 THEN 1 END) AS flagged_defects
-FROM (
-    SELECT 
-        id, 
-        subgrid, 
-        qa_status, 
-        defect_count,
-        ST_Distance(
-            geom::geography, 
-            LAG(geom::geography) OVER (PARTITION BY subgrid ORDER BY captured_at)
-        ) / 1000.0 AS calculate_distance_km
-    FROM public.panoramas
-    WHERE project_id = :active_project_id
-) AS trajectory_calculations
-GROUP BY subgrid
-ORDER BY subgrid ASC;
-```
-
-### 3. Publishing Verified Panoramas to the WebGIS Layer
-The WebGIS release gate (`src/components/production/hub/WebGISPublishGate.tsx`)
-writes the approved frames straight into `panoramas` with a chunked upsert. It
-does **not** read `staging_panoramas`; that table is populated by the CSV import
-in Data Management and is used for operator review, not as a promotion queue.
-Each record must carry a target filename and finite coordinates before it is
-publishable. The effective write is:
-
-```sql
-INSERT INTO public.panoramas (
-    project_id, subgrid, filename, image_url, latitude,
-    longitude, heading, qa_status, geom
-)
-VALUES (..., 'published', ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography::geometry)
-ON CONFLICT (project_id, filename) DO UPDATE SET
-    latitude = EXCLUDED.latitude,
-    longitude = EXCLUDED.longitude,
-    heading = EXCLUDED.heading,
-    geom = EXCLUDED.geom,
-    updated_at = NOW();
-```
-
-Apply the `panoramas` policies below before enabling the release gate.
-
----
-
-## Security Governance and Row Level Security (RLS)
-
-Database security is enforced at the PostgreSQL engine level using Row Level Security policies:
-
-```sql
-ALTER TABLE public.panoramas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.staging_panoramas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.qa_defects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
-
--- 1. Public Role: Read-only access to published panoramas
-CREATE POLICY "Public Read Published Panoramas"
-ON public.panoramas
-FOR SELECT
-TO anon, authenticated
-USING (qa_status = 'published');
-
--- 2. Authenticated Staff: Full access restricted to active project context
-CREATE POLICY "Staff Manage Panoramas"
-ON public.panoramas
-FOR ALL
-TO authenticated
-USING (auth.jwt() ->> 'email' IS NOT NULL)
-WITH CHECK (auth.jwt() ->> 'email' IS NOT NULL);
-
--- 3. Staging Pipeline: Operators only
-CREATE POLICY "Operators Manage Staging"
-ON public.staging_panoramas
-FOR ALL
-TO authenticated
-USING (auth.jwt() ->> 'email' IS NOT NULL)
-WITH CHECK (auth.jwt() ->> 'email' IS NOT NULL);
-```
+See `supabase/migrations/README.md` and `docs/Production Setup/03-Reference.md`
+for the capability matrix and the grant/role catalogue.
 
 ---
 

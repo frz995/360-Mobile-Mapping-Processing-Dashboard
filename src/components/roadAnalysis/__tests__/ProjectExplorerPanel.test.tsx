@@ -18,7 +18,7 @@ function cell(over: Partial<MeshCellData> & { subgrid: string }): MeshCellData {
     bbox: [0, 0, 1, 1],
     corridor: { shortKm: 0, mediumKm: 0, arterialKm: 0, trunkKm: 0 },
     junctions: { deadEnd: 0, threeWay: 0, fourWay: 0, fivePlus: 0 },
-    frames: { verified: 0, defect: 0, transit: 0, mismatch: 0 },
+    frames: { verified: 0, defect: 0, transit: 0, mismatch: 0, missing: 0 },
     ...over
   } as MeshCellData;
 }
@@ -36,7 +36,7 @@ const meshCells: MeshCellData[] = [
     panotrack: 300,
     corridor: { shortKm: 4, mediumKm: 5, arterialKm: 2, trunkKm: 1 },
     junctions: { deadEnd: 6, threeWay: 8, fourWay: 4, fivePlus: 2 },
-    frames: { verified: 150, defect: 60, transit: 50, mismatch: 40 }
+    frames: { verified: 150, defect: 60, transit: 50, mismatch: 40, missing: 0 }
   }),
   cell({
     subgrid: 'SG02',
@@ -49,7 +49,7 @@ const meshCells: MeshCellData[] = [
     panotrack: 100,
     corridor: { shortKm: 3, mediumKm: 4, arterialKm: 1, trunkKm: 0 },
     junctions: { deadEnd: 4, threeWay: 4, fourWay: 2, fivePlus: 0 },
-    frames: { verified: 60, defect: 20, transit: 10, mismatch: 10 }
+    frames: { verified: 60, defect: 20, transit: 10, mismatch: 10, missing: 0 }
   }),
   cell({
     subgrid: 'SG03',
@@ -62,7 +62,7 @@ const meshCells: MeshCellData[] = [
     panotrack: 0,
     corridor: { shortKm: 6, mediumKm: 8, arterialKm: 4, trunkKm: 2 },
     junctions: { deadEnd: 2, threeWay: 6, fourWay: 6, fivePlus: 3 },
-    frames: { verified: 0, defect: 0, transit: 0, mismatch: 0 }
+    frames: { verified: 0, defect: 0, transit: 0, mismatch: 0, missing: 0 }
   }),
   cell({ subgrid: 'SG04', bbox: [3, 0, 4, 1] })
 ];

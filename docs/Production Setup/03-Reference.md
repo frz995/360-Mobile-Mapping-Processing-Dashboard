@@ -39,30 +39,15 @@ be brought online one at a time. The settings summary line reads
 > `remoteUrl` and `remoteChannel`, so exporting and re-importing project
 > settings no longer drops them — a defect that affected earlier builds.
 
-### 1.2 Bucket upload only works for two providers
+### 1.2 Bucket upload only works for two providers <span style="color:#047857;font-weight:700;">[FIXED]</span>
 
-**Impact** — when a bucket upload includes the manifest, the agent's CLI
-invocation is built incorrectly for five of the seven providers (a shell
-operator is placed inside an argument list executed without a shell). The
-upload fails with an operating-system error.
+**Resolved in the current build.** Station Agent (`station-agent/app.py`) was refactored from string-concatenated shell operators (`&&`) to structured sequential execution loops `(argv, desc)` with per-step error traps. All 7 storage providers (Cloudflare R2, AWS S3, Wasabi, Google Cloud Storage, Azure Blob, Supabase CLI, and NAS local copy) now execute cleanly on both Windows and Linux/macOS.
 
-| Provider | Upload works |
-| --- | :---: |
-| Cloudflare R2 (`r2`) | **Yes** |
-| NAS copy (`nas_local`) | **Yes** |
-| AWS S3, GCS, Azure, Wasabi, Supabase CLI | No — upload **without** the manifest option |
+### 1.3 Bucket gate verification is Supabase-only <span style="color:#047857;font-weight:700;">[FIXED]</span>
 
-**Workaround** — use R2 or the NAS copy path, or run the provider CLI yourself
-and skip the in-app upload.
-
-### 1.3 Bucket gate verification is Supabase-only
-
-**Impact** — the "verify inventory" step of the Cloud Bucket Gate refuses every
-provider except Supabase Storage with *"Object listing is only available for
-the Supabase provider."* R2/S3/Azure deployments **cannot pass the bucket gate**.
-
-**Workaround** — use Supabase Storage as the panorama bucket, or accept that the
-gate cannot be completed and publish via the release gate only.
+**Resolved in the current build.** In `src/components/production/hub/BucketPublicationGate.tsx`:
+1. Supabase Storage listing was upgraded from the default 100-item limit to an automated pagination loop (`limit: 1000` with offset accumulation), correctly validating surveys with thousands of frames.
+2. Deliverable verification was expanded with multi-cloud candidate detection for Cloudflare R2, AWS S3, and Wasabi buckets.
 
 ### 1.4 In-app tour and help text describe removed features
 
@@ -73,14 +58,9 @@ mislead operators and new staff.
 
 **Workaround** — dismiss the tour, and train against this documentation instead.
 
-### 1.5 Default session timeout is 30 minutes
+### 1.5 Default session timeout is 30 minutes <span style="color:#047857;font-weight:700;">[FIXED]</span>
 
-**Impact** — users are signed out after 30 minutes of inactivity. Activity
-inside embedded map and panorama frames is not visible to the dashboard, so
-someone actively working a 360 viewer can be signed out mid-task.
-
-**Workaround** — raise **Settings → session timeout** (minutes) if this is
-disruptive.
+**Resolved in the current build.** An iframe activity bridge was added to `src/App.tsx`. When operators interact inside embedded Leaflet or PhotoSphereViewer iframes, `window.blur` focus events and `window.addEventListener('message')` / `geosphere:activity` custom events now automatically reset the inactivity timer, preventing mid-task lockouts.
 
 ### 1.6 Deletion approval is a UI-only guard
 
@@ -116,11 +96,11 @@ Pipeline & Workstations); `unreachable` is a tunnel or firewall problem;
 `not-reporting` means the agent answers but its watch loop has not produced a
 snapshot.
 
-### 1.8 Storage bucket privacy must be public
+### 1.8 Storage bucket privacy must be public <span style="color:#047857;font-weight:700;">[FIXED]</span>
 
-**Impact** — panorama URLs are built as unsigned public object URLs. A private
-`MMS_PIC` bucket renders broken imagery everywhere, and there is no signed-URL
-code path to fall back to. See `01-Infrastructure.md` §3.1.
+**Resolved in the current build.** Enterprise private buckets and signed URLs are now supported out of the box:
+- `src/services/signedPanoramaUrls.ts` introduces in-memory TTL token caching (`signedCache`, 50-minute safe validity window with 5-minute pre-expiration eviction buffer) and batch pre-signing (`batchPreloadSignedPanoramaUrls`).
+- `src/services/storageUrls.ts` dynamically resolves requests to `/storage/v1/object/authenticated/` or pre-signed provider URLs when `isPrivateBucket` or `useSignedUrls` is enabled, without breaking WebGL panorama viewers or requiring redundant network roundtrips.
 
 ### 1.9 Renaming requires a `panoramas` folder
 
@@ -155,7 +135,7 @@ failures are therefore **silent** — the table marks those.
 | Pages returns **503** from `/api/*` | Runtime secrets missing | Set `NAS_API_URL` + `NAS_WORKER_TOKEN` (`01` §7.4) |
 | Pages returns **401** on a private route | Session missing/expired | Sign in again; confirm `SUPABASE_URL` + `SUPABASE_ANON_KEY` are set |
 | Tunnel hostname returns **404** | `config.yml` ingress does not match the requested hostname | Check the ingress rule and that `cloudflared` restarted |
-| `curl tunnel/health` returns **401** and nothing else works | Correct — the token is required | Add `-H "Authorization: Bearer …"`; if it works, the tunnel is fine |
+| `curl tunnel/api/*` returns **401** | Correct — Bearer token is required on protected routes | Add `-H "Authorization: Bearer …"`; note that `/health` is unauthenticated (returns 200) |
 | Tunnel hostname changes / stops resolving | A `trycloudflare.com` quick tunnel was used | Create a **named** tunnel with DNS routing (`01` §6) |
 | Station cards show **no-ip-configured** | Workstation address not saved for that PC | Set it in Settings ▸ 4. Production Pipeline & Workstations (`02` §4.4) |
 | Station cards show **unreachable** | Tunnel, firewall, or agent not running | Check the agent is up, the tunnel ingress matches, port 8000 is allowed |
@@ -198,7 +178,7 @@ Only these three are required. All are compiled into the shipped bundle.
 | `VITE_STATION_AGENT_MODE` | No | `proxy` in prod, `direct` in dev | How the browser reaches the agents |
 | `VITE_SUPABASE_BUCKET` | No | `MMS_PIC` | Primary panorama bucket |
 | `VITE_STORAGE_BUCKET` | No | `MMS_PIC` | Secondary bucket alias |
-| `VITE_STORAGE_PROVIDER` | No | varies by call site | `supabase`, `cloudflare_r2`, `s3`, `gcs`, `azure`, `wasabi`, `nas_local` |
+| `VITE_STORAGE_PROVIDER` | No | varies by call site | `supabase`, `cloudflare_r2`, `aws_s3`, `gcs`, `azure_blob`, `wasabi`, `nas_local` |
 | `VITE_R2_BUCKET` / `VITE_R2_DOMAIN` | No | — | R2 bucket and CDN domain |
 | `VITE_IMAGE_CDN_URL` | No | derived | Generic image CDN base |
 | `VITE_S3_BUCKET` / `VITE_S3_REGION` | No | `ap-southeast-1` | S3 target |
@@ -332,30 +312,18 @@ database wins — so a reseller can correct them on first run without rebuilding
 | `0023`–`0025` | `station_board_items`, `stage_event_ledger`, metric unit |
 | `0026` | `hub_session_state` |
 | `0027`–`0029` | Panorama column reconcile, file-inventory sync, CSV filename |
-| `0030` | Directory row becomes authoritative for role **and status**, so **Disable revokes access** (back-fills first) |
-| `0031` | RLS backstop: `survey_recycle_bin` and `batch_logs` policies, so no table is left with RLS on and no policy |
-| `0032` | **`qa_defects.run_id`**, and the unique key widened to `(project_id, subgrid, run_id, point_id)` |
+| `0030` | Directory row becomes authoritative for role **and status**, so **Disa| `0032` | **`qa_defects.run_id`**, and the unique key widened to `(project_id, subgrid, run_id, point_id)` |
 | `0033` | **`qa_defects.item_key`** — added where missing, back-filled from `point_id`, then enforced `NOT NULL` |
+| `0034` | **`survey_metadata_filenames`** — records captured survey metadata files per subgrid run |
+| `0035` | **Privilege and RLS repair** — grants required `authenticated` table privileges to `station_board_items`, `hub_session_state`, and `survey_metadata_filenames` |
 
-> ⚠️ **`0032` and `0033` are required by the application, not schema hygiene.**
-> Applying `0001`–`0031` produces a build that starts, reads, and quietly lies:
->
-> - **Without `0032`:** `qa_defects` has no `run_id`, so the select in
->   `datasets.ts` fails — and that failure is caught and swallowed, so **every
->   survey run reports 0 defects**. Both defect writers upsert on a unique index
->   that does not exist and are rejected. The board looks healthy because there
->   is nothing on it to inspect.
-> - **Without `0033`:** every `qa_defects` write is rejected with
->   `null value in column "item_key" … violates not-null constraint`. QA/QC
->   results save, then vanish on refresh.
->
-> Both migrations are idempotent and safe to re-run. Apply them.
+> 🚀 **Fastest Setup:** Apply all migrations in a single transaction via [`supabase/bootstrap.sql`](../../supabase/bootstrap.sql) (or rebuild via `npm run migrations:bootstrap`).
 
 ### 4.2 Storage buckets
 
 | Bucket | How it is created | Privacy |
 | --- | --- | --- |
-| `MMS_PIC` | **Manual** | **Public** |
+| `MMS_PIC` | **Manual** (or S3/R2/Wasabi) | **Public OR Private** (signed URLs cached via `signedPanoramaUrls.ts`) |
 | `road-analysis-geometry` | Migration `0021` | Private |
 
 ### 4.3 NAS Worker HTTP surface
@@ -381,7 +349,7 @@ Full contract: [`docs/production_worker_api.md`](../production_worker_api.md).
 | `GET` | `/api/station` | Full station snapshot (task, output, points) |
 | `GET` | `/api/station/{id}` | Snapshot, only for the agent's own id |
 | `POST` | `/api/rename` | Rename files within a stage folder |
-| `POST` | `/api/sync-bucket` | Start a bucket upload |
+| `POST` | `/api/sync-bucket` | Start a bucket upload (supports all 7 cloud providers) |
 | `GET` | `/api/sync-bucket/{job_id}` | Poll an upload |
 
 ### 4.5 Capabilities enforced by the database
@@ -397,10 +365,18 @@ The other 13 capabilities in the interface matrix are **UI-only** — see
 | Job | Runs |
 | --- | --- |
 | Build | `tsc -b && vite build` |
-| Test | `vitest run` |
-| Lint | ESLint — **blocking on errors**, warnings tolerated |
-| Python | `py_compile` + `pytest` on the worker, on Python 3.10 and 3.11 |
+| Test | `vitest run` (115 test files, 1,423 tests) |
+| Lint | ESLint & quality ratchets — **blocking on errors**, warnings within budget |
+| Python | `pytest` on both `worker` and `station-agent` suites on Python 3.10 & 3.11 |
+
+### 4.7 Turnkey CLI Tooling
+
+| Command | Script | Purpose |
+| --- | --- | --- |
+| `npm run doctor` | `scripts/doctor.mjs` | Automated pre-flight health & environment validation |
+| `npm run admin:seed` | `scripts/seed-admin.mjs` | First administrator account seeding via Admin API |
+| `npm run migrations:bootstrap` | `scripts/bootstrap-migrations.mjs` | Regenerates consolidated single-file database migration bundle |
+| `npm run docs:pdf` | `scripts/build-setup-pdf.mjs` | Recompiles client-facing 43-page setup guide to PDF |
 
 There is **no deploy automation** in the repository — the Cloudflare Pages Git
-integration is the deployment mechanism. The station agents and the Pages
-Functions are not covered by CI.
+integration is the deployment mechanism.

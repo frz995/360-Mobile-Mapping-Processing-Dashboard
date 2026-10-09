@@ -1,6 +1,6 @@
 import { verifyAssetToken } from './_lib/signing';
 
-const PRIVATE_API_PATHS = ['/api/nas-scan', '/api/nas-image', '/api/nas-image-token', '/api/station-agent', '/api/worker'];
+const PRIVATE_API_PATHS = ['/api/nas-scan', '/api/nas-image', '/api/nas-image-token', '/api/station-agent', '/api/road-extraction', '/api/worker'];
 
 function json(body, status) {
   return new Response(JSON.stringify(body), {

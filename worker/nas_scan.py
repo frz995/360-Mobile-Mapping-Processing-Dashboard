@@ -2,12 +2,36 @@
 from __future__ import annotations
 
 import csv
+import os
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
+# Known stage aliases (case-insensitive substring matching)
+STAGE_ALIASES: dict[str, list[str]] = {
+    "stitching": ["03_stitching", "stitching", "stitched", "project-out", "panoramas", "pano"],
+    "metadata": ["01_metadata", "metadata", "telemetry", "gps", "csv"],
+    "raw": ["00_raw_data", "raw_data", "raw", "capture"],
+    "final": ["05_final", "final", "deliverables", "delivered"],
+}
+
+# Standard defaults for zero-overhead, backward-compatible matching
+STANDARD_PATHS: dict[str, tuple[str, ...]] = {
+    "stitching": ("03_Stitching", "Project-OUT", "Grid 1"),
+    "metadata": ("01_Metadata", "Grid 1"),
+    "raw": ("00_Raw_data", "Grid 1"),
+    "final": ("05_Final", "Project-OUT", "Grid 1"),
+}
+
+ENV_STAGE_KEYS: dict[str, str] = {
+    "stitching": "NAS_STITCH_STAGE",
+    "metadata": "NAS_METADATA_STAGE",
+    "raw": "NAS_RAW_STAGE",
+    "final": "NAS_FINAL_STAGE",
+}
 
 
 def _safe_path(base: str, *parts: str) -> Path:
@@ -25,9 +49,128 @@ def _safe_segment(value: str, label: str) -> str:
     return clean
 
 
-def _image_names(folder: Path) -> list[str]:
+def _rel_path_str(base_path: str, target: Path, default_fallback: str) -> str:
+    try:
+        base_res = Path(base_path).resolve()
+        target_res = target.resolve()
+        rel = str(target_res.relative_to(base_res)).replace("\\", "/")
+        return f"/{rel}/"
+    except (ValueError, OSError):
+        return default_fallback
+
+
+def _find_subgrid_containers(base: str, stage_type: str) -> list[Path]:
+    """Find all directories that directly contain subgrid folders for a given stage."""
+    root = Path(base).resolve()
+    containers: list[Path] = []
+    seen: set[Path] = set()
+
+    def add_if_valid(p: Path) -> None:
+        if p not in seen and p.is_dir():
+            try:
+                resolved = p.resolve()
+                if resolved == root or root in resolved.parents:
+                    containers.append(resolved)
+                    seen.add(resolved)
+            except (ValueError, OSError):
+                pass
+
+    # 1. Environment variable override
+    env_key = ENV_STAGE_KEYS.get(stage_type)
+    if env_key and os.environ.get(env_key):
+        custom_parts = [part for part in os.environ[env_key].replace("\\", "/").split("/") if part]
+        add_if_valid(_safe_path(base, *custom_parts))
+        if containers:
+            return containers
+
+    # 2. Standard path check (zero-overhead lookup for standard layout)
+    std_parts = STANDARD_PATHS.get(stage_type, ())
+    if std_parts:
+        try:
+            std_p = _safe_path(base, *std_parts)
+            if std_p.is_dir():
+                add_if_valid(std_p)
+                return containers
+        except (ValueError, OSError):
+            pass
+
+    # 3. Adaptive discovery: find candidate stage directories under base
+    aliases = STAGE_ALIASES.get(stage_type, [])
+    candidate_stages: list[Path] = []
+    try:
+        for entry in root.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                name_lower = entry.name.lower()
+                if any(alias in name_lower for alias in aliases):
+                    candidate_stages.append(entry)
+    except OSError:
+        pass
+
+    for stage in candidate_stages:
+        proj_out_candidates = [stage]
+        try:
+            for child in stage.iterdir():
+                if child.is_dir() and not child.name.startswith("."):
+                    if "project-out" in child.name.lower():
+                        proj_out_candidates.append(child)
+        except OSError:
+            pass
+
+        for p_cand in proj_out_candidates:
+            grid_found = False
+            try:
+                for child in p_cand.iterdir():
+                    if child.is_dir() and not child.name.startswith("."):
+                        c_lower = child.name.lower()
+                        if "grid" in c_lower or "zone" in c_lower:
+                            add_if_valid(child)
+                            grid_found = True
+            except OSError:
+                pass
+            if not grid_found and p_cand != root:
+                add_if_valid(p_cand)
+
+    return containers
+
+
+def _find_subgrid_dir(base: str, stage_type: str, subgrid: str) -> Path | None:
+    """Find the specific subgrid directory under any valid container for this stage."""
+    sg = _safe_segment(subgrid, "subgrid")
+    containers = _find_subgrid_containers(base, stage_type)
+    for container in containers:
+        exact = container / sg
+        if exact.is_dir():
+            return exact
+        try:
+            for child in container.iterdir():
+                if child.is_dir() and child.name.upper() == sg.upper():
+                    return child
+        except OSError:
+            continue
+    return None
+
+
+def _find_run_dir(base: str, stage_type: str, subgrid: str, folder: str) -> Path | None:
+    """Find the specific run directory for a subgrid and folder name."""
+    run_name = _safe_segment(folder, "folder")
+    sg_dir = _find_subgrid_dir(base, stage_type, subgrid)
+    if not sg_dir:
+        return None
+    exact = sg_dir / run_name
+    if exact.is_dir():
+        return exact
+    try:
+        for child in sg_dir.iterdir():
+            if child.is_dir() and child.name.upper() == run_name.upper():
+                return child
+    except OSError:
+        pass
+    return None
+
+
+def _image_names(folder: Path | None) -> list[str]:
     """List actual panorama images in a run folder or its panoramas child."""
-    if not folder.is_dir():
+    if not folder or not folder.is_dir():
         return []
     try:
         direct = sorted(p.name for p in folder.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS)
@@ -41,7 +184,9 @@ def _image_names(folder: Path) -> list[str]:
     return []
 
 
-def _metadata_run(meta_root: Path, run_name: str) -> tuple[str, int]:
+def _metadata_run(meta_root: Path | None, run_name: str) -> tuple[str, int]:
+    if not meta_root:
+        return "", 0
     folder = meta_root / run_name
     if not folder.is_dir():
         return "", 0
@@ -79,31 +224,33 @@ def scan_nas(
     folder: str = "",
     csv_name: str = "",
 ) -> dict[str, Any]:
-    """Implement the dashboard's `/api/nas-scan` action contract on the NAS."""
+    """Implement the dashboard's `/api/nas-scan` action contract on the NAS with adaptive discovery."""
     base = str(Path(base_path).resolve())
     action = (action or "subgrids").strip().lower()
 
     if action == "subgrids":
-        roots = [
-            _safe_path(base, "03_Stitching", "Project-OUT", "Grid 1"),
-            _safe_path(base, "00_Raw_data", "Grid 1"),
-            _safe_path(base, "01_Metadata", "Grid 1"),
-        ]
+        stitching_containers = _find_subgrid_containers(base, "stitching")
+        raw_containers = _find_subgrid_containers(base, "raw")
+        metadata_containers = _find_subgrid_containers(base, "metadata")
+        all_containers = stitching_containers + raw_containers + metadata_containers
+
         found: dict[str, str] = {}
-        for root in roots:
+        for root in all_containers:
             if not root.is_dir():
                 continue
             try:
                 for entry in root.iterdir():
                     if entry.is_dir() and not entry.name.startswith("."):
+                        if entry.name.lower() in {"project-out", "panoramas", "panorama-tiles"}:
+                            continue
                         found.setdefault(entry.name.upper().strip(), entry.name)
             except OSError:
                 continue
-        stitching_root = roots[0]
+
         items = [
             {
                 "code": code,
-                "existsInStitching": (stitching_root / actual).is_dir(),
+                "existsInStitching": any((c / actual).is_dir() for c in stitching_containers),
                 "label": code,
             }
             for code, actual in sorted(found.items())
@@ -112,9 +259,9 @@ def scan_nas(
 
     if action == "survey-folders":
         sg = _safe_segment(subgrid, "subgrid")
-        stitch_root = _safe_path(base, "03_Stitching", "Project-OUT", "Grid 1", sg)
-        metadata_root = _safe_path(base, "01_Metadata", "Grid 1", sg)
-        if not stitch_root.is_dir():
+        stitch_root = _find_subgrid_dir(base, "stitching", sg)
+        metadata_root = _find_subgrid_dir(base, "metadata", sg)
+        if not stitch_root or not stitch_root.is_dir():
             return {"success": True, "subgrid": sg, "existsOnDisk": False, "folders": []}
         try:
             run_names = sorted(p.name for p in stitch_root.iterdir() if p.is_dir() and not p.name.startswith("."))
@@ -129,6 +276,7 @@ def scan_nas(
             dirs = {p.name for p in run_dir.iterdir() if p.is_dir()} if run_dir.is_dir() else set()
             is_tiled = "panoramas" in dirs or "panorama-tiles" in dirs
             sample = f"{images[0]} .. {images[-1]}" if images else "panoramas/ & panorama-tiles/" if is_tiled else ""
+            default_path = f"/03_Stitching/Project-OUT/Grid 1/{sg}/{run_name}/"
             folders.append({
                 "id": run_name,
                 "name": run_name,
@@ -140,7 +288,7 @@ def scan_nas(
                 "gpsCount": metadata_rows if csv_name else len(images),
                 "formatType": "Tiled Cubic (Deep Zoom)" if is_tiled else "Equirectangular 360°",
                 "formatDesc": "Multi-resolution tiles + backups" if is_tiled else "Stitched single JPG + manifest.json",
-                "path": f"/03_Stitching/Project-OUT/Grid 1/{sg}/{run_name}/",
+                "path": _rel_path_str(base, run_dir, default_path),
             })
         return {"success": True, "subgrid": sg, "existsOnDisk": True, "folders": folders}
 
@@ -150,70 +298,81 @@ def scan_nas(
     if action == "folder-images":
         sg = _safe_segment(subgrid, "subgrid")
         run_name = _safe_segment(folder, "folder")
-        root = _safe_path(base, "03_Stitching", "Project-OUT", "Grid 1", sg, run_name)
+        root = _find_run_dir(base, "stitching", sg, run_name)
         images = _image_names(root)
-        return {"success": True, "existsOnDisk": root.is_dir(), "count": len(images), "images": images}
+        return {"success": True, "existsOnDisk": bool(root and root.is_dir()), "count": len(images), "images": images}
 
     if action == "final-images":
         sg = _safe_segment(subgrid, "subgrid")
         run_name = _safe_segment(folder, "folder")
-        root = _safe_path(base, "05_Final", "Project-OUT", "Grid 1", sg, run_name)
+        root = _find_run_dir(base, "final", sg, run_name)
         images = _image_names(root)
+        default_final = f"/05_Final/Project-OUT/Grid 1/{sg}/{run_name}/"
+        final_path = _rel_path_str(base, root, default_final) if root else default_final
         return {
             "success": True,
-            "existsOnDisk": root.is_dir(),
+            "existsOnDisk": bool(root and root.is_dir()),
             "count": len(images),
             "images": images,
-            "path": f"/05_Final/Project-OUT/Grid 1/{sg}/{run_name}/",
+            "path": final_path,
         }
 
     if action == "registry":
-        roots = {
-            "stitching": _safe_path(base, "03_Stitching", "Project-OUT", "Grid 1"),
-            "metadata": _safe_path(base, "01_Metadata", "Grid 1"),
-            "raw": _safe_path(base, "00_Raw_data", "Grid 1"),
-        }
+        stitching_containers = _find_subgrid_containers(base, "stitching")
+        metadata_containers = _find_subgrid_containers(base, "metadata")
+        raw_containers = _find_subgrid_containers(base, "raw")
+
         subgrids: dict[str, str] = {}
-        for root in roots.values():
-            if not root.is_dir():
+        for container in stitching_containers + metadata_containers + raw_containers:
+            if not container.is_dir():
                 continue
             try:
-                for entry in root.iterdir():
+                for entry in container.iterdir():
                     if entry.is_dir() and not entry.name.startswith("."):
+                        if entry.name.lower() in {"project-out", "panoramas", "panorama-tiles"}:
+                            continue
                         subgrids.setdefault(entry.name.upper().strip(), entry.name)
             except OSError:
                 continue
+
         registry = []
         for code, actual in sorted(subgrids.items()):
-            stitch_root = roots["stitching"] / actual
-            meta_root = roots["metadata"] / actual
-            raw_root = roots["raw"] / actual
+            stitch_root = _find_subgrid_dir(base, "stitching", actual)
+            meta_root = _find_subgrid_dir(base, "metadata", actual)
+            raw_root = _find_subgrid_dir(base, "raw", actual)
+
             run_names: set[str] = set()
-            for root in (stitch_root, meta_root, raw_root):
-                if root.is_dir():
+            for root_dir in (stitch_root, meta_root, raw_root):
+                if root_dir and root_dir.is_dir():
                     try:
-                        run_names.update(p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith("."))
+                        run_names.update(p.name for p in root_dir.iterdir() if p.is_dir() and not p.name.startswith("."))
                     except OSError:
                         pass
+
             children = []
             for run_name in sorted(run_names):
-                stitch_run = stitch_root / run_name
-                images = _image_names(stitch_run) if stitch_run.is_dir() else []
+                stitch_run = (stitch_root / run_name) if stitch_root else None
+                is_stitched = bool(stitch_run and stitch_run.is_dir())
+                images = _image_names(stitch_run) if is_stitched else []
                 csv_name, metadata_rows = _metadata_run(meta_root, run_name)
                 raw_date, _ = _date_labels(run_name)
+                default_stitch = f"/03_Stitching/Project-OUT/Grid 1/{code}/{run_name}/"
+                stitching_path = _rel_path_str(base, stitch_run, default_stitch) if stitch_run else default_stitch
+
                 children.append({
                     "name": run_name,
                     "date": raw_date,
-                    "stitched": stitch_run.is_dir(),
+                    "stitched": is_stitched,
                     "images": len(images),
                     "metadataRows": metadata_rows,
                     "csvName": csv_name,
                     "hasMetadata": bool(csv_name),
-                    "stitchingPath": f"/03_Stitching/Project-OUT/Grid 1/{code}/{run_name}/",
+                    "stitchingPath": stitching_path,
                 })
+
             registry.append({
                 "subgrid": code,
-                "existsInStitching": stitch_root.is_dir(),
+                "existsInStitching": bool(stitch_root and stitch_root.is_dir()),
                 "totals": {
                     "surveys": len(children),
                     "stitchedRuns": sum(1 for c in children if c["stitched"]),
@@ -231,7 +390,9 @@ def read_survey_csv(base_path: str, subgrid: str, folder: str, csv_name: str = "
     """Read and normalize a survey metadata CSV into dashboard pairing rows."""
     sg = _safe_segment(subgrid, "subgrid")
     run_name = _safe_segment(folder, "folder")
-    meta_root = _safe_path(base_path, "01_Metadata", "Grid 1", sg)
+    meta_root = _find_subgrid_dir(base_path, "metadata", sg)
+    if not meta_root or not meta_root.is_dir():
+        meta_root = _safe_path(base_path, "01_Metadata", "Grid 1", sg)
     run_dir = meta_root / run_name
     if not run_dir.is_dir():
         raise FileNotFoundError("Metadata survey folder not found.")

@@ -8,10 +8,12 @@ interface InterModuleConnectorsProps {
 interface ConnectorPath {
     id: string;
     d: string;
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
+}
+
+/** Same geometry rendered as the same paths — avoids a state write on every rAF. */
+function samePaths(a: ConnectorPath[], b: ConnectorPath[]): boolean {
+    if (a.length !== b.length) return false;
+    return a.every((p, i) => p.id === b[i].id && p.d === b[i].d);
 }
 
 /**
@@ -46,7 +48,7 @@ export const InterModuleConnectors: React.FC<InterModuleConnectorsProps> = ({
 
         const wrapRect = wrap.getBoundingClientRect();
         if (wrapRect.width < 1024) {
-            setPaths([]);
+            setPaths((prev) => (prev.length === 0 ? prev : []));
             return;
         }
 
@@ -79,14 +81,13 @@ export const InterModuleConnectors: React.FC<InterModuleConnectorsProps> = ({
             newPaths.push({
                 id: `connector-${i}-${i + 1}`,
                 d,
-                x1,
-                y1,
-                x2,
-                y2,
             });
         }
 
-        setPaths(newPaths);
+        // The connectors are absolutely positioned inside the container, so their
+        // geometry is scroll-invariant — only a real resize changes it. Writing a
+        // fresh array on every scroll frame re-rendered the SVG for nothing.
+        setPaths((prev) => (samePaths(prev, newPaths) ? prev : newPaths));
     }, [totalModules, containerRef]);
 
     useEffect(() => {

@@ -13,6 +13,8 @@
     "test:ui": "vitest --ui",
     "clean-db": "node scripts/clear_all_survey_data.cjs",
     "migrations:bootstrap": "node scripts/bootstrap-migrations.mjs --emit",
+    "admin:seed": "node scripts/seed-admin.mjs",
+    "doctor": "node --no-warnings scripts/doctor.mjs",
     "docs:pdf": "node scripts/build-setup-pdf.mjs"
   },
   "dependencies": {

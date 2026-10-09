@@ -7,11 +7,7 @@ import { MagneticWrap } from './MagneticWrap';
 import { EASE, HERO_SECTION } from './showcaseMotion';
 
 interface HeroSectionProps {
-    distanceKm?: number;
-    frames?: number;
-    activeJobs?: number;
     sparklesReady?: boolean;
-    viewerName?: string;
     onExplorePlatform: () => void;
     onExploreEarth: () => void;
 }

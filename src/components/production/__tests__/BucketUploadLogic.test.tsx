@@ -73,4 +73,9 @@ describe('resolveUploadMode (any-provider channel selection)', () => {
   it('tile strategy avoids the browser channel even on supabase', () => {
     expect(resolveUploadMode('supabase', 'multires_tiles', true, true).mode).toBe('agent_cli')
   })
+
+  it('resolves deliverable candidates for non-supabase clouds with manifest support', () => {
+    const candidates = buildUploadRelCandidates('N93E70', '2026-09-25-R001', 'manifest.json')
+    expect(candidates).toContain('DELIVERABLES/N93E70/manifest.json')
+  })
 })

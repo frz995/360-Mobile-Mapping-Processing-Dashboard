@@ -37,6 +37,38 @@ export function getPOICount(item?: { poiCount?: number; imagesProcessed?: number
   return Number(item.imagesProcessed ?? item.images ?? 0);
 }
 
+/** A daily/run record's frame and POI evidence, in descending order of trust. */
+export interface RunCountSource {
+    /** Storage-verified filename count — the gold standard. */
+    availableImagesCount?: number;
+    /** Declared frame count, not verified against the bucket. */
+    imagesProcessed?: number;
+    poiCount?: number;
+}
+
+/**
+ * Resolve a run's frame and POI counts without ever substituting one for the
+ * other.
+ *
+ * Both metrics are reported independently, so a run can only ever be judged on
+ * the evidence it actually has. Deriving frames from the POI count (or the
+ * reverse) makes a frames KPI that can never exceed a POI KPI and reports a
+ * frame total for runs where no frame measurement exists — the conflation
+ * docs/FRAMES_COUNT_AND_STORAGE_LOGIC.md and the "Never Assume POIs Equal
+ * Frames" rule both forbid.
+ *
+ * `poiCount` stays `undefined` when absent, which is the "not measured" state
+ * the BatchLog contract documents; it is never back-filled from frames.
+ */
+export function resolveRunCounts(src: RunCountSource): { images: number; poiCount?: number } {
+    return {
+        // `images` is a required number on BatchLog, so a run with no frame
+        // evidence at all reports 0 here rather than a borrowed POI figure.
+        images: src.availableImagesCount ?? src.imagesProcessed ?? 0,
+        poiCount: src.poiCount,
+    };
+}
+
 // Helper: Get available uploaded image frames count in MMS_PIC per row
 export function getImagesProcessedCount(item?: {
   imagesProcessed?: number;
@@ -48,11 +80,14 @@ export function getImagesProcessedCount(item?: {
 }): number {
   if (!item) return 0;
 
-  const rawPoi = Number(item.poiCount ?? (item as any).poi ?? (item.panoramas ? item.panoramas.length : 0));
-
+  // Frames and POIs are different measurements and must never be substituted for
+  // one another (docs/FRAMES_COUNT_AND_STORAGE_LOGIC.md, and the "Never Assume
+  // POIs Equal Frames" rule). An earlier version capped every branch at the POI
+  // count, which silently discarded a storage-verified figure whenever the
+  // bucket held more files than the run has POIs — and a test pinned it.
   // 1. Explicit verified count from Supabase storage verification is the gold standard
   if (typeof item.availableImagesCount === 'number') {
-    return Math.min(item.availableImagesCount, rawPoi > 0 ? rawPoi : item.availableImagesCount);
+    return item.availableImagesCount;
   }
   if (item.availableFilenames && Array.isArray(item.availableFilenames)) {
     return item.availableFilenames.length;
@@ -61,11 +96,13 @@ export function getImagesProcessedCount(item?: {
     const availablePans = item.panoramas.filter((p: any) => p.isAvailable === true);
     return availablePans.length;
   }
+  // Declared-but-unverified counts are reported as declared. They are weaker
+  // evidence than the branches above, which is why they are tried last.
   if (typeof item.imagesProcessed === 'number') {
-    return Math.min(item.imagesProcessed, rawPoi > 0 ? rawPoi : item.imagesProcessed);
+    return item.imagesProcessed;
   }
   if (typeof item.images === 'number') {
-    return Math.min(item.images, rawPoi > 0 ? rawPoi : item.images);
+    return item.images;
   }
   return 0;
 }

@@ -15,6 +15,7 @@
 import { extractSubgridName } from '../utils/subgrid';
 import { STORAGE_BUCKET_DEFAULT, REGION_DEFAULTS } from '../config/defaults';
 import { isNasImageProxyEnabled, nasImageUrl } from './nasImageToken';
+import { getCachedSignedPanoramaUrl } from './signedPanoramaUrls';
 
 /** Supported object-storage providers for 360 imagery resolution. */
 export type StorageProviderType =
@@ -50,6 +51,9 @@ export interface StorageResolveSettings {
   cloudStorageBaseUrl?: string;
   supabaseUrl?: string;
   supabaseBucket?: string;
+  isPrivateBucket?: boolean;
+  useSignedUrls?: boolean;
+  signedUrlTtlSeconds?: number;
   multiResTilePattern?: string;
   tilePathPattern?: string;
   multiResFallbackPattern?: string;
@@ -78,7 +82,7 @@ export function formatCloudflareUrl(domainOrUrl: string): string {
   return d.replace(/\/+$/, '');
 }
 
-function sanitizeBucketName(raw?: string): string {
+export function sanitizeBucketName(raw?: string): string {
   const b = (raw || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT).trim();
   return b.replace(/\s+/g, '_') || STORAGE_BUCKET_DEFAULT;
 }
@@ -106,6 +110,11 @@ export function resolvePanoramaUrl(
   cleanFn = cleanFn.replace(/^(?:MMS_PIC|mms_pic|MMS\s+PIC|mms\s+pic|panoramas)\//i, '');
   cleanFn = cleanFn.replace(/^\/+/, '').trim();
   if (!cleanFn) return '';
+
+  const cachedSigned = getCachedSignedPanoramaUrl(cleanFn);
+  if (cachedSigned) {
+    return cachedSigned;
+  }
 
   const provider: StorageProviderType =
     (settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'cloudflare_r2') as StorageProviderType;
@@ -261,6 +270,8 @@ export function resolvePanoramaUrl(
           : defaultSupabaseUrl
       ).replace(/\/+$/, '');
       const bucket = sanitizeBucketName(settings?.supabaseBucket);
+      const isPrivate = Boolean(settings?.isPrivateBucket || settings?.useSignedUrls);
+      const objectEndpoint = isPrivate ? 'authenticated' : 'public';
 
       const pattern = settings?.singleImagePathPattern;
       if (
@@ -273,11 +284,11 @@ export function resolvePanoramaUrl(
           .replace('{pointFolder}', nameWithoutExt)
           .replace('{filename}', cleanFn)
           .replace(/^\/+/, '');
-        return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
+        return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${path}`;
       }
 
       // If cleanFn already includes a folder or if files are at root
-      return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
+      return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${cleanFn}`;
     }
   }
 }
@@ -304,7 +315,9 @@ export function resolvePanoramaConfigUrl(
         : defaultSupabaseUrl
     ).replace(/\/+$/, '');
     const bucket = sanitizeBucketName(settings?.supabaseBucket);
-    baseUrl = sbUrl ? `${sbUrl}/storage/v1/object/public/${bucket}` : '';
+    const isPrivate = Boolean(settings?.isPrivateBucket || settings?.useSignedUrls);
+    const objectEndpoint = isPrivate ? 'authenticated' : 'public';
+    baseUrl = sbUrl ? `${sbUrl}/storage/v1/object/${objectEndpoint}/${bucket}` : '';
   } else {
     baseUrl = (settings?.customCdnUrl || settings?.customStorageUrl || settings?.cloudStorageBaseUrl || '').trim();
   }
@@ -330,6 +343,11 @@ export function resolvePanoramaConfigUrl(
     .replace('{pointFolder}', pointFolder)
     .replace('{filename}', cleanFilename)
     .replace(/^\/+/, '');
+
+  const cachedSigned = getCachedSignedPanoramaUrl(relativePath);
+  if (cachedSigned) {
+    return cachedSigned;
+  }
 
   return `${baseUrl}/${relativePath}`;
 }

@@ -122,12 +122,17 @@ export const ModuleSection: React.FC<ModuleSectionProps> = ({ mod, index, total,
 
                     {/* Specs */}
                     {mod.specs.length > 0 && (
-                        <motion.div variants={revealItem} className="space-y-2">
-                            <dl className="grid gap-x-6 border-t border-white/[0.06]">
+                        <motion.div variants={revealItem} className="space-y-0">
+                            <div className="h-px w-full bg-gradient-to-r from-white/10 via-white/10 to-transparent" />
+                            <dl className="grid">
                                 {mod.specs.map((s) => (
-                                    <div key={s.label} className="flex items-center justify-between gap-3 py-1.5 border-b border-white/[0.04]">
-                                        <dt className="text-[10px] text-neutral-500 shrink-0">{s.label}</dt>
-                                        <dd className="text-[10px] font-medium text-neutral-300 text-right truncate">{s.value}</dd>
+                                    <div key={s.label}>
+                                        <div className="flex items-center gap-2.5 sm:gap-3 py-1.5">
+                                            <dt className="text-[10px] sm:text-[11px] text-neutral-400 font-medium shrink-0 w-24 sm:w-28">{s.label}</dt>
+                                            <span aria-hidden className="w-px h-3 sm:h-3.5 bg-white/15 shrink-0" />
+                                            <dd className="min-w-0 flex-1 text-[10px] sm:text-[11px] font-medium text-neutral-200 truncate" title={s.value}>{s.value}</dd>
+                                        </div>
+                                        <div className="h-px w-full bg-gradient-to-r from-white/[0.08] via-white/[0.08] to-transparent" />
                                     </div>
                                 ))}
                             </dl>

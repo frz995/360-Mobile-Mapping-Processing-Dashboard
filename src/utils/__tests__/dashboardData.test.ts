@@ -3,6 +3,7 @@ import {
   formatBatchIdDisplay,
   getPOICount,
   getImagesProcessedCount,
+  resolveRunCounts,
   parseFlexibleDate,
   formatDisplayDate,
   toISODateString,
@@ -53,15 +54,51 @@ describe('getPOICount', () => {
   })
 })
 
+describe('resolveRunCounts', () => {
+  it('never sources the frame count from the POI count', () => {
+    // A run with POIs but no frame evidence at all must report 0 frames, not
+    // the POI total. This is the exact bug the `preserve_runs` row mapping had.
+    expect(resolveRunCounts({ poiCount: 42 })).toEqual({ images: 0, poiCount: 42 })
+  })
+
+  it('never sources the POI count from the frame count', () => {
+    expect(resolveRunCounts({ imagesProcessed: 17 })).toEqual({ images: 17, poiCount: undefined })
+  })
+
+  it('prefers the storage-verified count over the declared one', () => {
+    expect(resolveRunCounts({ availableImagesCount: 15, imagesProcessed: 12, poiCount: 20 })).toEqual({
+      images: 15,
+      poiCount: 20
+    })
+  })
+
+  it('keeps a verified zero rather than falling back to the declared count', () => {
+    expect(resolveRunCounts({ availableImagesCount: 0, imagesProcessed: 99 })).toEqual({
+      images: 0,
+      poiCount: undefined
+    })
+  })
+
+  it('reports both independently when both are present', () => {
+    expect(resolveRunCounts({ availableImagesCount: 30, poiCount: 28 })).toEqual({
+      images: 30,
+      poiCount: 28
+    })
+  })
+})
+
 describe('getImagesProcessedCount', () => {
   it('returns 0 for empty input', () => {
     expect(getImagesProcessedCount(undefined)).toBe(0)
   })
 
-  it('prefers explicit availableImagesCount (gold standard), clamped to POI', () => {
+  it('prefers explicit availableImagesCount and never caps it at the POI count', () => {
     expect(getImagesProcessedCount({ availableImagesCount: 10, poiCount: 12 })).toBe(10)
-    // clamps to POI when available count exceeds POI
-    expect(getImagesProcessedCount({ availableImagesCount: 15, poiCount: 12 })).toBe(12)
+    // The decisive case: storage verified 15 files for a 12-POI run. The POI
+    // count is a different measurement and must not truncate a verified figure.
+    expect(getImagesProcessedCount({ availableImagesCount: 15, poiCount: 12 })).toBe(15)
+    // Nor the other way round — a verified 0 stays 0.
+    expect(getImagesProcessedCount({ availableImagesCount: 0, poiCount: 40 })).toBe(0)
   })
 
   it('uses availableFilenames length when present', () => {
@@ -82,9 +119,13 @@ describe('getImagesProcessedCount', () => {
     ).toBe(2)
   })
 
-  it('uses imagesProcessed clamped to poi', () => {
+  it('uses a declared imagesProcessed as declared, not capped at the POI count', () => {
     expect(getImagesProcessedCount({ imagesProcessed: 8, poiCount: 10 })).toBe(8)
-    expect(getImagesProcessedCount({ imagesProcessed: 20, poiCount: 10 })).toBe(10)
+    // A declared count above the POI count is over-reporting, but it is still a
+    // measurement about frames — silently rewriting it to the POI number would
+    // make a frames KPI that can never exceed a POI KPI, which is the exact
+    // conflation the frame-count rule forbids.
+    expect(getImagesProcessedCount({ imagesProcessed: 20, poiCount: 10 })).toBe(20)
   })
 
   it('returns 0 when nothing matches', () => {

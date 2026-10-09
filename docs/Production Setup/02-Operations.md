@@ -14,14 +14,11 @@ in the application and how to verify the install.
 
 ## 1. NAS layout
 
-The worker and the agents read the survey filesystem directly. Their paths are
-**hard-coded stage folders** — if the layout does not match, the corresponding
-scans silently return empty results rather than erroring.
+The worker and the agents read the survey filesystem directly. By default, the system follows a standard production stage layout, but the worker now features **adaptive dynamic stage discovery** — it automatically detects alternative grid folders (e.g. `Grid 2`, `Grid 3`), flat stage layouts, and custom folder names, as well as optional environment overrides (`NAS_STITCH_STAGE`, `NAS_METADATA_STAGE`, etc.).
 
-### 1.1 Required tree
+### 1.1 Recommended standard tree
 
-Set `NAS_BASE_PATH` (worker) and `WATCH_ROOT` (agents) to the **root** of this
-tree:
+Set `NAS_BASE_PATH` (worker) and `WATCH_ROOT` (agents) to the **root** of this tree:
 
 ```
 <NAS_BASE_PATH>/

@@ -1123,6 +1123,16 @@ select:-webkit-autofill:focus {
     scroll-padding-top: 5rem;
   }
 }
+/* Coarse pointers skip Lenis entirely (SystemShowcase returns early on
+   `(pointer: coarse)`), so the JS Snap plugin never runs for them. Without a
+   scroll-snap-type here the `snap-start` on every section is inert and touch
+   users free-scroll with no landing points at all. Scoped to coarse pointers so
+   it never fights Lenis + Snap on desktop. */
+@media (pointer: coarse) {
+  .showcase-scrollport {
+    scroll-snap-type: y proximity;
+  }
+}
 .showcase-scrollport::-webkit-scrollbar {
   width: 0;
   height: 0;

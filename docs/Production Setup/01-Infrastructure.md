@@ -88,9 +88,13 @@ Record the project URL and the `anon` / publishable key. You need:
 
 This project is **not** wired to a migration runner. There is no
 `supabase/config.toml` and no `seed.sql`, so `supabase db push` will not work.
-The migrations are applied as a **hand-run, ordered sequence**.
+The migrations are applied as a **hand-run, ordered sequence**, or via the consolidated suite.
 
-Run these **29 files in ascending numeric order**:
+> 🚀 **Fastest installation path:** run the single consolidated bootstrap bundle:
+> - **Supabase SQL Editor:** Paste and run [`supabase/bootstrap.sql`](../../supabase/bootstrap.sql) (generated via `npm run migrations:bootstrap`).
+> - **psql:** `psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f supabase/bootstrap.sql`
+
+If applying individual files, run these **34 files in ascending numeric order**:
 
 ```
 0001_schema_migrations.sql
@@ -124,6 +128,10 @@ Run these **29 files in ascending numeric order**:
 0029_csv_file_name.sql
 0030_role_precedence.sql
 0031_rls_completeness_backstop.sql
+0032_qa_defects_run_scope.sql
+0033_qa_defects_item_key.sql
+0034_survey_metadata_filenames.sql
+0035_repair_privileges_and_rls.sql
 ```
 
 > ⚠️ **`0011_security_tests.sql` is a test, not a migration.** It makes no schema
@@ -131,18 +139,10 @@ Run these **29 files in ascending numeric order**:
 > is a `for f in supabase/migrations/00*.sql` loop, which sweeps `0011` in with
 > the schema files.
 
-> ⚠️ **Do not fail fast on a fresh install.** `0004` opens with
-> `ALTER TABLE public.panoramas ENABLE ROW LEVEL SECURITY`, but `panoramas` is
-> created by `0012` — eight files later. On an empty database `0004` fails on its
-> first statement, and that cascades: `0007` needs `deletion_requests`, and
-> `0010`/`0030` need `user_accounts`. **If you stop there, `0030` never runs and
-> Disable does not actually revoke access.**
->
-> The Supabase SQL Editor is safe — it runs statements independently. With
-> `psql`, **omit `ON_ERROR_STOP=1`** so the sequence continues and `0012` can
-> create the tables `0004` wanted. `0031` then repairs the two RLS gaps this
-> ordering leaves behind. Full procedure and verification:
-> [`supabase/migrations/README.md`](../../supabase/migrations/README.md) §How to apply.
+> ℹ️ **Fresh install compatibility:** In current builds, `0004` safely guards
+> `panoramas` and `staging_panoramas` RLS activation with existence checks. `0012`
+> creates the core tables and applies authoritative role-guarded RLS. Sequential
+> execution from `0001` through `0035` now passes cleanly with 0 errors.
 
 > ⚠️ **`0019` is `map_shares_public_access.sql`**, not
 > `map_shares_auth_only.sql`. It grants `anon` SELECT — i.e. public read of
@@ -160,42 +160,23 @@ Run these **29 files in ascending numeric order**:
 | `0016` before `0031` | `0031` backstops `batch_logs`, which `0016` creates |
 | `0007` before `0031` | `0031` backstops `survey_recycle_bin`, which `0007` creates |
 | `0030` before `0031` | keep in order so the RLS sweep sees the final schema |
-| ⚠️ **`0012` before `0004`** | **known defect** — `0004` needs `panoramas`, which `0012` creates. On a fresh database this fails; see the warning above |
+| `0031` before `0032`, `0033` | `0032` scopes `qa_defects` to `run_id`; `0033` enforces `item_key` |
+| `0034` before `0035` | `0034` creates `survey_metadata_filenames`; `0035` grants privileges |
 
-> **`0030` matters for an existing install.** It makes the `user_accounts` row
-> authoritative for both role and status, so that **Disable** in
-> Administration → Users now actually revokes access. Before it, an account
-> carrying an App Metadata role kept its permissions regardless of the
-> dashboard setting, because the token claim was checked first.
->
-> The migration **back-fills** any directory row whose role disagreed with the
-> claim, so applying it cannot silently downgrade an existing user. Its
-> verification query (at the end of the file) should return zero rows. Run it
-> after applying.
-
-> **`0031` matters for a fresh install.** Proving a from-empty install showed
-> `survey_recycle_bin` never had RLS enabled, and `batch_logs` had RLS but no
-> policies — which under Postgres denies everything, so the daily ledger reads
-> as empty rather than erroring. `0031` closes both using the same
-> authenticated-only shape `0004` applies to `recycle_bin`. Verify afterwards
-> that no public table is left without RLS, and none has RLS with zero policies
-> (queries at the end of the file).
+> **`0035` is critical for operator access.** Migrations `0023`, `0026`, and `0034`
+> created tables granted only to `postgres`. `0035` grants them to `authenticated`
+> and aligns `sec.can('deleteData')` so operators can capture metadata and use
+> the flight board without receiving "permission denied" errors.
 
 **How to run them**
 
-*Supabase SQL Editor* — paste and run each file in order, one at a time. Safe
-on a fresh install: the Editor runs statements independently, so `0012` can
-still create the tables `0004` wanted.
+*Supabase SQL Editor* — paste and run [`supabase/bootstrap.sql`](../../supabase/bootstrap.sql) in one execution. Alternatively, run individual files in ascending order.
 
-*psql* — note this deliberately does **not** fail fast:
+*psql* — execute sequentially:
 
 ```bash
 export PGHOST=<db-host> PGDATABASE=postgres PGUSER=postgres PGPASSWORD=<pw>
-for f in supabase/migrations/00*.sql; do
-  case "$f" in *0011_security_tests.sql) continue ;; esac
-  # no ON_ERROR_STOP: 0004 needs a table 0012 creates, so it fails on a fresh db
-  echo "== $f"; psql -q -f "$f" || echo "   (continued past an error in $f)"
-done
+psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f supabase/bootstrap.sql
 ```
 
 The migrations are written to be idempotent, so re-running one that partially
@@ -233,29 +214,19 @@ If `panoramas_subgrid_summary` is missing, PostGIS was not installed when
 
 ## 3. Storage buckets
 
-### 3.1 `MMS_PIC` — you must create this, and it must be PUBLIC
+### 3.1 `MMS_PIC` — Object Storage Bucket Configuration
 
-No migration creates it. Create it manually: **Supabase → Storage → New bucket**.
+Create the bucket manually in **Supabase → Storage → New bucket**, or configure your enterprise cloud storage (Cloudflare R2, AWS S3, Wasabi, GCS, Azure Blob).
 
-| Setting | Value |
-| --- | --- |
-| Name | `MMS_PIC` |
-| **Public bucket** | **ON** |
+| Setting | Standard Public Mode | Enterprise Private Mode |
+| --- | --- | --- |
+| Bucket Name | `MMS_PIC` (or configured custom bucket) | `MMS_PIC` |
+| **Public bucket** | **ON** | **OFF (Private)** |
+| **URL Strategy** | Direct public CDN / storage URL | In-Memory Signed URL Cache (`signedPanoramaUrls.ts`) |
 
-> **Why public?** The dashboard builds panorama URLs of the form
-> `https://<project>.supabase.co/storage/v1/object/public/MMS_PIC/<file>` and
-> hands them straight to `<img>` and tile loaders. There is no signed-URL code
-> path for panoramas. With a private bucket every panorama renders broken.
+> **Public Mode (Default):** The dashboard constructs fast public URLs and passes them straight to `<img>` and WebGL cubemap tile loaders. Zero API signing roundtrips, ideal for public or non-sensitive surveys.
 >
-> Some older notes describe `MMS_PIC` as private. Making it private is only
-> viable if you also add a `storage.objects` SELECT policy **and** have the
-> application switched to signed URLs — the second half is **not implemented**.
-
-> **Privacy implication:** with a public bucket, the object path is the only
-> thing protecting an image. Survey imagery filenames carry the subgrid and
-> frame index. If your imagery is confidential, keep it in a private bucket and
-> front it with the NAS worker preview route instead, and raise it with your
-> integrator before go-live.
+> **Enterprise Private Mode:** Supported out of the box. In **Admin Settings → Storage** or project configuration, enable `isPrivateBucket` or `useSignedUrls`. The platform automatically batches and caches signed object tokens in memory with a 50-minute safe validity window, routing requests through `/storage/v1/object/authenticated/` or pre-signed provider URLs without breaking the WebGL panorama viewer.
 
 ### 3.2 `road-analysis-geometry` — created automatically, private
 
@@ -272,14 +243,23 @@ current code never reads or writes it. Skip it.
 
 ## 4. First administrator
 
-### 4.1 Why this is manual
+### 4.1 Automated provisioning (Recommended)
 
-There is **no seed script, no `config.toml`, and no signup path in the
-application**. Meanwhile the user-management screen requires the
-`manageUsers` capability, which only an Administrator holds. So the first
-Administrator **cannot** be created from inside the app — you must seed them.
+Run the administrator seeding script from the project root:
 
-### 4.2 The four steps
+```bash
+# Direct command with parameters
+node scripts/seed-admin.mjs --email admin@example.com --password "SecurePass123!" --name "Lead Administrator"
+
+# Or run interactive prompt:
+npm run admin:seed
+```
+
+This automated script connects via `SUPABASE_SERVICE_ROLE_KEY`, configures `auth.users` with `app_metadata` and `user_metadata` set to `Administrator`, confirms the email, and upserts the directory row into `public.user_accounts` in one step.
+
+### 4.2 Manual four-step setup (Fallback)
+
+If you prefer to configure the account manually in the Supabase Dashboard:
 
 **Step 1 — create the auth user.**
 Supabase → Authentication → Users → **Add user**. Enter an email and password
@@ -372,6 +352,24 @@ Then, in the dashboard, use **Administration → Users** to adjust their role or
 > signing in at all, remove or disable the user in Supabase.
 
 > Grant individual capabilities in **Administration → Roles**.
+
+### 4.5 Pre-Flight System Diagnostics (`npm run doctor`)
+
+To verify that your infrastructure, environment variables, PostGIS database, and administrator accounts are correctly wired before opening the platform to production staff, execute the automated pre-flight doctor:
+
+```bash
+npm run doctor
+```
+
+This single command evaluates:
+- **Runtime Environment:** Confirms Node.js (>= 18) and Python (>= 3.10) for Station Agent / Worker.
+- **Environment & Keys:** Verifies `VITE_SUPABASE_URL`, anon public JWT, and optional `SUPABASE_SERVICE_ROLE_KEY`.
+- **Database Schema & PostGIS:** Validates connectivity and verifies all required core tables (`projects`, `subgrids`, `panoramas`, `user_accounts`).
+- **Administrator Readiness:** Checks that at least one active `Administrator` or `sysadmin` account exists in `user_accounts`.
+- **Cloud Storage:** Validates configuration for the active cloud provider (`cloudflare_r2`, `aws_s3`, `wasabi`, `supabase`, `nas_local`).
+- **Station Agent Status:** Probes local SD-card edge ingestion daemon connectivity (`http://127.0.0.1:8765`).
+
+Any misconfigurations will be displayed with actionable remediation commands.
 
 ---
 
