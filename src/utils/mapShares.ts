@@ -787,48 +787,38 @@ export async function createShare(input: CreateShareInput): Promise<{ share: Map
     expires_at: expiresAt
   };
 
-  try {
-    const { data, error } = await supabase
-      .from('map_shares')
-      .insert(shareRow)
-      .select()
-      .single();
+  const { data, error } = await supabase
+    .from('map_shares')
+    .insert(shareRow)
+    .select()
+    .single();
 
-    if (!error && data) {
-      const share = data as MapShare;
-      // Cache locally only after successful insert — avoids double-serializing
-      // multi-MB snapshot JSON before the network call.
-      try {
-        localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(share));
-      } catch { /* storage quota exceeded */ }
-      return { share, url: sharePublicUrl(share.token) };
+  if (error) {
+    console.error('[mapShares] Supabase cloud insert failed:', error);
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const fallbackShare: MapShare = {
+        id: `local-${token}`, token, kind: input.kind, title: input.title || 'Shared Map',
+        project_id: getActiveProjectId(), snapshot: input.snapshot, basemap: input.basemap || 'ofm-positron',
+        password_hash: passwordHash, created_by: input.createdBy || null, created_at: new Date().toISOString(),
+        expires_at: expiresAt, revoked_at: null, view_count: 0
+      };
+      try { localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(fallbackShare)); } catch { /* quota */ }
+      return { share: fallbackShare, url: sharePublicUrl(fallbackShare.token) };
     }
-  } catch (err) {
-    console.warn('[mapShares] Supabase cloud insert failed, using local mirror:', err);
+    throw new Error(
+      `Database error: ${error.message || error.code || 'Failed to save share.'} Ensure migration 0019 is applied in Supabase.`
+    );
   }
 
-  // Offline / Supabase failure: build a local-only share fallback
-  const fallbackShare: MapShare = {
-    id: `local-${token}`,
-    token,
-    kind: input.kind,
-    title: input.title || 'Shared Map',
-    project_id: getActiveProjectId(),
-    snapshot: input.snapshot,
-    basemap: input.basemap || 'ofm-positron',
-    password_hash: passwordHash,
-    created_by: input.createdBy || null,
-    created_at: new Date().toISOString(),
-    expires_at: expiresAt,
-    revoked_at: null,
-    view_count: 0
-  };
+  if (data) {
+    const share = data as MapShare;
+    try {
+      localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(share));
+    } catch { /* storage quota exceeded */ }
+    return { share, url: sharePublicUrl(share.token) };
+  }
 
-  try {
-    localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(fallbackShare));
-  } catch { /* storage quota exceeded or disabled */ }
-
-  return { share: fallbackShare, url: sharePublicUrl(fallbackShare.token) };
+  throw new Error('Failed to create share link: no record returned from cloud database.');
 }
 
 export async function fetchShareByToken(token: string): Promise<MapShare | null> {

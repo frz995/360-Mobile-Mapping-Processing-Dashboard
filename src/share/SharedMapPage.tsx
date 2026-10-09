@@ -1196,7 +1196,7 @@ export function SharedMapPage() {
       <StatusCard
         icon={<AlertTriangle size={20} />}
         title="This map link is no longer available"
-        message="The link may have expired, been revoked by the project team, or was mistyped. Please ask the sender for a fresh share link."
+        message="This link could not be found in the cloud database or may have expired. Ensure migration 0019 is applied in Supabase and that the share was saved successfully."
       />
     );
   }
