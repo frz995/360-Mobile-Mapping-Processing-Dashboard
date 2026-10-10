@@ -1,0 +1,201 @@
+{
+  "type": "FeatureCollection",
+  "name": "TNB_Substations_11kV_33kV_Sample",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "ppu-1",
+      "properties": {
+        "name": "PPU BANDAR SEGAMAT",
+        "station_name": "PPU BANDAR SEGAMAT",
+        "type": "PPU",
+        "voltage": "33kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "capacity_mva": 30,
+        "commissioned": "2018",
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.8125, 2.545]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ppu-2",
+      "properties": {
+        "name": "PPU TAMAN YASMIN",
+        "station_name": "PPU TAMAN YASMIN",
+        "type": "PPU",
+        "voltage": "33kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "capacity_mva": 30,
+        "commissioned": "2020",
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.825, 2.552]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ssu-1",
+      "properties": {
+        "name": "SSU KAMPUNG TENGAH",
+        "station_name": "SSU KAMPUNG TENGAH",
+        "type": "SSU",
+        "voltage": "22kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "feeders": 6,
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.809, 2.5415]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ssu-2",
+      "properties": {
+        "name": "SSU BUKIT SIPUT",
+        "station_name": "SSU BUKIT SIPUT",
+        "type": "SSU",
+        "voltage": "11kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "feeders": 8,
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.818, 2.5485]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "pe-1",
+      "properties": {
+        "name": "PE JALAN GENUANG",
+        "station_name": "PE JALAN GENUANG",
+        "type": "PE",
+        "voltage": "11kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "transformer_kva": 1000,
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.8075, 2.5422]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "pe-2",
+      "properties": {
+        "name": "PE TAMAN BINTANG INDAH",
+        "station_name": "PE TAMAN BINTANG INDAH",
+        "type": "PE",
+        "voltage": "11kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "transformer_kva": 750,
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.8082, 2.5435]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "pe-3",
+      "properties": {
+        "name": "PE KLINIK KESIHATAN",
+        "station_name": "PE KLINIK KESIHATAN",
+        "type": "PE",
+        "voltage": "11kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "transformer_kva": 500,
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.8105, 2.5442]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "pe-4",
+      "properties": {
+        "name": "PE SMK SEGAMAT",
+        "station_name": "PE SMK SEGAMAT",
+        "type": "PE",
+        "voltage": "11kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "transformer_kva": 1000,
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.814, 2.546]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "pe-5",
+      "properties": {
+        "name": "PE PUSAT PERNIAGAAN SEGAMAT",
+        "station_name": "PE PUSAT PERNIAGAAN SEGAMAT",
+        "type": "PE",
+        "voltage": "11kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "transformer_kva": 1000,
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.816, 2.5472]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "pe-6",
+      "properties": {
+        "name": "PE TAMAN MEGAH",
+        "station_name": "PE TAMAN MEGAH",
+        "type": "PE",
+        "voltage": "11kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "transformer_kva": 750,
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.8205, 2.5495]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "pe-7",
+      "properties": {
+        "name": "PE KAWASAN INDUSTRI",
+        "station_name": "PE KAWASAN INDUSTRI",
+        "type": "PE",
+        "voltage": "11kV",
+        "operator": "Tenaga Nasional Berhad (TNB)",
+        "transformer_kva": 1500,
+        "subgrid": "N94E70"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [102.8225, 2.5505]
+      }
+    }
+  ]
+}

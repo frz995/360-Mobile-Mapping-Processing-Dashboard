@@ -227,33 +227,40 @@
 
 [data-theme="daylight"] {
     color-scheme: light;
-    --bg-app: #F3F6F7;
-    --bg-card: #FBFCFC;
-    --bg-inner: #E7EEF0;
-    --border-subtle: #D4E0E3;
-    --divider: rgba(82, 110, 116, 0.15);
-    --accent: #648C95;
-    --accent-bg: rgba(100, 140, 149, 0.12);
-    --accent-foreground: #F9FCFC;
-    --palette-mint: #4D8D84;
-    --palette-sage: #778E66;
-    --palette-butter: #9A7A44;
-    --palette-coral: #B57068;
-    --palette-lavender: #887395;
-    --palette-slateblue: #5E7E89;
-    --palette-teal: #4C817D;
-    --text-primary: #263438;
-    --text-muted: #627277;
-    --table-header-bg: #E7EEF0;
-    --table-header-text: #46575B;
-    --table-row-hover: #F7F9FA;
-    --table-text: #303E42;
-    --input-bg: #FCFDFD;
-    --card-shadow: 0 1px 3px rgba(33, 55, 60, 0.05), 0 2px 6px -1px rgba(33, 55, 60, 0.035);
-    --modal-overlay: rgba(38, 52, 56, 0.4);
-    --canvas-bg: linear-gradient(180deg, #F8FAFA 0%, #EEF3F4 100%);
-    --neu-shadow-light: rgba(255, 255, 255, 0.94);
-    --neu-shadow-dark: rgba(117, 138, 143, 0.24);
+    --bg-app: #F5F8FC;
+    --bg-card: #FFFFFF;
+    --bg-inner: #F0F4F9;
+    --border-subtle: #DFE7F0;
+    --divider: #DFE7F0;
+    --accent: #1B4D89;
+    --accent-bg: rgba(27, 77, 137, 0.12);
+    --accent-foreground: #FFFFFF;
+    --palette-mint: #2E7D73;
+    --palette-sage: #567E52;
+    --palette-butter: #8A6D3B;
+    --palette-coral: #B25348;
+    --palette-lavender: #755B8B;
+    --palette-slateblue: #385E8A;
+    --palette-teal: #2D6B78;
+    --text-primary: #15365F;
+    --text-muted: #617A99;
+    --table-header-bg: #F0F4F9;
+    --table-header-text: #15365F;
+    --table-row-hover: #F8FAFD;
+    --table-text: #15365F;
+    --input-bg: #FFFFFF;
+    --card-shadow: 0 1px 3px rgba(21, 54, 95, 0.05), 0 2px 6px -1px rgba(21, 54, 95, 0.035);
+    --modal-overlay: rgba(21, 54, 95, 0.35);
+    --canvas-bg: linear-gradient(180deg, #F5F8FC 0%, #EDF3FA 100%);
+    --neu-shadow-light: rgba(255, 255, 255, 0.95);
+    --neu-shadow-dark: rgba(140, 165, 195, 0.25);
+}
+
+/* DAYLIGHT CLEAN: Sidebar and header anchor background */
+[data-theme="daylight"] nav[aria-label*="Workspace navigation"],
+[data-theme="daylight"] header > div > div.hidden.md\:flex {
+    background-color: #F8FAFD !important;
+    border-right-color: #DFE7F0 !important;
 }
 
 [data-theme="neumorph-clay"] {

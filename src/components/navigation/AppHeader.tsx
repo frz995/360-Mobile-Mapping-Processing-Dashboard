@@ -16,6 +16,7 @@ import type { NotificationItem } from '../../types/dashboard';
 
 export interface AppHeaderProps {
   title: string;
+  isSidebarExpanded?: boolean;
   mobileNavOpen: boolean;
   onToggleMobileNav: () => void;
   tourStep: number | null;
@@ -46,6 +47,7 @@ export interface AppHeaderProps {
 
 export const AppHeader = ({
   title,
+  isSidebarExpanded = false,
   mobileNavOpen,
   onToggleMobileNav,
   tourStep,
@@ -74,35 +76,73 @@ export const AppHeader = ({
   onSignOut
 }: AppHeaderProps) => {
   return (
-    <header className="min-h-14 py-2 sm:py-0 px-3 sm:px-4 bg-card border-b border-subtle flex items-center justify-between shrink-0 z-20 gap-2">
-      <div className="flex items-center gap-1.5 min-w-0">
-        <button
-          type="button"
-          onClick={onToggleMobileNav}
-          aria-label="Open navigation menu"
-          aria-expanded={mobileNavOpen}
-          className="md:hidden p-2 -ml-1 rounded-lg text-text-muted hover:text-text-base hover:bg-inner transition-colors cursor-pointer shrink-0"
+    <header className="h-14 px-0 bg-card border-b border-subtle flex items-center justify-between shrink-0 z-20 gap-2">
+      <div className="flex items-center min-w-0 h-full">
+        {/* Mobile Left: Menu Toggle & Compact Logo */}
+        <div className="md:hidden flex items-center gap-2 pl-3 pr-1 shrink-0">
+          <button
+            type="button"
+            onClick={onToggleMobileNav}
+            aria-label="Open navigation menu"
+            aria-expanded={mobileNavOpen}
+            className="p-2 -ml-1 rounded-lg text-text-muted hover:text-text-base hover:bg-inner transition-colors cursor-pointer shrink-0"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="w-8 h-8 rounded-xl bg-slate-950 border border-slate-800/90 shadow-sm flex items-center justify-center p-1.5 shrink-0">
+            <img
+              src="/branding/geosphere-arrow-icon-white.svg"
+              alt="GeoSphere 360"
+              className="w-full h-full object-contain select-none"
+              draggable={false}
+            />
+          </div>
+        </div>
+
+        {/* Desktop Left: Anchor block aligning seamlessly with the sidebar rail's border */}
+        <div
+          className={`hidden md:flex items-center justify-center shrink-0 border-r border-subtle transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] self-stretch ${
+            isSidebarExpanded ? 'w-52 px-3 gap-2.5' : 'w-14 px-0'
+          }`}
         >
-          <Menu size={20} />
-        </button>
-        <div className="flex flex-col select-none min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-slate-950 border border-slate-800/90 shadow-sm flex items-center justify-center p-1.5 shrink-0">
+            <img
+              src="/branding/geosphere-arrow-icon-white.svg"
+              alt="GeoSphere 360"
+              className="w-full h-full object-contain select-none"
+              draggable={false}
+            />
+          </div>
+          {isSidebarExpanded && (
+            <div className="min-w-0 overflow-hidden truncate">
+              <span className="text-xs font-bold text-text-base tracking-tight truncate block leading-tight">
+                GeoSphere <span className="text-text-muted font-semibold">360°</span>
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Title and Subtitle Block */}
+        <div className="flex flex-col select-none min-w-0 pl-3 sm:pl-4 py-1">
           <h1 className="text-sm sm:text-base md:text-lg font-bold text-text-base tracking-tight font-sans leading-tight truncate">
             {title}
           </h1>
-          <span className="text-[10px] sm:text-[11px] text-text-muted font-normal tracking-normal mt-0.5 hidden sm:inline truncate">
-            Spatial Trajectory Processing &amp; Quality Assurance Pipeline
-          </span>
+          <div className="text-[10px] sm:text-[11px] text-text-muted font-normal tracking-normal mt-0.5 hidden sm:flex items-center gap-1.5 truncate">
+            <span>GeoSphere 360 Operations Hub</span>
+            <span className="opacity-40">/</span>
+            <span>Monitoring &amp; Operations</span>
+          </div>
           <span className="text-[9px] text-text-muted font-normal tracking-normal mt-0.5 sm:hidden truncate">
-            Spatial Pipeline
+            GeoSphere 360 / Operations
           </span>
         </div>
       </div>
 
       {/* Top Right Controls */}
       <div
-        className={`flex items-center gap-1.5 sm:gap-3 text-text-muted relative shrink-0 transition-all duration-300 ${
+        className={`flex items-center gap-1.5 sm:gap-3 text-text-muted relative shrink-0 pr-3 sm:pr-4 transition-all duration-300 ${
           tourStep === 5
-            ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-app px-2 py-1 rounded-xl'
+            ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-app px-2 py-1 rounded-xl mr-2'
             : tourStep !== null
             ? 'opacity-30 blur-[1.5px] pointer-events-none'
             : ''

@@ -3,6 +3,7 @@ import * as shapefile from 'shapefile';
 import { extractZipFiles } from './zipReader';
 import { readFileAsText, readFileAsArrayBuffer } from './roadPlanParser';
 import type { GisImportWorkerResponse } from '../workers/gisImport.worker';
+import type { Substation3DConfig } from './substationTypes';
 
 export { readFileAsText, readFileAsArrayBuffer };
 
@@ -88,6 +89,8 @@ export interface CatalogVectorLayer {
   // serialized `geojsonJson` bytes were backed up (heavy layers only), so a
   // cloud restore on another browser/device can re-download the geometry.
   geometryStoragePath?: string;
+  /** 3D Substation model extrusion & representation (PE, SSU, PPU) */
+  substation3D?: Substation3DConfig;
 }
 
 export interface GisImportResult {

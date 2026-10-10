@@ -28,7 +28,10 @@ import {
 } from 'lucide-react';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
 import { getCatalogSamplePropKeys, pickCatalogLabelField } from '../../utils/catalogLayerLabels';
+import { resolveLayerFeatures } from '../../utils/catalogLayerGeometry';
+import { getSliderStyle } from './sliderStyle';
 import { CommitSlider } from './CommitSlider';
+import { Substation3DEditor } from './Substation3DEditor';
 import {
   ReorderList,
   ReorderItem,
@@ -142,40 +145,19 @@ export function getFeatureBbox(feature: any): [number, number, number, number] |
 }
 
 /**
- * Dynamic CSS properties for range slider thumb circle to follow selected color
+ * Dynamic CSS properties for range slider thumb circle to follow selected color.
+ * Defined in `./sliderStyle` so the extracted 3D editor shares it; re-exported
+ * to keep the existing import surface stable.
  */
-export function getSliderStyle(color?: string): React.CSSProperties {
-  if (!color) return {};
-  const glow = color.startsWith('#') && color.length === 7 ? `${color}40` : color;
-  return {
-    '--slider-thumb-color': color,
-    '--slider-thumb-glow': glow,
-    accentColor: color
-  } as React.CSSProperties;
-}
+export { getSliderStyle } from './sliderStyle';
 
 /**
- * Resolves a layer's FeatureCollection for tabular use.
- *
- * Layers imported normally keep the parsed `geojson` object. Heavy imports
- * drop the object and instead carry `geojsonJson` (serialized FeatureCollection
- * bytes) to keep the structured clone cheap — so parse it lazily here and memoize
- * the result keyed by the exact serialized string to avoid re-parsing on re-render.
+ * Resolves a layer's FeatureCollection for tabular or derived-geometry use.
+ * Defined in `utils/catalogLayerGeometry` so non-panel consumers (the map's
+ * substation 3D extrusion) share one parse cache; re-exported here to keep the
+ * existing import surface stable.
  */
-const parsedFeatureCache = new Map<string, { geojson: any; features: any[] }>();
-
-export function resolveLayerFeatures(
-  layer: CatalogVectorLayer
-): { geojson: any; features: any[] } | null {
-  if (layer.geojson?.features) return { geojson: layer.geojson, features: layer.geojson.features };
-  if (!layer.geojsonJson) return null;
-  const cached = parsedFeatureCache.get(layer.geojsonJson);
-  if (cached) return cached;
-  const parsed = JSON.parse(layer.geojsonJson);
-  const data = { geojson: parsed, features: parsed.features || [] };
-  parsedFeatureCache.set(layer.geojsonJson, data);
-  return data;
-}
+export { resolveLayerFeatures, resolveLayerGeojson } from '../../utils/catalogLayerGeometry';
 
 /**
  * Exports layer features and properties to a downloaded CSV file.
@@ -2012,6 +1994,13 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                           </div>
                         )}
                       </div>
+
+                      {/* 5. 3D Substation Model (PE / SSU / PPU) */}
+                      <Substation3DEditor
+                        layer={layer}
+                        onUpdate={onUpdateCatalogLayer}
+                        onLiveUpdate={onLiveUpdateCatalogLayer}
+                      />
                     </div>
                   )}
                 </ReorderItem>

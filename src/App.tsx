@@ -3080,6 +3080,7 @@ subgrid: nextSubgrid,
       {/* TOP GLOBAL NAVBAR */}
       <AppHeader
         title={t('appTitle')}
+        isSidebarExpanded={isSidebarExpanded}
         mobileNavOpen={mobileNavOpen}
         onToggleMobileNav={() => setMobileNavOpen((prev) => !prev)}
         tourStep={tourStep}
