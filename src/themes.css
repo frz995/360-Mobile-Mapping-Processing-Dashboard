@@ -337,6 +337,79 @@ html.showcase-active[data-theme] aside {
     border-color: transparent !important;
 }
 
+/* ==========================================================================
+   SELLER PARTNER CONSOLE — STRICT THEME ISOLATION (IMMUNE FROM DASHBOARD OVERRIDES)
+   ========================================================================== */
+#seller-console-root,
+#seller-console-root *,
+#seller-console-root *::before,
+#seller-console-root *::after {
+    --bg-app: #f4f5f8;
+    --bg-card: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #64748b;
+    --border-subtle: #edf0f4;
+}
+
+#seller-console-root,
+#seller-console-root.console-canvas-bg,
+#seller-console-root .console-canvas-bg,
+#seller-console-root main {
+    background-color: #f4f5f8 !important;
+    color: #0f172a !important;
+}
+
+#seller-console-root .console-rail-dark {
+    background-color: #0c0d0e !important;
+    color: #ffffff !important;
+    border-color: #17181c !important;
+}
+
+#seller-console-root .console-sidebar-profile {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #edf0f4 !important;
+}
+
+#seller-console-root .console-top-bar {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #edf0f4 !important;
+}
+
+#seller-console-root .console-card-white,
+#seller-console-root div.console-card-white {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #edf0f4 !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03) !important;
+}
+
+#seller-console-root .console-card-dark,
+#seller-console-root div.console-card-dark {
+    background-color: #0c0d0e !important;
+    color: #ffffff !important;
+    border-color: #1a1c22 !important;
+}
+
+#seller-console-root input.console-search-input,
+#seller-console-root .console-search-input {
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+#seller-console-root table th {
+    background-color: #f8fafc !important;
+    color: #64748b !important;
+    border-color: #edf0f4 !important;
+}
+
+#seller-console-root table td {
+    color: #0f172a !important;
+    border-color: #f1f5f9 !important;
+}
+
 /* Top Navbar, Header, Sidebar */
 [data-theme] header,
 [data-theme] nav,
@@ -1819,3 +1892,108 @@ html.showcase-active[data-theme] aside {
         8px 10px 20px rgba(166, 175, 195, 0.55),
         0 0 0 1px var(--accent) !important;
 }
+
+/* ==========================================================================
+   SELLER PARTNER CONSOLE — DEFINITIVE ISOLATION OVERRIDES
+   Must sit at the end of the stylesheet to take precedence over all [data-theme] rules.
+   ========================================================================== */
+#seller-console-root,
+#seller-console-root * {
+    --bg-app: #f4f5f8 !important;
+    --bg-card: #ffffff !important;
+    --text-primary: #0f172a !important;
+    --text-muted: #64748b !important;
+    --border-subtle: #edf0f4 !important;
+}
+
+#seller-console-root,
+#seller-console-root .console-canvas-bg,
+#seller-console-root main {
+    background-color: #f4f5f8 !important;
+    color: #0f172a !important;
+}
+
+#seller-console-root .console-rail-dark,
+#seller-console-root aside.console-rail-dark {
+    background-color: #0c0d0e !important;
+    color: #ffffff !important;
+    border-color: #17181c !important;
+}
+
+#seller-console-root nav,
+#seller-console-root .console-rail-dark nav,
+#seller-console-root aside.console-rail-dark nav {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+#seller-console-root .console-sidebar-profile {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #edf0f4 !important;
+}
+
+#seller-console-root header,
+#seller-console-root .console-top-bar {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #edf0f4 !important;
+}
+
+#seller-console-root .console-card-white,
+#seller-console-root div.console-card-white,
+#seller-console-root div[class*="console-card-white"] {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #edf0f4 !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03) !important;
+}
+
+#seller-console-root .console-card-dark,
+#seller-console-root div.console-card-dark,
+#seller-console-root div[class*="console-card-dark"] {
+    background-color: #0c0d0e !important;
+    color: #ffffff !important;
+    border-color: #1a1c22 !important;
+}
+
+#seller-console-root input,
+#seller-console-root input.console-search-input,
+#seller-console-root .console-search-input {
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+}
+
+#seller-console-root input:focus,
+#seller-console-root input.console-search-input:focus {
+    box-shadow: 0 0 0 2px #0f172a !important;
+    border-color: #0f172a !important;
+}
+
+#seller-console-root table th {
+    background-color: #f8fafc !important;
+    color: #64748b !important;
+    border-color: #edf0f4 !important;
+}
+
+#seller-console-root table td {
+    color: #0f172a !important;
+    border-color: #f1f5f9 !important;
+}
+
+#seller-console-root .rounded-full,
+#seller-console-root [style*="border-radius: 9999px"],
+#seller-console-root [style*="border-radius:9999px"] {
+    border-radius: 9999px !important;
+}
+
+#seller-console-root button[class*="bg-[#0c0d0e]"],
+#seller-console-root button[style*="background-color: #0c0d0e"],
+#seller-console-root button[style*="background-color: rgb(12, 13, 14)"] {
+    background-color: #0c0d0e !important;
+    color: #ffffff !important;
+}
+

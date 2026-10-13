@@ -125,6 +125,7 @@ export function resolveProviderBaseUrl(settings?: StorageSettingsForManifest): s
       raw = settings?.nasServerUrl || import.meta.env.VITE_NAS_SERVER_URL || '';
       break;
     }
+    case 'supabase_self_hosted':
     case 'supabase':
     default:
       // Supabase frame counting never uses a manifest (file_inventory / storage.list).

@@ -20,6 +20,7 @@ import { getCachedSignedPanoramaUrl } from './signedPanoramaUrls';
 /** Supported object-storage providers for 360 imagery resolution. */
 export type StorageProviderType =
   | 'supabase'
+  | 'supabase_self_hosted'
   | 'aws_s3'
   | 'gcs'
   | 'azure_blob'
@@ -51,6 +52,8 @@ export interface StorageResolveSettings {
   cloudStorageBaseUrl?: string;
   supabaseUrl?: string;
   supabaseBucket?: string;
+  selfHostedStorageUrl?: string;
+  selfHostedBucket?: string;
   isPrivateBucket?: boolean;
   useSignedUrls?: boolean;
   signedUrlTtlSeconds?: number;
@@ -71,6 +74,19 @@ export interface StorageResolveSettings {
   wasabiRegion?: string;
   nasServerUrl?: string;
   productionApiUrl?: string;
+  /**
+   * Owning company, used to namespace Supabase object keys under
+   * `orgs/{id}/`. Supplied on the settings object rather than as a per-call
+   * option because this function is called from ~40 sites across App.tsx,
+   * QAQCWorkbench, mapShares and the production hub; threading an argument
+   * through all of them would be a large, risky diff for no benefit, since the
+   * settings object is already the second parameter at every one.
+   *
+   * Absent means the legacy flat key layout, which is what the bootstrap
+   * organization still uses. That is deliberate: existing objects are not
+   * moved, so nothing becomes unreachable by turning this on.
+   */
+  tenantOrganizationId?: string;
 }
 
 export function formatCloudflareUrl(domainOrUrl: string): string {
@@ -87,6 +103,51 @@ export function sanitizeBucketName(raw?: string): string {
   return b.replace(/\s+/g, '_') || STORAGE_BUCKET_DEFAULT;
 }
 
+// ---------------------------------------------------------------------------
+// Tenant object-key namespacing
+//
+// A single storage bucket holding several companies' panoramas is only safe
+// if object keys carry the owning company, because `storage.objects` RLS is
+// evaluated per object key and a flat key carries no company to compare
+// against. The convention is:
+//
+//     orgs/{organization_id}/{existing path}
+//
+// This module stays pure — it takes the organization id as an argument and
+// never reads localStorage — so the URL formatters below remain testable and
+// side-effect free, as their header promises.
+// ---------------------------------------------------------------------------
+
+/** Root segment of the tenant namespace. Kept in one place so the migration's storage policies and the URL builders cannot disagree on it. */
+export const TENANT_OBJECT_ROOT = 'orgs';
+
+export function buildTenantObjectPrefix(organizationId?: string | null): string {
+  const id = (organizationId || '').trim();
+  if (!id) return '';
+  // Only a real uuid earns a prefix. Anything else is a configuration error,
+  // and emitting a malformed prefix would scatter objects across keys that the
+  // storage policies do not recognise — silently invisible rather than loudly
+  // wrong.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return '';
+  return `${TENANT_OBJECT_ROOT}/${id}`;
+}
+
+/**
+ * Prepend the tenant prefix to an object key, unless it already carries one.
+ *
+ * Idempotent on purpose: `panoramas` rows store their key as written, and
+ * re-prefixing an already-prefixed key would produce `orgs/{a}/orgs/{a}/...`
+ * on every read, which resolves to nothing. A path that already starts with
+ * `orgs/{uuid}/` is returned untouched.
+ */
+export function applyTenantObjectPrefix(path: string, organizationId?: string | null): string {
+  const raw = (path || '').replace(/^\/+/, '');
+  const prefix = buildTenantObjectPrefix(organizationId);
+  if (!prefix || !raw) return raw;
+  if (new RegExp(`^${TENANT_OBJECT_ROOT}/[0-9a-f-]{36}/`, 'i').test(raw)) return raw;
+  return `${prefix}/${raw}`;
+}
+
 export function resolvePanoramaUrl(
   filename?: string,
   settings?: StorageResolveSettings,
@@ -98,7 +159,7 @@ export function resolvePanoramaUrl(
     const provider = (settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'cloudflare_r2').toLowerCase();
     // If a full Supabase storage URL was passed in, but the active provider is NOT Supabase,
     // extract the underlying filename so it can be resolved against Cloudflare R2 / S3 / CDN.
-    if (provider !== 'supabase' && cleanFn.includes('/storage/v1/object/public/')) {
+    if (provider !== 'supabase' && provider !== 'supabase_self_hosted' && cleanFn.includes('/storage/v1/object/public/')) {
       const parts = cleanFn.split('?')[0].split('/');
       cleanFn = parts[parts.length - 1] || cleanFn;
     } else {
@@ -260,6 +321,41 @@ export function resolvePanoramaUrl(
       return `${nasUrl}/${cleanFn}`;
     }
 
+    case 'supabase_self_hosted': {
+      const rawSbUrl = (
+        settings?.selfHostedStorageUrl ||
+        settings?.supabaseUrl ||
+        'http://localhost:8000'
+      ).trim();
+      const baseSupabaseUrl = rawSbUrl.replace(/\/+$/, '');
+      const bucket = sanitizeBucketName(settings?.selfHostedBucket || settings?.supabaseBucket);
+      const isPrivate = Boolean(settings?.isPrivateBucket || settings?.useSignedUrls);
+      const objectEndpoint = isPrivate ? 'authenticated' : 'public';
+
+      const pattern = settings?.singleImagePathPattern;
+      if (
+        pattern &&
+        !pattern.includes('{index') &&
+        (pattern.includes('{filename}') || pattern.includes('{pointFolder}'))
+      ) {
+        const path = applyTenantObjectPrefix(
+          pattern
+            .replace('{subgrid}', targetSubgrid || '')
+            .replace('{pointFolder}', nameWithoutExt)
+            .replace('{filename}', cleanFn)
+            .replace(/^\/+/, ''),
+          settings?.tenantOrganizationId
+        );
+        return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${path}`;
+      }
+
+      // If cleanFn already includes a folder or if files are at root
+      return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${applyTenantObjectPrefix(
+        cleanFn,
+        settings?.tenantOrganizationId
+      )}`;
+    }
+
     case 'supabase':
     default: {
       const rawSbUrl = (settings?.supabaseUrl || '').trim();
@@ -279,16 +375,22 @@ export function resolvePanoramaUrl(
         !pattern.includes('{index') &&
         (pattern.includes('{filename}') || pattern.includes('{pointFolder}'))
       ) {
-        const path = pattern
-          .replace('{subgrid}', targetSubgrid || '')
-          .replace('{pointFolder}', nameWithoutExt)
-          .replace('{filename}', cleanFn)
-          .replace(/^\/+/, '');
+        const path = applyTenantObjectPrefix(
+          pattern
+            .replace('{subgrid}', targetSubgrid || '')
+            .replace('{pointFolder}', nameWithoutExt)
+            .replace('{filename}', cleanFn)
+            .replace(/^\/+/, ''),
+          settings?.tenantOrganizationId
+        );
         return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${path}`;
       }
 
       // If cleanFn already includes a folder or if files are at root
-      return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${cleanFn}`;
+      return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${applyTenantObjectPrefix(
+        cleanFn,
+        settings?.tenantOrganizationId
+      )}`;
     }
   }
 }
@@ -306,15 +408,21 @@ export function resolvePanoramaConfigUrl(
 
   if (provider === 'cloudflare_r2' || provider === 'r2') {
     baseUrl = (settings?.r2Domain || settings?.r2PublicDomain || settings?.cloudStorageBaseUrl || '').trim();
-  } else if (provider === 'supabase') {
-    const rawSbUrl = (settings?.supabaseUrl || '').trim();
-    const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+  } else if (provider === 'supabase' || provider === 'supabase_self_hosted') {
+    const rawSbUrl = provider === 'supabase_self_hosted'
+      ? (settings?.selfHostedStorageUrl || settings?.supabaseUrl || 'http://localhost:8000').trim()
+      : (settings?.supabaseUrl || '').trim();
+    const defaultSupabaseUrl = provider === 'supabase_self_hosted' ? 'http://localhost:8000' : (import.meta.env.VITE_SUPABASE_URL || '');
     const sbUrl = (
       rawSbUrl && !rawSbUrl.includes('frz995-360-processing') && !rawSbUrl.includes('xyzcompany')
         ? rawSbUrl
         : defaultSupabaseUrl
     ).replace(/\/+$/, '');
-    const bucket = sanitizeBucketName(settings?.supabaseBucket);
+    const bucket = sanitizeBucketName(
+      provider === 'supabase_self_hosted'
+        ? (settings?.selfHostedBucket || settings?.supabaseBucket)
+        : settings?.supabaseBucket
+    );
     const isPrivate = Boolean(settings?.isPrivateBucket || settings?.useSignedUrls);
     const objectEndpoint = isPrivate ? 'authenticated' : 'public';
     baseUrl = sbUrl ? `${sbUrl}/storage/v1/object/${objectEndpoint}/${bucket}` : '';
@@ -338,11 +446,14 @@ export function resolvePanoramaConfigUrl(
   // 3. Dynamic template pattern with pointFolder nested path
   const pattern = settings?.multiResTilePattern || settings?.tilePathPattern || 'tiles/{subgrid}/{pointFolder}/config.json';
 
-  const relativePath = pattern
-    .replace('{subgrid}', sg)
-    .replace('{pointFolder}', pointFolder)
-    .replace('{filename}', cleanFilename)
-    .replace(/^\/+/, '');
+  const relativePath = applyTenantObjectPrefix(
+    pattern
+      .replace('{subgrid}', sg)
+      .replace('{pointFolder}', pointFolder)
+      .replace('{filename}', cleanFilename)
+      .replace(/^\/+/, ''),
+    settings?.tenantOrganizationId
+  );
 
   const cachedSigned = getCachedSignedPanoramaUrl(relativePath);
   if (cachedSigned) {

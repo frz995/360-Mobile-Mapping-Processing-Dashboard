@@ -30,14 +30,30 @@ const report = analyse(migrations)
 
 describe('migration files load and parse', () => {
   it('loads every migration except the security test script', () => {
-    // 35 files on disk, 0011 excluded because it asserts on a schema that does
+    // 42 files on disk, 0011 excluded because it asserts on a schema that does
     // not exist yet and is run separately after install.
     //
     // The count is an assertion, not a snapshot: adding a migration surfaces
     // here as a one-line diff rather than as a silently unvalidated install.
-    // v27 section 3 updated this from 32 to 33 for migration 0034; 0035 makes 34.
-    expect(migrations).toHaveLength(34)
+    // v27 section 3 updated this from 32 to 33 for migration 0034; 0035 makes 34; 0036 makes 35;
+    // v32 adds the tenant work: 0037 attribution, 0038 operational policies,
+    // 0039 production policies, 0040 ledgers/shares/RPC re-gating (38),
+    // 0041 storage policies (39), 0042 inventory attribution (40) — and the
+    // 0041 storage policies (39), 0042 inventory attribution (40),
+    // 0043 organization workers (41) — and the count below is the bundled total after 0011 is excluded.
+    expect(migrations).toHaveLength(42)
     expect(migrations.some((m) => m.name.startsWith('0011'))).toBe(false)
+  })
+
+  it('has contiguous migration numbers, excluding only the 0011 security test', () => {
+    // The bundler concatenates migrations in filename order and applies no
+    // version table, so a gap means a migration was renamed or deleted and the
+    // next install silently skips whatever it carried. 0011 is the one expected
+    // gap: it is the security test script, deliberately excluded from the bundle
+    // by SKIP_FILES in scripts/bootstrap-migrations.mjs.
+    const numbers = migrations.map((m) => Number(m.name.slice(0, 4))).sort((a, b) => a - b)
+    const expected = Array.from({ length: numbers.length + 1 }, (_, i) => i + 1).filter((n) => n !== 11)
+    expect(numbers).toEqual(expected)
   })
 
   it('includes the metadata filename table from 0034', () => {
@@ -53,6 +69,14 @@ describe('migration files load and parse', () => {
   it('includes the privilege repair from 0035', () => {
     const m0035 = migrations.find((x) => x.name.startsWith('0035'))
     expect(m0035).toBeDefined()
+  })
+
+  it('includes the organizations and tenancy tables from 0036', () => {
+    const m0036 = migrations.find((x) => x.name.startsWith('0036'))
+    expect(m0036).toBeDefined()
+    const creates = new Set(m0036!.statements.flatMap((s) => [...s.creates]))
+    expect(creates).toContain('public.organizations')
+    expect(creates).toContain('public.organization_members')
   })
 
   it('loads them in filename order', () => {

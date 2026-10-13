@@ -55,7 +55,7 @@ export const WorkspaceRouter = ({
   const { role, matrix, isGuest } = useCapabilities();
 
   // These pages are rendered directly in App.tsx — skip WorkspaceRouter
-  if (currentPage === 'dashboard' || currentPage === 'settings' || currentPage === 'project' || currentPage === 'data') {
+  if (currentPage === 'dashboard' || currentPage === 'settings' || currentPage === 'project' || currentPage === 'data' || currentPage === 'console') {
     return null;
   }
 
@@ -215,6 +215,7 @@ export const WorkspaceRouter = ({
       />
     );
   }
+
 
   return (
     <div key={`workspace-${currentPage}`} className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-panel-enter">

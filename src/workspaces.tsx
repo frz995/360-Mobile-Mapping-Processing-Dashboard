@@ -49,7 +49,8 @@ export const WORKSPACES: WorkspaceDefinition[] = [
   { key: 'analytics', labelKey: 'workspaceAnalytics', descriptionKey: 'workspaceAnalyticsDesc', icon: BarChart3, tag: 'live' },
   { key: 'roadAnalysis', labelKey: 'workspaceRoadAnalysis', descriptionKey: 'workspaceRoadAnalysisDesc', icon: Route, tag: 'live' },
   { key: 'reports', labelKey: 'workspaceReports', descriptionKey: 'workspaceReportsDesc', icon: FileText, tag: 'live' },
-  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live', guard: ['manageUsers'] }
+  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live', guard: ['manageUsers'] },
+  { key: 'console', labelKey: 'workspaceConsole', descriptionKey: 'workspaceConsoleDesc', icon: Shield, tag: 'live', guard: ['manageUsers'] }
 ];
 
 export function getWorkspaceDefinition(key: WorkspaceKey): WorkspaceDefinition {

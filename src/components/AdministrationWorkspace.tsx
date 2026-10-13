@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
+import { SellerConsoleLauncher } from './console/SellerConsoleLauncher';
 import {
   Shield,
   Users,
@@ -579,6 +580,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <SellerConsoleLauncher />
                 <button
                   type="button"
                   onClick={() => loadData(true)}

@@ -1,4 +1,4 @@
-﻿import { webcrypto } from 'node:crypto';
+import { webcrypto } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // These live outside functions/ on purpose: that directory is deployed as
 // Cloudflare Pages Functions, and test-only imports must never be part of the
@@ -32,6 +32,7 @@ function makeContext(url, env, init = {}) {
     env,
     next: vi.fn(async () => new Response('next', { status: 299 })),
     params: {},
+    data: { organizationId: '00000000-0000-4000-8000-000000000001', ...(init.data || {}) },
     ...init.contextProps
   };
 }
@@ -49,7 +50,8 @@ function makeRawContext(pathname, env, init = {}) {
     },
     env,
     next: vi.fn(async () => new Response('next', { status: 299 })),
-    params: {}
+    params: {},
+    data: { organizationId: '00000000-0000-4000-8000-000000000001', ...(init.data || {}) }
   };
 }
 
@@ -69,29 +71,29 @@ describe('functions/_lib/signing', () => {
   it('accepts a freshly signed token', async () => {
     const now = 1_700_000_000;
     const token = await signAssetToken(SECRET, now + 600);
-    await expect(verifyAssetToken(SECRET, token, now)).resolves.toBe(true);
+    await expect(verifyAssetToken(SECRET, token, now)).resolves.not.toBeNull();
   });
 
   it('rejects an expired token', async () => {
     const now = 1_700_000_000;
     const token = await signAssetToken(SECRET, now + 10);
-    await expect(verifyAssetToken(SECRET, token, now + 20)).resolves.toBe(false);
+    await expect(verifyAssetToken(SECRET, token, now + 20)).resolves.toBeNull();
   });
 
   it('rejects a token signed with another secret', async () => {
     const now = 1_700_000_000;
     const token = await signAssetToken('other-secret', now + 600);
-    await expect(verifyAssetToken(SECRET, token, now)).resolves.toBe(false);
+    await expect(verifyAssetToken(SECRET, token, now)).resolves.toBeNull();
   });
 
   it('rejects tampered and malformed tokens', async () => {
     const now = 1_700_000_000;
     const token = await signAssetToken(SECRET, now + 600);
     const [expiry, signature] = token.split('.');
-    await expect(verifyAssetToken(SECRET, `${expiry}x.${signature}`, now)).resolves.toBe(false);
-    await expect(verifyAssetToken(SECRET, 'not-a-token', now)).resolves.toBe(false);
-    await expect(verifyAssetToken(SECRET, '', now)).resolves.toBe(false);
-    await expect(verifyAssetToken('', token, now)).resolves.toBe(false);
+    await expect(verifyAssetToken(SECRET, `${expiry}x.${signature}`, now)).resolves.toBeNull();
+    await expect(verifyAssetToken(SECRET, 'not-a-token', now)).resolves.toBeNull();
+    await expect(verifyAssetToken(SECRET, '', now)).resolves.toBeNull();
+    await expect(verifyAssetToken('', token, now)).resolves.toBeNull();
   });
 });
 
@@ -122,6 +124,9 @@ describe('functions/_middleware', () => {
 
   it('allows a valid Supabase session through', async () => {
     fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([{ organization_id: '00000000-0000-4000-8000-000000000001' }]), { status: 200 })
+    );
     const ctx = makeContext('https://app.pages.dev/api/nas-scan', BASE_ENV, {
       headers: { Authorization: 'Bearer good' }
     });

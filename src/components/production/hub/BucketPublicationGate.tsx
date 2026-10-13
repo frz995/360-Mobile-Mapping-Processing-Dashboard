@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { SectionLabel, MetaList, TextAction, StatusDot } from '../chrome';
 import { supabase } from '../../../services/supabase';
+import { tenantApiUrl } from '../../../services/nasImageToken';
 import { resolvePanoramaUrl, resolvePanoramaConfigUrl } from '../../../services/storageUrls';
 import { testCloudflareStorageHealth } from '../../../services/api/storage';
 import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
@@ -94,13 +95,13 @@ export function resolveUploadMode(
   hasWorkerUrl: boolean,
   hasAgent: boolean
 ): UploadModeResolution {
-  if (provider === 'supabase' && strategy === 'single_equirectangular' && hasWorkerUrl) {
+  if ((provider === 'supabase' || provider === 'supabase_self_hosted') && strategy === 'single_equirectangular' && hasWorkerUrl) {
     return { mode: 'browser' };
   }
-  if (provider === 'supabase' && strategy === 'multires_tiles' && hasAgent) {
+  if ((provider === 'supabase' || provider === 'supabase_self_hosted') && strategy === 'multires_tiles' && hasAgent) {
     return { mode: 'agent_cli' };
   }
-  if (provider === 'supabase') {
+  if (provider === 'supabase' || provider === 'supabase_self_hosted') {
     if (hasAgent) return { mode: 'agent_cli' };
     return hasWorkerUrl
       ? { mode: 'unavailable', reason: 'Tile strategy pushes run via the station agent (CLI).' }
@@ -217,6 +218,14 @@ export function detectBucketConfig(settings: any, subgrid: string = '', realSamp
     isConfigured = Boolean(endpointUrl);
     pathPattern = `${sgSeg}/{filename}`;
     isCloudBucket = false;
+  } else if (rawProvider === 'supabase_self_hosted') {
+    provider = 'supabase_self_hosted';
+    providerLabel = 'Self-Hosted Supabase Storage (Local / On-Premise)';
+    bucketName = settings?.selfHostedBucket || settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
+    const sbUrl = (settings?.selfHostedStorageUrl || settings?.supabaseUrl || 'http://localhost:8000').replace(/\/+$/, '');
+    isConfigured = Boolean(sbUrl && bucketName);
+    endpointUrl = isConfigured ? `${sbUrl}/storage/v1/object/public/${bucketName}` : '';
+    pathPattern = `${bucketName}/${sgSeg}/{filename}`;
   } else {
     // Supabase native default
     provider = 'supabase';
@@ -389,7 +398,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
     setFinalImages(null);
     setFinalPath('');
     if (!cleanSg || !scanFolderId) return;
-    fetchDashboardApi(`/api/nas-scan?action=final-images&subgrid=${encodeURIComponent(cleanSg)}&folder=${encodeURIComponent(scanFolderId)}`)
+    fetchDashboardApi(tenantApiUrl(`/api/nas-scan?action=final-images&subgrid=${encodeURIComponent(cleanSg)}&folder=${encodeURIComponent(scanFolderId)}`))
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (disposed) return;

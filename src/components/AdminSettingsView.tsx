@@ -1563,6 +1563,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         >
                           <option value="cloudflare_r2">Cloudflare R2 (Zero Egress Cost &bull; Multi-Res Ready)</option>
                           <option value="supabase">Supabase Cloud Storage (PostGIS Native)</option>
+                          <option value="supabase_self_hosted">Self-Hosted Supabase Storage (Local / Docker / On-Premise)</option>
                           <option value="aws_s3">Amazon Web Services (AWS S3 Bucket)</option>
                           <option value="custom_cdn">Custom CDN / Reverse Proxy URL Prefix</option>
                           <option value="nas_local">Local Intranet NAS / On-Premise Server (SMB/HTTP)</option>
@@ -1740,6 +1741,43 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             </select>
                           </div>
                         </>
+                      ) : projectSettings.storageProvider === 'supabase_self_hosted' ? (
+                        <>
+                          <div>
+                            <label className={labelClass}>Self-Hosted Supabase Endpoint / URL</label>
+                            <input
+                              type="text"
+                              value={projectSettings.selfHostedStorageUrl || projectSettings.supabaseUrl || ''}
+                              onChange={e => setProjectSettings(prev => ({
+                                ...prev,
+                                selfHostedStorageUrl: e.target.value,
+                                cloudStorageBaseUrl: e.target.value
+                              }))}
+                              placeholder="http://localhost:8000 or http://192.168.1.100:8000"
+                              className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
+                            />
+                            <p className={helperClass}>Local Docker or on-premise Supabase Studio/API gateway endpoint</p>
+                          </div>
+                          <div>
+                            <label className={labelClass}>Storage Bucket Name</label>
+                            <input
+                              type="text"
+                              value={projectSettings.selfHostedBucket || projectSettings.supabaseBucket || STORAGE_BUCKET_DEFAULT}
+                              onChange={e => {
+                                const val = e.target.value.replace(/\s+/g, '_');
+                                setProjectSettings(prev => ({
+                                  ...prev,
+                                  selfHostedBucket: val,
+                                  supabaseBucket: val,
+                                  imageStoragePath: `/storage/v1/object/public/${val}/`
+                                }));
+                              }}
+                              placeholder="MMS_PIC"
+                              className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
+                            />
+                            <p className={helperClass}>Public bucket in local Supabase Studio (e.g. `MMS_PIC`)</p>
+                          </div>
+                        </>
                       ) : (
                         <div>
                           <label className={labelClass}>Storage Bucket Name</label>
@@ -1756,7 +1794,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         </div>
                       )}
 
-                      {projectSettings.storageProvider && projectSettings.storageProvider !== 'supabase' && (
+                      {projectSettings.storageProvider && projectSettings.storageProvider !== 'supabase' && projectSettings.storageProvider !== 'supabase_self_hosted' && (
                         <div className="sm:col-span-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <label className={labelClass}>Frame Manifest (Dynamic Frame Count)</label>

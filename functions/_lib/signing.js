@@ -29,19 +29,43 @@ function constantTimeEquals(a, b) {
   return diff === 0;
 }
 
-/** Mint `<expiresAtSeconds>.<hmac>` for the NAS image proxy. */
-export async function signAssetToken(secret, expiresAtSeconds) {
-  return `${expiresAtSeconds}.${await hmacBase64Url(secret, `nas-image.${expiresAtSeconds}`)}`;
+/**
+ * Mint `<expiresAt>.<organizationId>.<hmac>` for the NAS image proxy.
+ *
+ * The organisation is a SIGNED CLAIM, not a hint. It is resolved from the
+ * caller's verified membership at mint time (see _middleware.js) and covered by
+ * the HMAC, so an `<img src>` request cannot select a different company's
+ * worker by editing the query string — the signature would no longer match.
+ *
+ * `organizationId` is omitted for a legacy single-tenant install, producing the
+ * older two-part shape `<expiresAt>.<hmac>`, which `verifyAssetToken` still
+ * accepts and reports with a null organization.
+ */
+export async function signAssetToken(secret, expiresAtSeconds, organizationId) {
+  const org = organizationId ? String(organizationId) : '';
+  const payload = `nas-image.${expiresAtSeconds}.${org}`;
+  return `${expiresAtSeconds}.${org}.${await hmacBase64Url(secret, payload)}`;
 }
 
-/** Validate an asset token's signature and expiry. */
+/**
+ * Validate an asset token's signature and expiry.
+ *
+ * Returns the organisation id on success, an empty string for a valid legacy
+ * token, and null when the token is invalid or expired. The caller treats null
+ * as "refuse" and empty as "no tenant scoping — use the install-wide worker",
+ * which is only correct while the install has exactly one tenant.
+ */
 export async function verifyAssetToken(secret, token, nowSeconds) {
-  if (!secret || typeof token !== 'string') return false;
-  const separator = token.indexOf('.');
-  if (separator <= 0) return false;
-  const expiresAt = Number(token.slice(0, separator));
-  const signature = token.slice(separator + 1);
-  if (!Number.isFinite(expiresAt) || !signature) return false;
-  if (expiresAt <= nowSeconds) return false;
-  return constantTimeEquals(signature, await hmacBase64Url(secret, `nas-image.${expiresAt}`));
+  if (!secret || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length < 2 || parts.length > 3) return null;
+
+  const expiresAt = Number(parts[0]);
+  const organizationId = parts.length === 3 ? parts[1] : '';
+  const signature = parts[parts.length - 1];
+  if (!Number.isFinite(expiresAt) || !signature) return null;
+  if (expiresAt <= nowSeconds) return null;
+
+  const expected = await hmacBase64Url(secret, `nas-image.${expiresAt}.${organizationId}`);
+  return constantTimeEquals(signature, expected) ? organizationId : null;
 }

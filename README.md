@@ -4,13 +4,21 @@ An enterprise-grade WebGIS and spatial intelligence platform for utility low-vol
 
 ---
 
-## Setup & Installation
+## Platform Access & Deployment Modes
 
-**Client-facing installation documentation:** [`docs/Production Setup/README.md`](<docs/Production Setup/README.md>)
+GeoSphere 360 operates under a dual-tier deployment architecture (modelled after ArcGIS Online vs. ArcGIS Enterprise):
 
-📄 **[Production Setup Guide (PDF, 42 pages)](<docs/Production Setup/GeoSphere-360-Production-Setup-Guide.pdf>)** — the single complete deliverable: architecture diagrams, step-by-step installation, flowcharts and an acceptance sign-off sheet. Print it or issue it as the client installation manual.
+1. **GeoSphere Cloud (`https://app.geosphere.my`) — Primary / Managed SaaS:**
+   - Single portal at **`https://app.geosphere.my`**.
+   - Zero web hosting or database deployment required by clients or resellers.
+   - Users sign in with their organization credentials and are automatically routed to their isolated company workspace, projects, and maps.
+   - On-premises survey workstations (blur, stitch, enhance, mask) and local survey NAS connect outbound using secure agent tokens.
 
-Markdown source and per-section detail live alongside it. Covers accounts and prerequisites, the database and storage buckets, the first-administrator bootstrap, Cloudflare Tunnel, the Cloudflare Pages deployment, the NAS layout and on-prem services, first-run configuration, and how to verify the install. Known limitations and troubleshooting are catalogued in [`03-Reference.md`](<docs/Production Setup/03-Reference.md>).
+2. **GeoSphere Enterprise — On-Premises & Private Infrastructure:**
+   - Dedicated self-hosted deployment for clients with strict air-gapped, defense, or sovereign data mandates.
+   - Run on an internal server, private office LAN (`http://192.168.x.x:3000`), or intranet domain.
+   - Full master installation manual: [`docs/Production Setup/README.md`](<docs/Production Setup/README.md>)
+   - 📄 **[Production Setup Guide (PDF, 42 pages)](<docs/Production Setup/GeoSphere-360-Production-Setup-Guide.pdf>)** — architecture diagrams, step-by-step installation, flowcharts, and acceptance sign-off sheet.
 
 ---
 

@@ -100,6 +100,8 @@ const AdminSettingsView = React.lazy(() => import('./components/AdminSettingsVie
 const OperationalActionCenter = React.lazy(() => import('./components/OperationalActionCenter').then(m => ({ default: m.OperationalActionCenter })));
 const ProjectWorkspace = React.lazy(() => import('./components/ProjectWorkspace').then(m => ({ default: m.ProjectWorkspace })));
 const QAQCWorkbench = React.lazy(() => import('./components/QAQCWorkbench').then(m => ({ default: m.QAQCWorkbench })));
+const SellerConsolePage = React.lazy(() => import('./components/console/SellerConsolePage'));
+const SellerConsoleLoginPage = React.lazy(() => import('./components/console/SellerConsoleLoginPage'));
 import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
 import { useAppData } from './hooks/useAppData';
 import './themes.css';
@@ -183,7 +185,10 @@ export default function App() {
   const [storageFocusPath, setStorageFocusPath] = useState<string | null>(null);
   const dashboardPsvRef = useRef<PhotoSphereViewerHandle | null>(null);
   const inspectionMapIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [showLanding, setShowLanding] = useState<boolean>(() => parseWorkspace() !== 'signin');
+  const [showLanding, setShowLanding] = useState<boolean>(() => {
+    const fromRoute = parseWorkspace();
+    return fromRoute !== 'signin' && fromRoute !== 'console-login' && fromRoute !== 'console';
+  });
   const [authSession, setAuthSession] = useState<any>(null);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
   const pendingModuleRef = useRef<string | null>(null);
@@ -408,6 +413,20 @@ export default function App() {
       pushWorkspace('onboarding');
       return;
     }
+    if (key === 'console-login') {
+      setShowLanding(false);
+      setProjectGate('idle');
+      setCurrentPage('console-login');
+      pushWorkspace('console-login');
+      return;
+    }
+    if (key === 'console') {
+      setShowLanding(false);
+      setProjectGate('idle');
+      setCurrentPage('console');
+      pushWorkspace('console', query);
+      return;
+    }
     setProjectGate('idle');
     setShowLanding(false);
     setCurrentPage(key);
@@ -448,6 +467,7 @@ export default function App() {
       }
     });
   }, []);
+
 
   // Module routing handler
   const handleEnterModule = (targetView?: string | null) => {
@@ -768,7 +788,9 @@ export default function App() {
           }
         }
         setAuthSession(null);
-        setShowLanding(true);  // Guest / unauthenticated user returns to Landing
+        if (parseWorkspace() !== 'console-login' && parseWorkspace() !== 'console') {
+          setShowLanding(true); // Guest / unauthenticated user returns to Landing
+        }
         clearWorkspaceLocation();
         clearLastActivity();
       }
@@ -811,6 +833,23 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Forward authenticated administrator from /console/login to /console/dashboard
+  useEffect(() => {
+    if (currentPage === 'console-login' && authSession && !authLoading) {
+      goToWorkspace('console');
+    }
+  }, [currentPage, authSession, authLoading, goToWorkspace]);
+
+  // Ensure canonical /console/dashboard URL when in console workspace
+  useEffect(() => {
+    if (currentPage === 'console' && typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      if (path !== '/console/dashboard' && path !== '/console') {
+        window.history.replaceState({}, '', '/console/dashboard');
+      }
+    }
+  }, [currentPage]);
 
   const isGuestUser = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || authSession?.user?.email?.toLowerCase().includes('guest'));
 
@@ -917,6 +956,13 @@ export default function App() {
     // already signed in) must land straight on the workspace — the onboarding
     // gate is reserved for genuine sign-ins.
     if (restoredSessionRef.current) {
+      setProjectGate('idle');
+      return;
+    }
+
+    // The console is a standalone enterprise admin portal; it does not use the GIS project picker gate
+    const currentWs = parseWorkspace();
+    if (currentPage === 'console' || currentPage === 'console-login' || currentWs === 'console' || currentWs === 'console-login') {
       setProjectGate('idle');
       return;
     }
@@ -2859,6 +2905,47 @@ subgrid: nextSubgrid,
     );
   }
 
+  // 1b. STANDALONE CONSOLE AUTH & DASHBOARD ROUTING (/console/login & /console/dashboard)
+  // These take absolute priority over public showcase/landing guards.
+  if (currentPage === 'console-login') {
+    return (
+      <React.Suspense fallback={<div className="min-h-screen bg-[#0c0d0e] flex items-center justify-center text-white text-xs font-mono">Loading Console Access...</div>}>
+        <SellerConsoleLoginPage
+          onLoginSuccess={(session) => {
+            setAuthSession(session);
+            setShowLanding(false);
+            pruneBloatedUserMetadata();
+            touchLastActivity();
+            goToWorkspace('console');
+          }}
+          onBackToApp={() => goToWorkspace('landing')}
+        />
+      </React.Suspense>
+    );
+  }
+
+  if (currentPage === 'console') {
+    if (!authSession && !authLoading) {
+      goToWorkspace('console-login');
+      return null;
+    }
+    return (
+      <React.Suspense fallback={<div className="min-h-screen bg-[#f4f5f8] flex items-center justify-center text-slate-900 text-xs font-mono">Loading Console...</div>}>
+        <SellerConsolePage
+          role={effectiveUserRole}
+          isGuest={isGuestUser}
+          matrix={roleMatrix}
+          currentUserEmail={authSession?.user?.email}
+          onBackToDashboard={() => goToWorkspace('dashboard')}
+          onSignOut={async () => {
+            await handleSignOut();
+            goToWorkspace('console-login');
+          }}
+        />
+      </React.Suspense>
+    );
+  }
+
   // 2. Landing showcase render guard
   if (showLanding) {
     return (
@@ -3018,7 +3105,6 @@ subgrid: nextSubgrid,
       </div>
     );
   }
-
 
 
 

@@ -63,6 +63,35 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  db-security:
+    name: DB security gate (cross-tenant)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The only job that touches a real database. Everything else in this file
+      # mocks Supabase, which is exactly why a policy that could not execute, a
+      # nullable column whose NULL meant world-readable, two unwired role
+      # vocabularies, four USING (true) anon grants and a SECURITY DEFINER RPC
+      # any Viewer could call all shipped green.
+      #
+      # This also proves `supabase/bootstrap.sql` — the file the contract lists
+      # as the buyer's turnkey deliverable, and which is gitignored and
+      # therefore generated here — can be applied by a stranger with nothing but
+      # this repository. It could not: migration 0033 aborted the bundle halfway.
+      - name: Apply migrations and run the cross-tenant gate
+        run: npm run db:gate
+
   python:
     name: Python (worker)
     runs-on: ubuntu-latest

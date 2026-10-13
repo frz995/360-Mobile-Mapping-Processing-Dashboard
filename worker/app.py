@@ -51,7 +51,11 @@ else:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 NAS_BASE_PATH = os.environ.get("NAS_BASE_PATH", "/nas/360_images").rstrip("/\\")
-API_TOKEN = os.environ.get("NAS_WORKER_TOKEN", "")  # optional shared secret
+# Per-company shared secret. Since migration 0043 each organisation has its own
+# value, held in `organization_workers` and attached by the Cloudflare edge
+# after it resolves the caller's company. One value shared across companies was
+# the defect: any holder could read any company's raw survey filesystem.
+API_TOKEN = os.environ.get("NAS_WORKER_TOKEN", "")
 
 # Stable worker identifier surfaced to the dashboard (hostname-based).
 _WORKER_ID = os.environ.get("NAS_WORKER_ID") or platform.node() or "nas-worker"
@@ -90,7 +94,21 @@ def resolve_fs(rel_path: str) -> str:
 
 
 def _guard(auth: Optional[str]) -> None:
-    if API_TOKEN and auth != f"Bearer {API_TOKEN}":
+    # An EMPTY NAS_WORKER_TOKEN now refuses every guarded route instead of
+    # allowing them. The previous `if API_TOKEN and ...` treated a blank token
+    # as "authentication disabled", which is a reasonable convenience on one
+    # trusted LAN and an open filesystem the moment this worker is one of
+    # several on a shared installation.
+    #
+    # To run without a token, terminate at the tunnel with its own access
+    # policy; do not leave this service serving the survey filesystem to anyone
+    # who can open a socket.
+    if not API_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="NAS_WORKER_TOKEN is not set on this worker; refusing to serve the survey filesystem unauthenticated.",
+        )
+    if not auth or auth != f"Bearer {API_TOKEN}":
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
 

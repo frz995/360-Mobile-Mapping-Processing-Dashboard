@@ -168,8 +168,16 @@ Generate a token with:
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-> ⚠️ If `NAS_WORKER_TOKEN` is left blank, the worker accepts **unauthenticated**
-> requests. Only safe on a loopback bind with the tunnel in front.
+> ⚠️ `NAS_WORKER_TOKEN` is **required**. The worker refuses every guarded route
+> with HTTP 503 when it is unset; it no longer treats a blank token as
+> "authentication disabled". An unauthenticated survey filesystem is a
+> convenience on one trusted LAN and an open door on a shared installation, and
+> since migration `0043` each company's worker carries its own token.
+>
+> Per-company tokens for a shared (Track 1) installation are recorded in the
+> `organization_workers` table rather than in the Pages environment — see
+> `docs/Deployment-Topology.md` §4.2. The environment variable remains the
+> path for a single-tenant install.
 
 ### 2.3 Run
 

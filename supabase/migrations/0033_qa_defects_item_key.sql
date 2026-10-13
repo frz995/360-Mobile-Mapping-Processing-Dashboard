@@ -57,16 +57,25 @@ end $$;
 --
 --    Ordered deliberately: a not-null constraint cannot be added while nulls
 --    remain, and dropping rows would destroy audit evidence.
+--
+--    Corrected: this block previously read a `filename` column as a middle
+--    fallback. `public.qa_defects` has no such column — the table carries
+--    `point_id`, `image_url`, `run_id` and `item_key`, and nothing named
+--    `filename`. Because the statement sat inside a plpgsql DO block it parsed
+--    lazily and only threw when the block executed, so `bootstrap.sql` aborted
+--    here and migrations 0034+ never applied. Found by applying the bundle to
+--    a scratch supabase/postgres:17.6 instance rather than by reading it.
+--
+--    The fallback chain is now `point_id` -> the row's own id, which is
+--    total for every row and preserves the "never null" guarantee without
+--    inventing a second identity for a defect.
 -- ---------------------------------------------------------------------
 do $$
 begin
   if to_regclass('public.qa_defects') is not null then
-    -- Prefer point_id; fall back to filename, then to the row's own id so the
-    -- column is never left null.
     update public.qa_defects
        set item_key = coalesce(
              nullif(btrim(point_id), ''),
-             nullif(btrim(filename), ''),
              'qa-defect-' || id::text
            )
      where item_key is null or btrim(item_key) = '';

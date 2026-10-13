@@ -5,6 +5,7 @@ import {
   formatCloudflareUrl,
   resolvePanoramaUrl,
   resolvePanoramaConfigUrl,
+  applyTenantObjectPrefix,
   StorageProviderType,
   ResolveUrlOptions
 } from '../storageUrls';
@@ -17,6 +18,7 @@ import {
   type StorageSettingsForManifest
 } from '../storageInventory';
 import { fetchProjectSettingsFromSupabase } from './admin';
+import { getActiveOrganizationId } from '../tenantContext';
 
 export {
   formatCloudflareUrl,
@@ -75,6 +77,13 @@ export async function resolveStorageFiles(
 ): Promise<FileInventoryResult> {
   const provider = resolveStorageProvider(storageSettings);
   const manifestEnabled = storageSettings?.manifestEnabled !== false;
+  // The active company, when the settings carry one. Absent on the bootstrap
+  // organization and on every pre-tenant caller, which is what keeps the
+  // legacy flat object layout working unchanged.
+  const tenantOrganizationId =
+    (storageSettings as { tenantOrganizationId?: string } | undefined)?.tenantOrganizationId ||
+    getActiveOrganizationId() ||
+    '';
   // 0) Deduplicate candidate locations case-insensitively
   const seenLoc = new Set<string>();
   const deduplicatedCandidates = candidates.filter(c => {
@@ -90,7 +99,11 @@ export async function resolveStorageFiles(
   const providerExt = provider !== 'supabase'
     ? `|provider=${provider}|base=${resolveProviderBaseUrl(storageSettings)}|manifest=${String(storageSettings?.manifestPath || MANIFEST_PATH_DEFAULT)}|strategy=${String(storageSettings?.imageStorageStrategy || '')}`
     : '';
-  const cacheKey = `${cacheKeyBase}${providerExt}`;
+  // The tenant is part of the cache key. Without it, switching company inside
+  // the 45s window would serve the previous company's file set — a cross-tenant
+  // read produced entirely by the cache.
+  const tenantKey = tenantOrganizationId ? `|org=${tenantOrganizationId}` : '|org=';
+  const cacheKey = `${cacheKeyBase}${providerExt}${tenantKey}`;
   const now = Date.now();
   if (storageInventoryCache && storageInventoryCache.key === cacheKey && (now - storageInventoryCache.timestamp) < 45000) {
     return {
@@ -154,11 +167,43 @@ export async function resolveStorageFiles(
     const uniqueBuckets = Array.from(new Set(deduplicatedCandidates.map(c => c.bucket)));
     let inventoryRows: any[] = [];
     for (const bucket of uniqueBuckets) {
-      const { data, error } = await supabase
+      // Migration 0040 already scopes `file_inventory` by organization_id
+      // through RLS, so this read only ever returns the caller's own rows.
+      // The explicit `.eq` below is defence in depth, not the boundary: it keeps
+      // the intent legible and survives an RLS regression by narrowing rather
+      // than by failing, which is the right bias for a count.
+      let query = supabase
         .from(FILE_INVENTORY_TABLE)
         .select('filename, subgrid')
         .eq('bucket', bucket)
         .limit(10000);
+      if (tenantOrganizationId) {
+        query = query.eq('organization_id', tenantOrganizationId);
+      }
+      let { data, error } = await query;
+      if (error && tenantOrganizationId) {
+        // Fallback for pre-tenancy database schemas where organization_id column does not exist
+        const fallbackRes = await supabase
+          .from(FILE_INVENTORY_TABLE)
+          .select('filename, subgrid')
+          .eq('bucket', bucket)
+          .limit(10000);
+        if (!fallbackRes.error && Array.isArray(fallbackRes.data)) {
+          data = fallbackRes.data;
+          error = null;
+        }
+      } else if (!error && (!data || data.length === 0) && tenantOrganizationId) {
+        // If tenant-specific rows are not found, check for legacy unassigned rows (organization_id is null)
+        const unassignedRes = await supabase
+          .from(FILE_INVENTORY_TABLE)
+          .select('filename, subgrid')
+          .eq('bucket', bucket)
+          .is('organization_id', null)
+          .limit(10000);
+        if (!unassignedRes.error && Array.isArray(unassignedRes.data) && unassignedRes.data.length > 0) {
+          data = unassignedRes.data;
+        }
+      }
       if (!error && Array.isArray(data)) {
         inventoryRows = inventoryRows.concat(data);
       }
@@ -182,8 +227,14 @@ export async function resolveStorageFiles(
       const limit = 100;
       let hasMore = true;
       let totalFetched = 0;
+      // List inside the tenant namespace. `storage.objects` RLS compares the
+      // key's own `orgs/{id}/` segment against the caller's verified
+      // membership, so this narrows what can be enumerated even where the
+      // policy is missing — and a forged id here can only produce an empty
+      // listing, never another company's objects.
+      const listPath = applyTenantObjectPrefix(loc.path, tenantOrganizationId);
       while (hasMore && totalFetched < 10000) {
-        const { data, error } = await supabase.storage.from(loc.bucket).list(loc.path, { limit, offset });
+        const { data, error } = await supabase.storage.from(loc.bucket).list(listPath, { limit, offset });
         if (error) break;
         // A successful listing — even an empty one — proves storage is reachable.
         // That is materially different from storage being unreachable, and only

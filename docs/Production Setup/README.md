@@ -1,7 +1,11 @@
-# GeoSphere 360 — Production Setup
+# GeoSphere 360 — Production Setup (Enterprise On-Premises)
 
 Client-facing installation and operations documentation for the GeoSphere 360
 Mobile Mapping processing platform.
+
+> ### ☁️ GeoSphere Cloud vs. Enterprise On-Premises
+> - **GeoSphere Cloud (`https://app.geosphere.my`):** If your organization uses the managed cloud platform, you do **not** need to deploy Cloudflare Pages or run database migrations. Simply sign in at **`https://app.geosphere.my`** with your organization credentials and jump straight to **[02-Operations.md](02-Operations.md)** to connect your survey workstations.
+> - **GeoSphere Enterprise (On-Premises / Private Infrastructure):** If your organization requires full self-hosted operation on your internal servers or private LAN, follow this complete manual from Section 1.
 
 > ### 📄 Single-document deliverable
 >
@@ -9,8 +13,8 @@ Mobile Mapping processing platform.
 > complete 42-page guide covering every section below in one document, with
 > architecture diagrams, flowcharts and an acceptance sign-off sheet.
 >
-> Print it, hand it to a client, or issue it as the contractual installation
-> manual. The Markdown files in this folder are the plain-text equivalents.
+> Print it, hand it to an Enterprise client, or issue it as the contractual
+> installation manual. The Markdown files in this folder are the plain-text equivalents.
 >
 > Rebuild the PDF after editing `guide.html`:
 > `node scripts/build-setup-pdf.mjs`

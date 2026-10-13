@@ -3,6 +3,7 @@ import { STORAGE_BUCKET_DEFAULT } from '../../config/defaults';
 import type { ExtendedProjectSettings } from '../../types/admin';
 import { getStorageInventoryCacheTotalFiles } from './storage';
 import { isUuid } from '../../utils/userAccountId';
+import { getActiveOrganizationId } from '../tenantContext';
 
 /**
  * Fetch persisted audit logs from Supabase database.
@@ -641,6 +642,28 @@ export async function saveUserAccountToSupabase(users: any[]): Promise<boolean> 
 }
 
 /**
+ * Attach the active company to the settings blob the storage resolvers read.
+ *
+ * `project_settings` is one global row, so the object-key namespace cannot come
+ * from it. Stamping `tenantOrganizationId` here — rather than at each of the
+ * ~40 `resolvePanoramaUrl(fn, projectSettings)` call sites — means the whole app
+ * follows the active tenant from one place.
+ *
+ * The id is the *browser's* current company, which is not a security control:
+ * a forged value can only make a lookup miss, never reach another company's
+ * keys, because `storage.objects` policies compare the key's own `orgs/{id}/`
+ * segment against the caller's verified membership.
+ */
+function withTenantOrganizationScope(settings: any): any {
+  if (!settings || typeof settings !== 'object') return settings;
+  const orgId = getActiveOrganizationId();
+  // Absent org => leave the key absent, which keeps the legacy flat layout.
+  // Rewriting to null would be indistinguishable from "configured but blank".
+  if (!orgId) return settings;
+  return { ...settings, tenantOrganizationId: orgId };
+}
+
+/**
  * Fetch dynamic project settings from Supabase (with localStorage fallback).
  */
 export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
@@ -656,7 +679,7 @@ export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
       try {
         localStorage.setItem('geosphere_project_settings', JSON.stringify(parsed));
       } catch (_) { }
-      return parsed;
+      return withTenantOrganizationScope(parsed);
     }
   } catch (err) {
     console.warn('Project settings query notice:', err);

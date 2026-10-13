@@ -114,3 +114,29 @@ describe('resolvePanoramaUrl with Cloudflare R2 Provider', () => {
   });
 });
 
+describe('resolvePanoramaUrl with Self-Hosted Supabase Provider', () => {
+  const selfHostedSettings = {
+    storageProvider: 'supabase_self_hosted' as const,
+    selfHostedStorageUrl: 'http://localhost:8000',
+    selfHostedBucket: 'MMS_PIC'
+  };
+
+  it('resolves image URL using selfHostedStorageUrl and selfHostedBucket', () => {
+    const url = resolvePanoramaUrl('N93E70-0005.jpg', selfHostedSettings);
+    expect(url).toBe('http://localhost:8000/storage/v1/object/public/MMS_PIC/N93E70-0005.jpg');
+  });
+
+  it('falls back to http://localhost:8000 if no selfHostedStorageUrl is set', () => {
+    const url = resolvePanoramaUrl('N93E70-0005.jpg', {
+      storageProvider: 'supabase_self_hosted' as const,
+      selfHostedBucket: 'MMS_PIC'
+    });
+    expect(url).toBe('http://localhost:8000/storage/v1/object/public/MMS_PIC/N93E70-0005.jpg');
+  });
+
+  it('resolves config URL for self-hosted Supabase', () => {
+    const url = resolvePanoramaConfigUrl('N93E70-0005.jpg', selfHostedSettings, 'N93E70');
+    expect(url).toBe('http://localhost:8000/storage/v1/object/public/MMS_PIC/tiles/N93E70/N93E70-0005/config.json');
+  });
+});
+

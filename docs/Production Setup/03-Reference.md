@@ -255,7 +255,7 @@ database wins — so a reseller can correct them on first run without rebuilding
 | Variable | Required | Default | Purpose |
 | --- | :--- | --- | --- |
 | `NAS_BASE_PATH` | **Yes** | `/nas/360_images` | Survey tree root. Traversal outside is rejected |
-| `NAS_WORKER_TOKEN` | On any non-loopback bind | — | Bearer secret. Blank = unauthenticated |
+| `NAS_WORKER_TOKEN` | **Yes** | — | Bearer secret for this worker's company. **Unset = guarded routes return 503**, not unauthenticated access. Per-company values live in `organization_workers` (migration 0043) |
 | `NAS_WORKER_ID` | No | hostname | Identifier on `/health` |
 | `STORAGE_CACHE_TTL` | No | `30` | Storage response cache, seconds |
 | `NAS_LOG_JSON` | No | `0` | `1` = structured JSON logs |

@@ -132,4 +132,17 @@ describe('sanitizeBucketName & private bucket URL resolution', () => {
     expect(url).toBe('https://signed.r2.cloud/N93E70-0001.jpg?token=secret');
     clearSignedPanoramaUrlCache();
   });
+
+  it('resolves supabase_self_hosted with custom endpoint and bucket', () => {
+    const settings: StorageResolveSettings = {
+      storageProvider: 'supabase_self_hosted',
+      selfHostedStorageUrl: 'http://192.168.1.50:8000',
+      selfHostedBucket: 'MMS_PIC'
+    };
+    const url = resolvePanoramaUrl('N93E70-0001.jpg', settings);
+    expect(url).toBe('http://192.168.1.50:8000/storage/v1/object/public/MMS_PIC/N93E70-0001.jpg');
+
+    const configUrl = resolvePanoramaConfigUrl('N93E70-0001.jpg', settings);
+    expect(configUrl).toBe('http://192.168.1.50:8000/storage/v1/object/public/MMS_PIC/tiles/N93E70/N93E70-0001/config.json');
+  });
 });

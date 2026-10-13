@@ -177,8 +177,10 @@ export interface ExtendedProjectSettings {
   poolTimeoutMs?: number;
 
   // Storage & MMS
-  storageProvider?: 'supabase' | 'aws_s3' | 'gcs' | 'azure_blob' | 'cloudflare_r2' | 'wasabi' | 'nas_local' | 'custom_cdn';
+  storageProvider?: 'supabase' | 'supabase_self_hosted' | 'aws_s3' | 'gcs' | 'azure_blob' | 'cloudflare_r2' | 'wasabi' | 'nas_local' | 'custom_cdn';
   supabaseBucket?: string;
+  selfHostedStorageUrl?: string;
+  selfHostedBucket?: string;
   s3Bucket?: string;
   s3Region?: string;
   gcsBucket?: string;

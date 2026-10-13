@@ -14,7 +14,9 @@ export type WorkspaceKey =
   | 'roadAnalysis'
   | 'onboarding'
   | 'landing'
-  | 'signin';
+  | 'signin'
+  | 'console'
+  | 'console-login';
 
 export const WORKSPACE_KEYS: WorkspaceKey[] = [
   'project',
@@ -32,7 +34,9 @@ export const WORKSPACE_KEYS: WorkspaceKey[] = [
   'roadAnalysis',
   'onboarding',
   'landing',
-  'signin'
+  'signin',
+  'console',
+  'console-login'
 ];
 
 export const DEFAULT_WORKSPACE: WorkspaceKey = 'dashboard';
@@ -45,7 +49,9 @@ const listeners = new Set<WorkspaceListener>();
 
 function matchKey(raw: string): WorkspaceKey | null {
   if (!raw) return null;
-  const key = raw.split(/[?#]/)[0].toLowerCase();
+  const key = raw.split(/[?#]/)[0].toLowerCase().replace(/^\/+|\/+$/g, '');
+  if (key === 'console/login' || key === 'console-login') return 'console-login';
+  if (key === 'console/dashboard' || key === 'console' || key === 'partner' || key === 'seller') return 'console';
   if (key === 'login') return 'signin';
   if (key === 'showcase') return 'landing';
   return WORKSPACE_KEYS.find((k) => k.toLowerCase() === key) ?? null;
@@ -91,6 +97,8 @@ export function getSubgridQuery(search = typeof window === 'undefined' ? '' : wi
 
 function buildHref(key: WorkspaceKey, query?: WorkspacePathQuery): string {
   const suffix = query ? `?${new URLSearchParams(query).toString()}` : '';
+  if (key === 'console-login') return `/console/login${suffix}`;
+  if (key === 'console') return `/console/dashboard${suffix}`;
   return `/${key}${suffix}`;
 }
 

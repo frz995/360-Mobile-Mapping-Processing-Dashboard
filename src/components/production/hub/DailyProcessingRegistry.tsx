@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, ClipboardList, RefreshCw } from 'lucide-react';
 import { fetchStationBoardItemsFromSupabase } from '../../../services/api/stationBoard';
 import { fetchDashboardApi } from '../../../services/cloudflareApi';
+import { tenantApiUrl } from '../../../services/nasImageToken';
 import type { StationBoardRow, WorkstationStationId } from '../../../types/production';
 
 interface RegistryChild {
@@ -79,7 +80,7 @@ export const DailyProcessingRegistry: React.FC = () => {
 
   useEffect(() => {
     let disposed = false;
-    fetchDashboardApi('/api/nas-scan?action=registry')
+    fetchDashboardApi(tenantApiUrl('/api/nas-scan?action=registry'))
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!disposed) setRegistry(data?.success && Array.isArray(data.registry) ? data.registry : []);

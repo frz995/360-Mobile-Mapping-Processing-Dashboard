@@ -43,6 +43,11 @@ describe('urlRouter', () => {
   it('resolves aliases cleanly', () => {
     expect(parseWorkspace('/login')).toBe('signin');
     expect(parseWorkspace('/showcase')).toBe('landing');
+    expect(parseWorkspace('/console/login')).toBe('console-login');
+    expect(parseWorkspace('/console/dashboard')).toBe('console');
+    expect(parseWorkspace('/console')).toBe('console');
+    expect(parseWorkspace('/partner')).toBe('console');
+    expect(parseWorkspace('/seller')).toBe('console');
   });
 
   it('resolves camelCase roadAnalysis case-insensitively', () => {

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { SectionLabel, MetaList, TextAction } from '../chrome';
 import { trackLengthMeters } from '../common';
+import { tenantApiUrl } from '../../../services/nasImageToken';
 import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
 import { probeStationAgent, renameNasFilesOnStation } from '../../../services/stationAgentApi';
 import { fetchDashboardApi } from '../../../services/cloudflareApi';
@@ -217,7 +218,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   // Probe NAS endpoint on mount to detect which subgrids exist in 03_Stitching
   useEffect(() => {
     let isMounted = true;
-    fetchDashboardApi('/api/nas-scan?action=subgrids')
+    fetchDashboardApi(tenantApiUrl('/api/nas-scan?action=subgrids'))
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!isMounted) return;
@@ -304,7 +305,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
     setIsScanningFolders(true);
 
     try {
-      const res = await fetchDashboardApi(`/api/nas-scan?action=survey-folders&subgrid=${encodeURIComponent(clean)}`);
+      const res = await fetchDashboardApi(tenantApiUrl(`/api/nas-scan?action=survey-folders&subgrid=${encodeURIComponent(clean)}`));
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.folders) && data.folders.length > 0) {
@@ -424,7 +425,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   const fetchFolderImages = async (sg: string, folderId: string): Promise<string[] | null> => {
     if (!sg || !folderId || folderId === '__none__' || folderId === '__custom__') return null;
     try {
-      const res = await fetchDashboardApi(`/api/nas-scan?action=folder-images&subgrid=${encodeURIComponent(sg)}&folder=${encodeURIComponent(folderId)}`);
+      const res = await fetchDashboardApi(tenantApiUrl(`/api/nas-scan?action=folder-images&subgrid=${encodeURIComponent(sg)}&folder=${encodeURIComponent(folderId)}`));
       if (!res.ok) return null;
       const data = await res.json();
       if (data?.success && Array.isArray(data.images)) return data.images as string[];
@@ -477,7 +478,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
     setIsLoadingPairing(true);
     setPairingProgressText(`Reading ${csvName || 'survey CSV'} & verifying images...`);
     try {
-      const res = await fetchDashboardApi(`/api/nas-scan?action=read-csv&subgrid=${encodeURIComponent(sg)}&folder=${encodeURIComponent(folderId)}&csv=${encodeURIComponent(csvName)}`);
+      const res = await fetchDashboardApi(tenantApiUrl(`/api/nas-scan?action=read-csv&subgrid=${encodeURIComponent(sg)}&folder=${encodeURIComponent(folderId)}&csv=${encodeURIComponent(csvName)}`));
       if (!res.ok) return false;
       const data = await res.json();
       if (!(data.success && Array.isArray(data.records) && data.records.length > 0)) return false;

@@ -1,4 +1,5 @@
 import { upstreamSignal, classifyUpstreamError } from '../_lib/upstream';
+import { resolveTenantWorker, TenantWorkerError } from '../_lib/tenantWorker';
 
 function json(body, status) {
   return new Response(JSON.stringify(body), {
@@ -11,20 +12,32 @@ function json(body, status) {
  *  60s budget (BucketPublicationGate) is what normally ends the wait. */
 const IMAGE_TIMEOUT_MS = 60_000;
 
-export async function onRequestGet({ request, env }) {
-  const base = (env.NAS_API_URL || '').replace(/\/+$/, '');
-  const token = env.NAS_WORKER_TOKEN || '';
+export async function onRequestGet({ request, env, data }) {
+  // The organisation comes from the middleware, which derived it from the
+  // caller's verified membership (bearer) or from the signed claim inside an
+  // asset token. It is never taken from this request.
+  const organizationId = data?.organizationId;
+  if (!organizationId) {
+    return json({ error: 'No company context on this request.' }, 401);
+  }
+
   const rel = new URL(request.url).searchParams.get('path') || '';
   // searchParams already decodes, so `%2e%2e` arrives as `..`; also reject
   // separators smuggled inside a single segment (the worker runs on Windows).
   const segments = rel.split('/').filter(Boolean);
-  if (!base || !token) return json({ error: 'Configure NAS_API_URL and NAS_WORKER_TOKEN in Cloudflare Pages.' }, 503);
-  if (
-    !segments.length ||
-    segments.some((s) => s === '.' || s === '..' || s.includes('\\') || s.includes('\0'))
-  ) {
+  if (!segments.length || segments.some((s) => s === '.' || s === '..' || s.includes('\\') || s.includes('\0'))) {
     return json({ error: 'Invalid NAS image path.' }, 400);
   }
+
+  let worker;
+  try {
+    worker = await resolveTenantWorker(env, organizationId);
+  } catch (err) {
+    if (err instanceof TenantWorkerError) return json({ error: err.message }, err.status);
+    return json({ error: 'NAS worker is not configured for your company.' }, 502);
+  }
+  const { base, token } = worker;
+
   try {
     const target = `${base}/api/images/${segments.map(encodeURIComponent).join('/')}`;
     const reqHeaders = new Headers({ Authorization: `Bearer ${token}` });
