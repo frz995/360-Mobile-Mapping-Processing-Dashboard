@@ -100,7 +100,10 @@ const AdminSettingsView = React.lazy(() => import('./components/AdminSettingsVie
 const OperationalActionCenter = React.lazy(() => import('./components/OperationalActionCenter').then(m => ({ default: m.OperationalActionCenter })));
 const ProjectWorkspace = React.lazy(() => import('./components/ProjectWorkspace').then(m => ({ default: m.ProjectWorkspace })));
 const QAQCWorkbench = React.lazy(() => import('./components/QAQCWorkbench').then(m => ({ default: m.QAQCWorkbench })));
-const SellerConsolePage = React.lazy(() => import('./components/console/SellerConsolePage'));
+// Not lazy: these render on the console gate, which must not flash a Suspense
+// fallback on the way to saying "you cannot use this console".
+import { AwaitingAssignment } from './components/console/AwaitingAssignment';
+import { ConsoleRouteGate } from './components/console/ConsoleRouteGate';
 const SellerConsoleLoginPage = React.lazy(() => import('./components/console/SellerConsoleLoginPage'));
 import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
 import { useAppData } from './hooks/useAppData';
@@ -117,6 +120,7 @@ import { AboutPlatformModal } from './components/modals/AboutPlatformModal';
 import { DashboardKpiSummary } from './components/dashboard/DashboardKpiSummary';
 import { DashboardBatchTable } from './components/dashboard/DashboardBatchTable';
 import { parseWorkspace, pushWorkspace, replaceWorkspace, subscribeWorkspace, isExplicitRoute, getSubgridQuery } from './utils/urlRouter';
+import { useConsoleAccessGate, useActivatePendingMemberships, needsAwaitingAssignment } from './hooks/useConsoleAccessGate';
 import type { WorkspaceKey, WorkspacePathQuery } from './utils/urlRouter';
 import {
   getStoredWorkspaceKey,
@@ -877,6 +881,15 @@ export default function App() {
   }, []);
 
   const canHandleApprovals = !isGuestUser && can(effectiveUserRole, 'approveDeletions', roleMatrix);
+
+  // Tenant membership and the console's platform-admin gate. The rule and its
+  // rationale live in `useConsoleAccessGate`; in short, `null` means the
+  // question is UNANSWERED, which is neither allowed nor refused, and the gate
+  // refuses to mount a console in that state. Previously this gate checked
+  // `authSession` alone, so any signed-in Viewer could open `/console`.
+  const sessionUserId = authSession?.user?.id || '';
+  const { access: consoleAccess, refresh: refreshConsoleAccess } = useConsoleAccessGate(sessionUserId, isGuestUser);
+  useActivatePendingMemberships(sessionUserId, isGuestUser);
 
   // Admin-visible pending deletion-request badge on the Administration icon.
   useEffect(() => {
@@ -2925,24 +2938,36 @@ subgrid: nextSubgrid,
   }
 
   if (currentPage === 'console') {
-    if (!authSession && !authLoading) {
-      goToWorkspace('console-login');
-      return null;
-    }
     return (
-      <React.Suspense fallback={<div className="min-h-screen bg-[#f4f5f8] flex items-center justify-center text-slate-900 text-xs font-mono">Loading Console...</div>}>
-        <SellerConsolePage
-          role={effectiveUserRole}
-          isGuest={isGuestUser}
-          matrix={roleMatrix}
-          currentUserEmail={authSession?.user?.email}
-          onBackToDashboard={() => goToWorkspace('dashboard')}
-          onSignOut={async () => {
-            await handleSignOut();
-            goToWorkspace('console-login');
-          }}
-        />
-      </React.Suspense>
+      <ConsoleRouteGate
+        isSignedIn={Boolean(authSession)}
+        authLoading={authLoading}
+        access={consoleAccess}
+        email={authSession?.user?.email}
+        role={effectiveUserRole}
+        isGuest={isGuestUser}
+        matrix={roleMatrix}
+        onNeedsLogin={() => goToWorkspace('console-login')}
+        onRetry={refreshConsoleAccess}
+        onBackToDashboard={() => goToWorkspace('dashboard')}
+        onSignOut={async () => {
+          await handleSignOut();
+          goToWorkspace('console-login');
+        }}
+      />
+    );
+  }
+
+  if (
+    needsAwaitingAssignment({
+      access: consoleAccess,
+      isGuest: isGuestUser,
+      hasSession: Boolean(authSession),
+      route: currentPage
+    })
+  ) {
+    return (
+      <AwaitingAssignment email={authSession?.user?.email} onSignOut={handleSignOut} onRetry={refreshConsoleAccess} />
     );
   }
 

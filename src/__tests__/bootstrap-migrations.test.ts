@@ -8,6 +8,13 @@ import {
   createdRelations
 } from '../../scripts/bootstrap-migrations.mjs'
 
+/** All SQL in one migration, for assertions about content the parser models as functions. */
+const migrationSql = (name: string): string => {
+  const m = migrations.find((x) => x.name.startsWith(name))
+  if (!m) return ''
+  return m.statements.map((s) => s.text).join('\n')
+}
+
 /**
  * Guards the install-time bootstrap generator.
  *
@@ -37,11 +44,11 @@ describe('migration files load and parse', () => {
     // here as a one-line diff rather than as a silently unvalidated install.
     // v27 section 3 updated this from 32 to 33 for migration 0034; 0035 makes 34; 0036 makes 35;
     // v32 adds the tenant work: 0037 attribution, 0038 operational policies,
-    // 0039 production policies, 0040 ledgers/shares/RPC re-gating (38),
-    // 0041 storage policies (39), 0042 inventory attribution (40) — and the
-    // 0041 storage policies (39), 0042 inventory attribution (40),
-    // 0043 organization workers (41) — and the count below is the bundled total after 0011 is excluded.
-    expect(migrations).toHaveLength(42)
+    // 0039 production policies, 0040 ledgers/shares/RPC re-gating,
+    // 0041 storage policies, 0042 inventory attribution, 0043 organization
+    // workers. v34 adds 0044 console access and membership lifecycle (42).
+    // The count below is the bundled total after 0011 is excluded.
+    expect(migrations).toHaveLength(43)
     expect(migrations.some((m) => m.name.startsWith('0011'))).toBe(false)
   })
 
@@ -77,6 +84,29 @@ describe('migration files load and parse', () => {
     const creates = new Set(m0036!.statements.flatMap((s) => [...s.creates]))
     expect(creates).toContain('public.organizations')
     expect(creates).toContain('public.organization_members')
+  })
+
+  it('includes the console access and membership lifecycle from 0044', () => {
+    // Without this migration the Seller Console cannot function: `sec` is not
+    // exposed to PostgREST so the platform-admin question is unaskable, and
+    // nothing anywhere writes `organization_members`, so no company created in
+    // the console could ever have a member. Asserted so dropping or renaming it
+    // fails loudly rather than leaving a console that provisions unusable
+    // tenants.
+    //
+    // Asserted against the file text rather than `statements[].creates`: that
+    // set holds RELATIONS, and 0044 creates functions. A function-only migration
+    // would otherwise read as having created nothing.
+    const m0044 = migrations.find((x) => x.name.startsWith('0044'))
+    expect(m0044).toBeDefined()
+    const sql = migrationSql('0044')
+    expect(sql).toContain('FUNCTION public.console_access()')
+    expect(sql).toContain('FUNCTION public.console_organization_members(')
+    expect(sql).toContain('FUNCTION public.console_invite_member(')
+    expect(sql).toContain('FUNCTION public.activate_pending_memberships()')
+    // The activation gate is the whole security property of the invite flow,
+    // so its absence must fail here rather than at runtime.
+    expect(sql).toContain('auth_email_confirmed_at')
   })
 
   it('loads them in filename order', () => {

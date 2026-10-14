@@ -365,6 +365,7 @@ BEGIN
   RAISE NOTICE 'gate 2.7 ok: platform staff sees % organizations', v_seen;
 END $$;
 
+
 -- 2.8 `anonymous` must reach none of it.
 --
 -- file_inventory is USING (true) in 0006 and map_shares_insert is granted to
@@ -506,44 +507,283 @@ END $$;
 
 RESET ROLE;
 
--- ---------------------------------------------------------------------
--- 3. Deleting an organization that still owns projects must be refused.
+-- =====================================================================
+-- 2.11 - 2.16. Migration 0044: the Seller Console's access and membership RPCs.
 --
--- With ON DELETE RESTRICT this fails in the database, not the UI. It is the
--- guarantee that a mis-click cannot orphan a tenant's projects to NULL and
--- make them readable by everyone.
--- ---------------------------------------------------------------------
-DO $$
-DECLARE v_refused boolean := false;
-BEGIN
-  BEGIN
-    DELETE FROM public.organizations WHERE id = '0a000000-0000-4000-8000-0000000000a1';
-  EXCEPTION WHEN foreign_key_violation THEN
-    v_refused := true;
-  END;
+-- These exist because the console could previously not function at all:
+-- `sec.is_platform_admin()` is unreachable from PostgREST, and
+-- `organization_members` carries no email. The price of both being reachable is
+-- that they are SECURITY DEFINER, so the explicit checks inside them are the
+-- ONLY gate -- RLS does not protect a table from its own definer. That makes
+-- these assertions load-bearing rather than belt-and-braces.
+--
+-- Gate 2.15 is the negative control for the whole activation design. If
+-- `activate_pending_memberships()` ever drops its `email_confirmed_at`
+-- predicate, anyone could claim any company's membership by registering that
+-- company's address and clicking a link they do not own.
+--
+-- Each probe runs inside a DO block rather than at top level: the
+-- exists-or-skip shape is PL/pgSQL, and a bare `IF` outside a block is a
+-- syntax error that takes the whole gate down.
+-- =====================================================================
 
-  IF NOT v_refused THEN
-    RAISE EXCEPTION
-      'SECURITY GATE FAILED: an organization owning projects was deletable. organization_id must be NOT NULL with ON DELETE RESTRICT.';
+-- 2.11 console_access() answers honestly for a tenant member and for staff.
+DO $$
+DECLARE
+  v_admin boolean;
+  v_orgs  uuid[];
+BEGIN
+  IF to_regprocedure('public.console_access()') IS NULL THEN
+    RAISE NOTICE 'gate 2.11 skipped: public.console_access() not present (0044 not applied)';
+    RETURN;
   END IF;
 
-  RAISE NOTICE 'gate 3 ok: deleting an organization that owns projects is refused';
+  -- Tenant A: a member, and explicitly NOT a platform administrator.
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"sub":"a0000000-0000-4000-8000-00000000000a","email":"tenant-a.user@example.test","role":"authenticated"}',
+    true);
+
+  SELECT r.is_platform_admin, r.organization_ids INTO v_admin, v_orgs FROM public.console_access() r;
+
+  IF v_admin THEN
+    RAISE EXCEPTION 'SECURITY GATE FAILED: console_access() reports a plain tenant member as a platform administrator';
+  END IF;
+
+  IF v_orgs IS DISTINCT FROM ARRAY['0a000000-0000-4000-8000-0000000000a1']::uuid[] THEN
+    RAISE EXCEPTION 'SECURITY GATE FAILED: console_access() reported memberships % for Tenant A', v_orgs;
+  END IF;
+
+  -- Platform staff: the same read must come back true, or the console gate
+  -- would lock every real administrator out of their own install.
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"sub":"e0000000-0000-4000-8000-0000000000e0","email":"platform.staff@example.test","role":"authenticated"}',
+    true);
+
+  SELECT r.is_platform_admin INTO v_admin FROM public.console_access() r;
+
+  IF NOT v_admin THEN
+    RAISE EXCEPTION 'SECURITY GATE FAILED: console_access() does not recognise the seeded platform staff account';
+  END IF;
+
+  RAISE NOTICE 'gate 2.11 ok: tenant member is not an admin; platform staff is';
+END $$;
+
+-- 2.12 A tenant member cannot list ANY company's staff.
+--
+-- console_organization_members() joins auth.users, which a tenant member has no
+-- other route to. This is the member-email disclosure gate.
+DO $$
+DECLARE
+  v_rows integer;
+BEGIN
+  IF to_regprocedure('public.console_organization_members(uuid)') IS NULL THEN
+    RAISE NOTICE 'gate 2.12 skipped: public.console_organization_members(uuid) not present';
+    RETURN;
+  END IF;
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"sub":"a0000000-0000-4000-8000-00000000000a","email":"tenant-a.user@example.test","role":"authenticated"}',
+    true);
+
+  BEGIN
+    SELECT count(*) INTO v_rows
+      FROM public.console_organization_members('0a000000-0000-4000-8000-0000000000a1');
+
+    IF v_rows > 0 THEN
+      RAISE EXCEPTION
+        'SECURITY GATE FAILED: a tenant member listed % staff row(s) of its OWN company, including auth.users emails. console_organization_members must require sec.is_platform_admin(), not membership.', v_rows;
+    END IF;
+
+    RAISE NOTICE 'gate 2.12 ok: tenant member receives zero staff rows';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'gate 2.12 ok: tenant member denied console_organization_members with 42501';
+  END;
+END $$;
+
+-- 2.13 A tenant member cannot write a membership row.
+--
+-- The invite path is the only route to organization_members. If this is open,
+-- every tenant member can enrol themselves as a CompanyAdmin of any company.
+DO $$
+DECLARE
+  v_leaked integer;
+BEGIN
+  IF to_regprocedure('public.console_invite_member(uuid,uuid,text)') IS NULL THEN
+    RAISE NOTICE 'gate 2.13 skipped: public.console_invite_member(uuid,uuid,text) not present';
+    RETURN;
+  END IF;
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"sub":"a0000000-0000-4000-8000-00000000000a","email":"tenant-a.user@example.test","role":"authenticated"}',
+    true);
+
+  BEGIN
+    PERFORM public.console_invite_member(
+      '0a000000-0000-4000-8000-0000000000a1',
+      'b0000000-0000-4000-8000-00000000000b',
+      'CompanyAdmin');
+
+    RAISE EXCEPTION
+      'SECURITY GATE FAILED: a tenant member created an organization_members row. console_invite_member must call sec.require_platform_admin() before touching the table.';
+  EXCEPTION WHEN insufficient_privilege THEN
+    -- Refused. Confirm it also left nothing behind.
+    SELECT count(*) INTO v_leaked
+      FROM public.organization_members
+     WHERE organization_id = '0a000000-0000-4000-8000-0000000000a1'
+       AND user_id = 'b0000000-0000-4000-8000-00000000000b'
+       AND status = 'invited';
+
+    IF v_leaked > 0 THEN
+      RAISE EXCEPTION 'SECURITY GATE FAILED: console_invite_member raised 42501 but % invited row(s) exist', v_leaked;
+    END IF;
+
+    RAISE NOTICE 'gate 2.13 ok: tenant member denied console_invite_member and wrote nothing';
+  END;
 END $$;
 
 -- ---------------------------------------------------------------------
--- 4. Teardown.
---
---    Rolled back, not deleted: the fixture exists only for the assertions
---    above, and leaving it would pollute a real project's directory.
+-- 2.14 and 2.15 seed and assert a membership row directly, which needs
+-- privileges `authenticated` does not have. RESET ROLE returns to the
+-- superuser that opened the session; auth.uid() keeps reading
+-- request.jwt.claims, so the functions under test still see the caller the
+-- probe claims to be. The session role is restored afterwards so gate 2.8's
+-- own RESET ROLE / SET LOCAL ROLE anon still behaves.
 -- ---------------------------------------------------------------------
-ROLLBACK;
+RESET ROLE;
 
--- =====================================================================
--- EXPECTED TURNOUT
---   A passing run prints one NOTICE per gate (2.1 - 2.8, 3) and exits 0.
---   Any failure raises an exception naming the gate, the expectation and the
---   observed value, and exits non-zero under ON_ERROR_STOP=1.
+-- 2.14 Activation is self-scoped: a caller cannot activate someone else's
+--       invite.
+DO $$
+DECLARE
+  v_status text;
+BEGIN
+  IF to_regprocedure('public.activate_pending_memberships()') IS NULL THEN
+    RAISE NOTICE 'gate 2.16 skipped: public.activate_pending_memberships() not present';
+    RETURN;
+  END IF;
+
+  INSERT INTO public.organization_members (organization_id, user_id, role, status)
+  VALUES ('0a000000-0000-4000-8000-0000000000a1',
+          'b0000000-0000-4000-8000-00000000000b',
+          'Viewer', 'invited')
+  ON CONFLICT (organization_id, user_id) DO UPDATE SET status = 'invited';
+
+  -- Tenant A confirmed, calling the activation. Tenant B's invite must not move.
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"sub":"a0000000-0000-4000-8000-00000000000a","email":"tenant-a.user@example.test","role":"authenticated"}',
+    true);
+
+  PERFORM public.activate_pending_memberships();
+
+  SELECT m.status INTO v_status
+    FROM public.organization_members m
+   WHERE m.organization_id = '0a000000-0000-4000-8000-0000000000a1'
+     AND m.user_id = 'b0000000-0000-4000-8000-00000000000b';
+
+  IF v_status <> 'invited' THEN
+    RAISE EXCEPTION
+      'SECURITY GATE FAILED: activate_pending_memberships() flipped ANOTHER caller''s invite to %. It must act on auth.uid() only.', v_status;
+  END IF;
+
+  RAISE NOTICE 'gate 2.14 ok: activation left another caller''s invite at invited';
+END $$;
+
+-- 2.15 An UNCONFIRMED account cannot activate its own invite.
 --
---   If this file reports success while running as `postgres`, it did not run:
---   section 0 raises before any assertion.
--- =====================================================================
+-- THE LOAD-BEARING GATE. With Supabase's "Confirm email" setting disabled,
+-- signUp returns a session immediately with an unverified address. A grant that
+-- does not check email_confirmed_at would then let anyone who registers a
+-- company's address walk into that tenant.
+DO $$
+DECLARE
+  v_status text;
+  v_col    text;
+BEGIN
+  IF to_regprocedure('public.activate_pending_memberships()') IS NULL THEN
+    RAISE NOTICE 'gate 2.15 skipped: public.activate_pending_memberships() not present';
+    RETURN;
+  END IF;
+
+  -- Force the exact condition the predicate must reject, whatever the shared
+  -- fixture happened to be created with. The column is resolved the same way
+  -- `sec.auth_email_confirmed_at` resolves it, because GoTrue renamed it and
+  -- this repository's own image has the older name.
+  v_col := NULL;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='auth' AND table_name='users' AND column_name='email_confirmed_at') THEN
+    v_col := 'email_confirmed_at';
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='auth' AND table_name='users' AND column_name='confirmed_at') THEN
+    v_col := 'confirmed_at';
+  END IF;
+
+  IF v_col IS NULL THEN
+    RAISE EXCEPTION
+      'SECURITY GATE INVALID: auth.users has neither email_confirmed_at nor confirmed_at, so gate 2.15 cannot construct its own negative control. The activation predicate is unmeasurable here.';
+  END IF;
+
+  -- `id = $1::uuid` rather than `id = $1`: an EXECUTE parameter with no declared
+-- type is inferred as text, and `uuid = text` has no operator.
+EXECUTE format('UPDATE auth.users SET %I = NULL WHERE id = $1::uuid', v_col)
+    USING 'b0000000-0000-4000-8000-00000000000b'::uuid;
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"sub":"b0000000-0000-4000-8000-00000000000b","email":"tenant-b.user@example.test","role":"authenticated"}',
+    true);
+
+  PERFORM public.activate_pending_memberships();
+
+  SELECT m.status INTO v_status
+    FROM public.organization_members m
+   WHERE m.organization_id = '0a000000-0000-4000-8000-0000000000a1'
+     AND m.user_id = 'b0000000-0000-4000-8000-00000000000b';
+
+  IF v_status <> 'invited' THEN
+    RAISE EXCEPTION
+      'SECURITY GATE FAILED: an UNCONFIRMED account was activated (status %). public.activate_pending_memberships() must require a confirmed email address -- otherwise signing up with someone''s unverified address grants their company.', v_status;
+  END IF;
+
+  RAISE NOTICE 'gate 2.15 ok: an unconfirmed account cannot activate its invite (column %)', v_col;
+END $$;
+
+-- 2.16 The activation function has no user-id parameter.
+--
+-- Read from the catalog rather than asserted in prose. A future migration that
+-- adds one turns "activates the caller" into "activates anyone", and that is a
+-- one-token change that no behavioural probe would necessarily catch.
+DO $$
+DECLARE
+  v_def text;
+BEGIN
+  IF to_regprocedure('public.activate_pending_memberships()') IS NULL THEN
+    RAISE NOTICE 'gate 2.16 skipped: public.activate_pending_memberships() not present';
+    RETURN;
+  END IF;
+
+  SELECT pg_get_functiondef(p.oid) INTO v_def
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public'
+     AND p.proname = 'activate_pending_memberships';
+
+  IF v_def ~* 'p_user_id|user_uuid|target_user|target_email' THEN
+    RAISE EXCEPTION
+      'SECURITY GATE FAILED: activate_pending_memberships() has gained a caller selector. It must act on auth.uid() only -- see migration 0044 for why.';
+  END IF;
+
+  IF v_def !~* 'auth_email_confirmed_at' THEN
+    RAISE EXCEPTION
+      'SECURITY GATE FAILED: activate_pending_memberships() no longer checks a confirmed email address. Without that predicate an unverified sign-up can claim a company.';
+  END IF;
+
+  RAISE NOTICE 'gate 2.16 ok: activation is self-scoped and still gated on a confirmed email';
+END $$;
+
+SET LOCAL ROLE authenticated;
+

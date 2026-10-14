@@ -49,9 +49,26 @@ export const WORKSPACES: WorkspaceDefinition[] = [
   { key: 'analytics', labelKey: 'workspaceAnalytics', descriptionKey: 'workspaceAnalyticsDesc', icon: BarChart3, tag: 'live' },
   { key: 'roadAnalysis', labelKey: 'workspaceRoadAnalysis', descriptionKey: 'workspaceRoadAnalysisDesc', icon: Route, tag: 'live' },
   { key: 'reports', labelKey: 'workspaceReports', descriptionKey: 'workspaceReportsDesc', icon: FileText, tag: 'live' },
-  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live', guard: ['manageUsers'] },
-  { key: 'console', labelKey: 'workspaceConsole', descriptionKey: 'workspaceConsoleDesc', icon: Shield, tag: 'live', guard: ['manageUsers'] }
+  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live', guard: ['manageUsers'] }
 ];
+
+// `console` is deliberately NOT listed here.
+//
+// It used to be, with `guard: ['manageUsers']`, which read like the console was
+// role-gated. It was not, and could not be: the guard was inert twice over.
+// `WorkspaceSidebarNav` renders `WORKSPACE_CATEGORIES`, and `console` was a
+// member of none of them, so it never appeared. And `WorkspaceRouter.tsx:58`
+// returns `null` for `console` before `canAccessWorkspace` is ever reached, so
+// the guard was never consulted either.
+//
+// Meanwhile the only real gate — `App.tsx`, which gated the console on
+// `authSession` alone — let any signed-in Viewer open it. That is the shape v33
+// §3 calls a claim that cannot fail: the configuration asserted a control that
+// did not exist anywhere on the path. The real gate is `public.console_access()`,
+// asserted by gate 2.11 in `0011_security_tests.sql`.
+//
+// The console is a standalone page with no sidebar; `SellerConsoleLauncher`
+// opens it in a new tab from Administration for exactly that reason.
 
 export function getWorkspaceDefinition(key: WorkspaceKey): WorkspaceDefinition {
   return WORKSPACES.find((w) => w.key === key) || WORKSPACES[0];

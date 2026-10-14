@@ -1,7 +1,7 @@
 import { verifyAssetToken } from './_lib/signing';
 import { resolveCallerOrganizations, selectOrganization, TenantWorkerError } from './_lib/tenantWorker';
 
-const PRIVATE_API_PATHS = ['/api/nas-scan', '/api/nas-image', '/api/nas-image-token', '/api/station-agent', '/api/road-extraction', '/api/worker'];
+const PRIVATE_API_PATHS = ['/api/nas-scan', '/api/nas-image', '/api/nas-image-token', '/api/station-agent', '/api/road-extraction', '/api/worker', '/api/console-invite'];
 
 function json(body, status) {
   return new Response(JSON.stringify(body), {

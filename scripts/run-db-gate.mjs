@@ -149,9 +149,19 @@ try {
   //    `graphql` schema, so the first DROP or CREATE in the bundle aborts with
   //    "could not open relation with OID ...".
   //
-  //    None of them is part of any migration; they are Supabase service
-  //    plumbing. Disabling all of them keeps the gate testing tenant isolation
-  //    rather than the completeness of the base image.
+  //    `pgrst_ddl_watch` is the third one, and this loop used to EXCLUDE it
+  //    (`evtname NOT LIKE 'pgrst%'`). It fails the same way — it resolves a
+  //    relation that does not exist in the bare image — which made the gate fail
+  //    non-deterministically at a random line of the bundle. Every run I saw
+  //    before 2026-10-14 died at a different offset, which is the signature of
+  //    an event trigger rather than of a migration. Confirmed by running the
+  //    gate with all six disabled: the full 0001-0044 bundle then applies and
+  //    every assertion passes.
+  //
+  //    Disabling them is safe: nothing in this container listens on the pgrst
+  //    channel, so the NOTIFY statements at the end of each migration go to a
+  //    channel with no subscriber. The gate is testing tenant isolation, not
+  //    PostgREST's schema cache.
   //
   //    It has to be a standalone statement: issuing the ALTER from inside a SQL
   //    file trips the same broken dependency it is meant to avoid.
@@ -159,22 +169,31 @@ try {
   //    pg_isready reports ready before the image's init script has finished
   //    creating its triggers, so this retries rather than assuming.
   if (!dbUrl) {
-    let disabled = 0;
-    for (let attempt = 0; attempt < 20 && disabled < 6; attempt++) {
+    // `armed` is the live count of enabled triggers; the loop finishes when it
+    // reaches zero. Counting successful ALTERs instead would read as a failure
+    // on the success path, because the loop exits before the last increment.
+    let armed = -1;
+    for (let attempt = 0; attempt < 30 && armed !== 0; attempt++) {
       const res = run('docker', [
         'exec', CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres',
         '-tAq', '-c',
-        "SELECT count(*) FROM pg_event_trigger WHERE evtenabled <> 'D' AND evtname NOT LIKE 'pgrst%';"
+        "SELECT count(*) FROM pg_event_trigger WHERE evtenabled <> 'D';"
       ]);
-      const stillArmed = Number((res.stdout || '0').trim() || 0);
-      if (res.status === 0 && stillArmed === 0) break;
-      const off = run('docker', [
+      armed = Number((res.stdout || '').trim() || -1);
+      if (res.status === 0 && armed === 0) break;
+      run('docker', [
         'exec', CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres',
         '-tAq', '-c',
-        "DO $$ DECLARE r record; BEGIN FOR r IN SELECT evtname FROM pg_event_trigger WHERE evtenabled <> 'D' AND evtname NOT LIKE 'pgrst%' LOOP EXECUTE 'ALTER EVENT TRIGGER ' || quote_ident(r.evtname) || ' DISABLE'; END LOOP; END $$;"
+        "DO $$ DECLARE r record; BEGIN FOR r IN SELECT evtname FROM pg_event_trigger WHERE evtenabled <> 'D' LOOP EXECUTE 'ALTER EVENT TRIGGER ' || quote_ident(r.evtname) || ' DISABLE'; END LOOP; END $$;"
       ]);
-      if (off.status !== 0) spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},1000)']);
-      disabled++;
+      if (armed > 0) spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},1500)']);
+    }
+
+    if (armed !== 0) {
+      fail(
+        `could not neutralise the base image event triggers (${armed} still armed); ` +
+          'the bundle would abort on a broken service dependency'
+      );
     }
   }
 
@@ -191,7 +210,7 @@ try {
 
   const tmp = join(mkdtempSync(join(tmpdir(), 'geosphere-db-')), 'bundle.sql');
   writeFileSync(tmp, readFileSync(BUNDLE, 'utf8'));
-  step('apply the full migration bundle (0001-0042)', psqlTo(tmp, 'bundle'));
+  step('apply the full migration bundle (0001-0044)', psqlTo(tmp, 'bundle'));
 
   // 3. auth.jwt() again: the scaffolding must be present BEFORE the migrations
   //    that reference it in policy bodies, but the bundle also creates objects

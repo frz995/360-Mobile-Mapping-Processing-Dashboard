@@ -127,11 +127,22 @@ record.
   `AdministrationWorkspace`, `AdminSettingsView`, `DataManagementPage`,
   `RoadAnalysisWorkspace`, `AnalyticsWorkspace`, `ReportsWorkspace`,
   `NASStorageWorkspace`, `PcMonitoringStation`.
+- `src/components/console/` — the Seller Partner Console, a **standalone page**
+  (`/console/{dashboard,companies,members,database,seats,settings}`) that strips
+  `data-theme` and renders its own fixed light shell, so it bypasses the token
+  system on purpose. `ConsoleRouteGate` is the access gate (three states:
+  allowed / refused / **unverified** — never collapse the last two).
+  `useConsoleDirectory` is the single source of company data for every panel;
+  `panels/` holds the six panels and `consoleUi` the local primitives.
+  `src/utils/consoleRouter.ts` owns the sub-paths; the panels are **not** in
+  `WORKSPACES` (adding them puts six fake entries in the sidebar). Entry point is
+  `SellerConsoleLauncher` in Administration, which opens a new tab because the
+  console has no sidebar to navigate back from.
 - `src/share/` — `SharedMapPage`, `ShareMapDialog`, `SharePasswordGate`.
 - `src/config/` — `branding.ts`, `defaults.ts`, `transport.ts` (worker proxy policy).
 - `src/hooks/` — `useAppData`, `useCoverageSegmentation`, `usePanoramaViewer`,
-  `usePermission`, `useQAQCWorker`, `useStationAgents`.
-- `src/lib/` — `authz`, `i18n` (en/ms/zh), `quiet`, `report`, `retry`, `sentry`,
+  `usePermission`, `useQAQCWorker`, `useStationAgents`, `useConsoleAccessGate`.
+- `src/lib/` - `authz`, `i18n` (en/ms/zh/ja — **four** locales, not three), `quiet`, `report`, `retry`, `sentry`,
   `writeFailures`.
 - `src/utils/` — pure logic: `panotrackAppearance`, `surveyIntegrity`,
   `integritySubjects`, `dashboardData`, `deletionImpact`, `qaqcAnalyzer`,
@@ -150,10 +161,20 @@ record.
   `storageUrls.ts` (canonical provider enum + URL builders), `supabaseConfig.ts`,
   `productionApi.ts` (NAS worker HTTP client), `roadExtraction.ts`,
   `nasImageToken.ts`, `projectContext.ts`.
-- `supabase/migrations/` — **34 files, `0001`–`0034`, contiguous**,
+- `supabase/migrations/` — **44 files, `0001`–`0044`, contiguous**,
   `NNNN_snake_case_description.sql`. Not wired to `supabase db push`; applied by a
-  documented hand-run sequence. `migrations/README.md` records a known ordering
+  documented hand-run sequence, or all at once via `supabase/bootstrap.sql`
+  (gitignored, generated). `migrations/README.md` records a known ordering
   defect (0004 before 0012) and forbids adding `ON_ERROR_STOP=1` to the apply loop.
+  `0036`–`0044` are the tenancy layer; `0044` adds the console access and
+  membership lifecycle RPCs. **Run `npm run db:gate` after touching any of them** —
+  it is the only check in this repository that executes SQL, and it has caught
+  four defects in code that had already passed review and `tsc`.
+  - **`auth.users` column drift:** GoTrue renamed `confirmed_at` to
+    `email_confirmed_at`. Current hosted Supabase has the latter; the
+    `supabase/postgres` image this repo's gate boots has the former. Never write
+    either name directly — go through `sec.auth_email_confirmed_at(uuid)`, which
+    resolves whichever exists and fails closed when neither does.
 - `worker/` — read-only NAS filesystem service (`app.py`, `nas_scan.py`).
 - `station-agent/` — top-level sibling of `worker/`, one per workstation PC.
 - `docs/` — `ENV.md`, `TWO_TRACK_MODEL.md`, `FRAMES_COUNT_AND_STORAGE_LOGIC.md`,
@@ -581,6 +602,22 @@ change those, exercise them manually and keep changes structurally minimal.
   tracked.
 
 ## Known traps
+
+- **`console` is NOT a workspace.** It was in `WORKSPACES` with
+  `guard: ['manageUsers']` until v34 removed it. That guard was inert twice
+  over: the sidebar renders `WORKSPACE_CATEGORIES` (which never listed it), and
+  `WorkspaceRouter` returns `null` for `console` before `canAccessWorkspace`
+  runs. The only real gate is `ConsoleRouteGate` via `public.console_access()`.
+  Do not "restore" the workspace entry — it will look like security and be
+  neither reachable nor enforced.
+- **An invite grants nothing, and that is deliberate.** `console_invite_member`
+  writes `status='invited'`; `sec.current_org()` counts only `'active'`, so an
+  invite confers no access until the invited person signs in with a **confirmed**
+  address. Gate 2.15 exists to catch the day someone drops that predicate, and
+  2.16 to catch the day someone adds a user-id parameter to
+  `activate_pending_memberships()`. Never widen either.
+- **Never hard-code an `auth.users` column name.** See the column-drift note
+  under `supabase/migrations/`.
 
 - **File-size budgets fail `npm run lint`.** Extract a module; do not silently raise
   the number in `quality-baseline.json`.

@@ -25,7 +25,9 @@
     "Updated for production stabilization Phase 1: App.tsx +25 for session inactivity iframe bridge, BucketPublicationGate.tsx +45 for paginated storage listing and multi-cloud deliverable candidates.",
     "Updated for v32 section 1/7: the Seller Partner Console wiring from v30 pushed App.tsx to 4519 (+16) and AdministrationWorkspace.tsx to 1271 (+13) over budget. Extraction came first, not the raise: SellerConsolePage.tsx and SellerConsoleLauncher.tsx removed 27 lines of inline JSX from the two hosts, leaving a residual App.tsx +7 and AdministrationWorkspace.tsx +2 that is the irreducible call-site cost of one page mount and one button. Both budgets repinned at the post-extraction counts so regrowth fails again. Warnings 1251 -> 1248 as the tenantContext any cleanup and the row mapper landed.",
     "Updated for Phase 5: gisImportParser.ts +14 for local projected grid (MRSO/Cassini/UTM) spatial protection guard.",
-    "Updated for Task 4 Option A: mapShares.ts +2 for 'missing' status in share payload, projectExplorerGeometry.ts +2 for MeshFrameBreakdown missing frames."
+    "Updated for Task 4 Option A: mapShares.ts +2 for 'missing' status in share payload, projectExplorerGeometry.ts +2 for MeshFrameBreakdown missing frames.",
+    "v34 repin, after extraction and before this raise: App.tsx carried the console gate inline (+80 over budget). `useConsoleAccessGate` and `ConsoleRouteGate` took it out to two small modules with their own rationale; the residual +24 is the irreducible call-site cost of one gate mount, one route branch and one awaiting-assignment branch, which is the same shape v32 repinned for the console mount. consoleAccess.ts moved 510 -> 557 for the three explicit PostgREST row shapes (MemberRowShape, SeatSummaryRowShape, InviteResponseShape) that replaced `any`. SellerPartnerConsole.tsx moved 420 -> 421 for the create-intent comment. All three repinned so regrowth fails again.",
+    "Updated for v34: the Seller Partner Console was decomposed from one 1532-line SellerPartnerConsole.tsx into a shell plus six panels under src/components/console/panels/, a shared directory hook and a local primitive set. That monolith was absent from this table, and the ratchet only iterates keys that ARE here, so it escaped the budget entirely - the decomposition is what makes the pins below meaningful. Every console file is now under the 800-line floor, so these entries are deliberate pins rather than overflow allowances: they exist so that regrowth in the console fails the same way it would in any tracked god file."
   ],
   "lint": {
     "_scope": "eslint src vitest.config.ts, ESLINT_USE_FLAT_CONFIG=true, flat config eslint.config.mjs",
@@ -51,10 +53,10 @@
     "consoleOnly": 59
   },
   "fileSizeBudgets": {
-    "_why": "Fails on exceedance only. These are physical line counts, which run ~8% higher than PowerShell's Measure-Object -Line because that cmdlet skips blank lines. Covers every file at or above 800 lines. Raising a budget is a deliberate act: the diff is the record that the god files are growing.",
+    "_why": "Fails on exceedance only. These are physical line counts, which run ~8% higher than PowerShell's Measure-Object -Line because that cmdlet skips blank lines. Covers every file at or above 800 lines, plus any file the team pins deliberately below that floor. Raising a budget is a deliberate act: the diff is the record that the god files are growing. Note the ratchet iterates only the keys present here, so an unbudgeted file escapes it entirely - that is how SellerPartnerConsole.tsx reached 1532 lines unnoticed.",
     "src/components/DataManagementPage.tsx": 5026,
     "src/components/RoadAnalysisWorkspace.tsx": 4558,
-    "src/App.tsx": 4589,
+    "src/App.tsx": 4614,
     "src/components/AdminSettingsView.tsx": 3487,
     "src/components/roadAnalysis/RoadAnalysisMap.tsx": 3021,
     "src/components/boundary/districtMetadata.ts": 2896,
@@ -83,6 +85,21 @@
     "src/components/showcase/ModuleTourCards.tsx": 860,
     "src/components/roadAnalysis/RoadAnalysisPrintPanel.tsx": 842,
     "src/utils/deletionImpact.ts": 822,
-    "src/components/DefectsGalleryModal.tsx": 809
+    "src/components/DefectsGalleryModal.tsx": 809,
+    "src/services/consoleAccess.ts": 557,
+    "src/components/console/panels/ConsoleMembersPanel.tsx": 482,
+    "src/components/console/SellerPartnerConsole.tsx": 422,
+    "src/components/console/panels/ConsoleCompaniesPanel.tsx": 343,
+    "src/components/console/panels/OrganizationFormModal.tsx": 353,
+    "src/components/console/panels/consoleUi.tsx": 285,
+    "src/components/console/panels/ConsoleSeatsPanel.tsx": 202,
+    "src/components/console/panels/ConsoleDatabasePanel.tsx": 200,
+    "src/components/console/panels/ConsoleDashboardPanel.tsx": 180,
+    "src/utils/consoleRouter.ts": 196,
+    "src/components/console/ConsoleAccessDenied.tsx": 115,
+    "src/components/console/useConsoleDirectory.ts": 108,
+    "src/components/console/AwaitingAssignment.tsx": 94,
+    "src/components/console/SellerConsolePage.tsx": 96,
+    "src/components/console/panels/ConsoleSettingsPanel.tsx": 140
   }
 }

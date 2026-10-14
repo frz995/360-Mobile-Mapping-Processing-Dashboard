@@ -52,6 +52,11 @@ function matchKey(raw: string): WorkspaceKey | null {
   const key = raw.split(/[?#]/)[0].toLowerCase().replace(/^\/+|\/+$/g, '');
   if (key === 'console/login' || key === 'console-login') return 'console-login';
   if (key === 'console/dashboard' || key === 'console' || key === 'partner' || key === 'seller') return 'console';
+  // Every remaining console panel. `matchKey` is exact-match by design, so
+  // without this `/console/companies` fell through to DEFAULT_WORKSPACE and the
+  // console could not be deep-linked at all. The panel itself is resolved by
+  // `parseConsolePanel`; this only has to say "this is the console surface".
+  if (key.startsWith('console/')) return 'console';
   if (key === 'login') return 'signin';
   if (key === 'showcase') return 'landing';
   return WORKSPACE_KEYS.find((k) => k.toLowerCase() === key) ?? null;

@@ -3,6 +3,7 @@ import { SellerPartnerConsole } from './SellerPartnerConsole';
 import { ContentLoading } from '../common/ContentLoading';
 import { PermissionProvider } from '../../hooks/usePermission';
 import type { RolePermissionsMatrix } from '../../lib/authz';
+import type { ConsoleAccess } from '../../services/consoleAccess';
 
 /**
  * Mount point for the Seller Partner Console (`/console`).
@@ -18,6 +19,12 @@ import type { RolePermissionsMatrix } from '../../lib/authz';
  * reachable by a platform Administrator and the gates below must resolve
  * against the caller's real capability matrix — not an assumed one.
  *
+ * `access` is required and is not defaulted. It is the verified answer to "may
+ * this person open the console", read by `App.tsx` through
+ * `public.console_access()`. The previous version had no access prop at all and
+ * mounted on `authSession` alone, so any signed-in Viewer could open the seller
+ * console. Making it required means a future caller cannot forget the check.
+ *
  * Extracted from `App.tsx` so the console page does not grow the root shell
  * past its file-size budget.
  */
@@ -26,6 +33,7 @@ interface SellerConsolePageProps {
   role?: string | null;
   isGuest: boolean;
   matrix?: RolePermissionsMatrix;
+  access: ConsoleAccess;
   currentUserEmail?: string;
   onBackToDashboard: () => void;
   onSignOut: () => void;
@@ -35,6 +43,7 @@ const SellerConsolePage: React.FC<SellerConsolePageProps> = ({
   role,
   isGuest,
   matrix,
+  access,
   currentUserEmail,
   onBackToDashboard,
   onSignOut
@@ -60,6 +69,10 @@ const SellerConsolePage: React.FC<SellerConsolePageProps> = ({
 
   return (
     <PermissionProvider role={role} isGuest={isGuest} matrix={matrix}>
+      {/* Search engines have no business indexing a seller console. It sits
+          behind auth, but the route is publicly reachable and a bare "Super
+          Admin Console" title in a results page advertises the surface. */}
+      <meta name="robots" content="noindex, nofollow" />
       <div
         id="seller-console-root"
         data-theme="light"
@@ -72,6 +85,7 @@ const SellerConsolePage: React.FC<SellerConsolePageProps> = ({
             onBackToApp={onBackToDashboard}
             currentUserEmail={currentUserEmail}
             onSignOut={onSignOut}
+            access={access}
           />
         </React.Suspense>
       </div>

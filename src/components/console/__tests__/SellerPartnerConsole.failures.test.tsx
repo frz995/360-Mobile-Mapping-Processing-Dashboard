@@ -1,11 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
+/**
+ * Regression cover for the defect class v32 §1 and v34 §1 found.
+ *
+ * Every one of these asserts the same invariant from a different direction: an
+ * unmeasured quantity must render as unknown, and an unwritten quantity must not
+ * be reported as written. The previous implementation returned `success: true`
+ * from a failed insert and seeded a failed read with two hard-coded customers,
+ * so both looked like healthy state to the operator.
+ */
+
 const fetchAllOrganizations = vi.fn();
 const createOrganization = vi.fn();
 const updateOrganization = vi.fn();
 const deleteOrganization = vi.fn();
+const fetchOrganizationMembers = vi.fn();
+const fetchSeatSummary = vi.fn();
 const toastError = vi.fn();
+const toastSuccess = vi.fn();
 
 vi.mock('../../../services/tenantContext', () => ({
   fetchAllOrganizations: (...args: unknown[]) => fetchAllOrganizations(...args),
@@ -16,9 +29,25 @@ vi.mock('../../../services/tenantContext', () => ({
   testDedicatedDatabaseConnection: vi.fn().mockResolvedValue({ success: true, message: 'Connected' })
 }));
 
+vi.mock('../../../services/consoleAccess', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/consoleAccess')>(
+    '../../../services/consoleAccess'
+  );
+  return {
+    ...actual,
+    fetchOrganizationMembers: (...args: unknown[]) => fetchOrganizationMembers(...args),
+    fetchSeatSummary: (...args: unknown[]) => fetchSeatSummary(...args),
+    resolveInviteeAccount: vi.fn(),
+    inviteOrganizationMember: vi.fn(),
+    setOrganizationMemberStatus: vi.fn(),
+    removeOrganizationMember: vi.fn(),
+    activatePendingMemberships: vi.fn().mockResolvedValue({ activated: 0, error: null })
+  };
+});
+
 vi.mock('../../common/toast', () => ({
   toast: {
-    success: vi.fn(),
+    success: (...args: unknown[]) => toastSuccess(...args),
     info: vi.fn(),
     error: (...args: unknown[]) => toastError(...args)
   }
@@ -38,22 +67,36 @@ const TNB = {
   updatedAt: '2026-01-01'
 };
 
-/**
- * Regression cover for the defect class v32 §1 removed.
- *
- * Every one of these asserts the same invariant from a different direction:
- * an unmeasured quantity must render as unknown, and an unwritten quantity
- * must not be reported as written. The previous implementation returned
- * `success: true` from a failed insert and seeded a failed read with two
- * hard-coded customers, so both looked like healthy state to the operator.
- */
+const ACCESS = { allowed: true, verified: true, error: null, organizationIds: ['org-1'] };
+
+const renderConsole = (props: Record<string, unknown> = {}) =>
+  render(<SellerPartnerConsole onBackToApp={vi.fn()} access={ACCESS} {...props} />);
+
+/** The directory table lives on the Companies panel, so reach it the way a user would. */
+const gotoCompanies = async () => {
+  fireEvent.click(screen.getByRole('link', { name: 'Companies' }));
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Client Companies' })).toBeInTheDocument());
+};
+
 describe('SellerPartnerConsole — failure modes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchAllOrganizations.mockResolvedValue({
-      organizations: [TNB],
-      error: null,
-      unverified: false
+    window.history.replaceState({}, '', '/console/dashboard');
+    fetchAllOrganizations.mockResolvedValue({ organizations: [TNB], error: null, unverified: false });
+    fetchOrganizationMembers.mockResolvedValue({ members: [], error: null });
+    fetchSeatSummary.mockResolvedValue({
+      rows: [
+        {
+          organizationId: 'org-1',
+          organizationName: 'Tenaga Nasional Berhad',
+          clientCode: 'TNB-LV',
+          licensedSeats: 15,
+          activeSeats: 3,
+          invitedSeats: 1,
+          suspendedSeats: 0
+        }
+      ],
+      error: null
     });
   });
 
@@ -64,21 +107,20 @@ describe('SellerPartnerConsole — failure modes', () => {
       unverified: true
     });
 
-    render(<SellerPartnerConsole onBackToApp={vi.fn()} />);
+    renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByText(/could not be verified/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/could not be verified/i).length).toBeGreaterThan(0);
     });
 
     // The distinction the operator must be able to make.
-    expect(screen.getByText(/failed query, not an empty directory/i)).toBeInTheDocument();
-    expect(screen.queryByText(/No client companies found/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/failed query, not an empty list/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/no companies are registered yet/i)).not.toBeInTheDocument();
 
     // The reason is surfaced rather than swallowed.
-    expect(screen.getByText('connection reset by peer')).toBeInTheDocument();
+    expect(screen.getAllByText('connection reset by peer').length).toBeGreaterThan(0);
 
     // A fabricated customer must never stand in for the unreadable list.
-    expect(screen.queryByText('Apex Geospatial Survey Sdn Bhd')).not.toBeInTheDocument();
     expect(screen.queryByText('Tenaga Nasional Berhad')).not.toBeInTheDocument();
   });
 
@@ -89,10 +131,10 @@ describe('SellerPartnerConsole — failure modes', () => {
       unverified: true
     });
 
-    render(<SellerPartnerConsole onBackToApp={vi.fn()} />);
+    renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByText(/could not be verified/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/could not be verified/i).length).toBeGreaterThan(0);
     });
 
     // "Licensed Seats" exists as a label; the value must not read as a
@@ -106,10 +148,10 @@ describe('SellerPartnerConsole — failure modes', () => {
   it('renders a verified empty directory as empty, not as an error', async () => {
     fetchAllOrganizations.mockResolvedValue({ organizations: [], error: null, unverified: false });
 
-    render(<SellerPartnerConsole onBackToApp={vi.fn()} />);
+    renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByText('No client companies found')).toBeInTheDocument();
+      expect(screen.getByText(/No companies are registered yet/i)).toBeInTheDocument();
     });
     expect(screen.queryByText(/could not be verified/i)).not.toBeInTheDocument();
   });
@@ -120,11 +162,10 @@ describe('SellerPartnerConsole — failure modes', () => {
       error: 'The client code or slug "tnb" is already in use by another company.'
     });
 
-    render(<SellerPartnerConsole onBackToApp={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText('Tenaga Nasional Berhad')).toBeInTheDocument());
+    renderConsole();
+    await gotoCompanies();
 
     fireEvent.click(screen.getAllByText('Add Client Company')[0]);
-
     fireEvent.change(screen.getByPlaceholderText(/e\.g\. Tenaga/i), { target: { value: 'TNB Copy' } });
     fireEvent.change(screen.getByPlaceholderText(/e\.g\. TNB-LV-2026/i), { target: { value: 'TNB-LV' } });
     fireEvent.click(screen.getByRole('button', { name: /create organization/i }));
@@ -142,8 +183,8 @@ describe('SellerPartnerConsole — failure modes', () => {
   it('does not reload the directory as though a rejected create had succeeded', async () => {
     createOrganization.mockResolvedValue({ success: false, error: 'insert failed' });
 
-    render(<SellerPartnerConsole onBackToApp={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText('Tenaga Nasional Berhad')).toBeInTheDocument());
+    renderConsole();
+    await gotoCompanies();
 
     fireEvent.click(screen.getAllByText('Add Client Company')[0]);
     fireEvent.change(screen.getByPlaceholderText(/e\.g\. Tenaga/i), { target: { value: 'Nope Ltd' } });
@@ -161,12 +202,14 @@ describe('SellerPartnerConsole — failure modes', () => {
       success: false,
       error: 'This company still owns projects. Reassign or archive them before deleting the company.'
     });
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
-    render(<SellerPartnerConsole onBackToApp={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText('Tenaga Nasional Berhad')).toBeInTheDocument());
+    renderConsole();
+    await gotoCompanies();
 
-    fireEvent.click(screen.getAllByTitle(/delete/i)[0]);
+    fireEvent.click(screen.getAllByTitle(/delete tenaga/i)[0]);
+    // The dialog names the company rather than asking a bare "are you sure?".
+    await waitFor(() => expect(screen.getByText(/Delete this company\?/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^Delete Company$/i }));
 
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith(
@@ -174,7 +217,8 @@ describe('SellerPartnerConsole — failure modes', () => {
       );
     });
 
-    confirmSpy.mockRestore();
+    // Still open, because nothing was deleted.
+    expect(screen.getByText(/Delete this company\?/i)).toBeInTheDocument();
   });
 
   it('clears the error banner once a retry succeeds', async () => {
@@ -184,17 +228,30 @@ describe('SellerPartnerConsole — failure modes', () => {
       unverified: true
     });
 
-    render(<SellerPartnerConsole onBackToApp={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText(/could not be verified/i)).toBeInTheDocument());
+    renderConsole();
+    await waitFor(() => expect(screen.getAllByText(/could not be verified/i).length).toBeGreaterThan(0));
 
-    fetchAllOrganizations.mockResolvedValue({
-      organizations: [TNB],
-      error: null,
-      unverified: false
-    });
-    fireEvent.click(screen.getByRole('button', { name: /retry query/i }));
+    fetchAllOrganizations.mockResolvedValue({ organizations: [TNB], error: null, unverified: false });
+    fireEvent.click(screen.getAllByRole('button', { name: /retry query/i })[0]);
 
     await waitFor(() => expect(screen.queryByText(/could not be verified/i)).not.toBeInTheDocument());
     expect(screen.getByText('Tenaga Nasional Berhad')).toBeInTheDocument();
+  });
+
+  it('reports a failed member read as a failure, not as nobody on the company', async () => {
+    fetchOrganizationMembers.mockResolvedValue({
+      members: [],
+      error: 'permission denied for table organization_members'
+    });
+
+    window.history.replaceState({}, '', '/console/members?org=org-1');
+    renderConsole();
+
+    // The empty state invites the seller to invite everyone again, which is how
+    // duplicate invites happen. It must not appear on a failed read.
+    await waitFor(() => {
+      expect(screen.getByText(/member list could not be verified/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Nobody is on this company yet/i)).not.toBeInTheDocument();
   });
 });
