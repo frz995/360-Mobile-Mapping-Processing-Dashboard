@@ -23,6 +23,7 @@ import { Database, Server, Activity, Check, ShieldAlert, ExternalLink } from 'lu
 import { testDedicatedDatabaseConnection, type Organization } from '../../../services/tenantContext';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
 import { PanelCard, PanelHeader, ReadFailure, SecondaryButton } from './consoleUi';
+import { getLicenseExpiryStatus } from './ConsoleDashboardPanel';
 
 type ProbeState =
   | { kind: 'idle' }
@@ -53,17 +54,43 @@ const CompanyRow: React.FC<{
     >
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-              dedicated ? 'bg-purple-50 text-purple-600' : 'bg-sky-50 text-sky-600'
-            }`}
-          >
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-slate-100 text-slate-800 border border-slate-200">
             {dedicated ? <Server size={17} /> : <Database size={17} />}
           </div>
           <div className="min-w-0">
             <div className="font-bold text-slate-900 text-sm truncate">{org.name}</div>
-            <div className="text-[11px] text-slate-400 font-mono truncate">
-              {org.clientCode || '—'} · {dedicated ? 'dedicated_external' : 'cloud_shared'}
+            <div className="text-[11px] text-slate-400 font-mono truncate flex items-center gap-1.5 mt-0.5">
+              <span>{org.clientCode || '—'}</span>
+              <span>·</span>
+              <span>{dedicated ? 'dedicated_external' : 'cloud_shared'}</span>
+              <span>·</span>
+              <span className="capitalize text-slate-700 font-sans font-semibold">
+                {(org.licenseType || 'cloud_saas').replace('_', ' ')}
+              </span>
+              {org.licenseExpiresAt ? (
+                (() => {
+                  const exp = getLicenseExpiryStatus(org.licenseExpiresAt);
+                  return (
+                    <span
+                      className={`font-sans text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
+                        exp.tone === 'active'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : exp.tone === 'warning'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : exp.tone === 'expired'
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {exp.label}
+                    </span>
+                  );
+                })()
+              ) : (
+                <span className="font-sans text-[10px] px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-500 font-medium">
+                  Perpetual
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -143,8 +170,8 @@ export const ConsoleDatabasePanel: React.FC<Props> = ({ directory, selectedOrgId
 
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="rounded-2xl border border-slate-100 p-5">
-            <div className="flex items-center gap-2 text-sky-600">
-              <Database size={16} />
+            <div className="flex items-center gap-2 text-slate-800">
+              <Database size={16} className="text-slate-600" />
               <span className="text-xs font-bold uppercase tracking-wider">Cloud Shared (RLS)</span>
             </div>
             <div className="text-2xl font-black text-slate-900 mt-3">
@@ -156,8 +183,8 @@ export const ConsoleDatabasePanel: React.FC<Props> = ({ directory, selectedOrgId
             </p>
           </div>
           <div className="rounded-2xl border border-slate-100 p-5">
-            <div className="flex items-center gap-2 text-purple-600">
-              <Server size={16} />
+            <div className="flex items-center gap-2 text-slate-800">
+              <Server size={16} className="text-slate-600" />
               <span className="text-xs font-bold uppercase tracking-wider">Dedicated Instance</span>
             </div>
             <div className="text-2xl font-black text-slate-900 mt-3">
@@ -176,6 +203,21 @@ export const ConsoleDatabasePanel: React.FC<Props> = ({ directory, selectedOrgId
 
         {directoryError ? (
           <ReadFailure reason={directoryError} subject="routing table" onRetry={() => void reload()} />
+        ) : isLoading ? (
+          <div className="space-y-3 mt-5 animate-pulse">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="p-4 rounded-2xl border border-slate-100 bg-slate-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-slate-200" />
+                  <div className="space-y-1.5">
+                    <div className="h-4 w-36 bg-slate-200 rounded" />
+                    <div className="h-3 w-48 bg-slate-100 rounded" />
+                  </div>
+                </div>
+                <div className="h-7 w-24 bg-slate-200 rounded-xl" />
+              </div>
+            ))}
+          </div>
         ) : organizations.length === 0 ? (
           <p className="py-10 text-center text-xs text-slate-500">No companies are registered yet.</p>
         ) : (

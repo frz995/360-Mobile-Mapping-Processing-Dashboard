@@ -30,7 +30,7 @@
  *   does not sit in the URL claiming a panel that no longer exists.
  */
 
-export type ConsolePanel = 'dashboard' | 'companies' | 'members' | 'database' | 'seats' | 'settings';
+export type ConsolePanel = 'dashboard' | 'companies' | 'members' | 'database' | 'parent-db' | 'seats' | 'settings';
 
 export interface ConsolePanelDefinition {
   key: ConsolePanel;
@@ -60,6 +60,11 @@ export const CONSOLE_PANELS: ConsolePanelDefinition[] = [
     key: 'database',
     label: 'Database Hub',
     description: 'Where each company is routed: shared cloud or a dedicated instance.'
+  },
+  {
+    key: 'parent-db',
+    label: 'Parent Database',
+    description: 'Cluster physical disk, Supabase Free Plan specs, and child company allocation.'
   },
   {
     key: 'seats',

@@ -386,15 +386,126 @@ The Cloudflare Tunnel is outbound-only and needs no inbound rule.
 
 ---
 
-## 4. First-run configuration
+## 4. Onboarding a client company
 
-### 4.1 Create your first project
+> **This section is the seller's job**, and it is done in the **Seller Console**
+> at `https://app.geosphere.my/console`, not in the application. It replaces the
+> old "each client installs their own platform" model.
+>
+> Before starting, confirm migration `0044` is applied. Without it the console
+> refuses to open — see [01-Infrastructure.md §2.3a](01-Infrastructure.md#23a-migrations-0036-0045-are-the-multi-tenancy-layer).
+
+### 4.1 Create the company
+
+**Seller Console -> Companies -> Add Client Company.**
+
+| Field | Notes |
+| --- | --- |
+| **Company Name** | The client's legal or trading name |
+| **Client Code** | Short unique reference, e.g. `TNB-LV-2026`. Must be unique across the platform |
+| **Contact Email** | The main point of contact. Shown on the company row |
+| **Status** | `active`, `trial`, `suspended` or `expired`. A `suspended` or `expired` company grants **nobody** access, even after invitations are accepted |
+| **Licensed Seats** | How many people may hold an active membership. See the limit note below |
+| **Storage Quota (GB)** | An allocation figure. **Not enforced** — see §4.7 |
+| **Database Routing** | `cloud_shared` isolates the company by Row-Level Security on the shared cluster. `dedicated_external` stores credentials for that company's own instance |
+
+> **Seat limits are reported, not enforced.** The Seat Licenses panel shows
+> licensed seats beside confirmed members and highlights any company above its
+> limit, but nothing refuses a write. Whether an unconfirmed invitation should
+> consume a paid seat is a commercial decision that has not been made; the panel
+> counts `active`, `invited` and `suspended` separately so the question stays
+> visible rather than buried.
+
+### 4.2 Check the routing
+
+**Seller Console -> Database Hub** shows where each company is routed. For a
+`dedicated_external` company, use **Check Reachability** to confirm the stored
+credentials answer.
+
+> A company marked `dedicated_external` currently behaves like a shared one: the
+> credentials are stored and readable in the console, but the client application
+> does not yet connect to that instance. Route new companies to `cloud_shared`
+> unless that has changed on your install.
+
+### 4.3 Invite the staff
+
+**Seller Console -> Team Members -> select the company -> Invite Member.**
+
+Enter one email address and choose a role:
+
+| Role | What they can do in that company |
+| --- | --- |
+| **Company Admin** | Full control within the company, including managing its members |
+| **Operator** | Capture, processing and QA/QC |
+| **Inspector** | QA/QC review |
+| **Viewer** | Read-only |
+
+The invitee appears in the list **immediately**, with one of four states:
+
+| State | What it means |
+| --- | --- |
+| **Invited — awaiting confirmation** | An account exists, but the person has not confirmed the address. **Grants no access.** |
+| **Confirmed — awaiting first sign-in** | The address is verified. Access begins when they first sign in. |
+| **Active** | Signed in and working in the company |
+| **Suspended** | Revoked. Their data is not readable by that company any more |
+
+> **An invitation grants nothing on its own.** This is deliberate. Access begins
+> only after the person confirms their email address and signs in for the first
+> time. If the "Confirm email" setting is off in your Supabase project, that
+> confirmation proves nothing — see §4.6.
+
+**Re-inviting** somebody who already has an account works and re-opens their
+membership. Inviting a **platform administrator** is a no-op: they already see
+every company, and the console warns you rather than reporting a success that
+changes nothing.
+
+### 4.4 What to tell the client
+
+Send the client their sign-in address and what to expect:
+
+1. They receive a confirmation email at the address you invited.
+2. They click it, then sign in at `https://app.geosphere.my`.
+3. On first sign-in their membership activates automatically.
+
+If they sign in **before** confirming, or if the invite was never accepted, they
+see an **"Awaiting workspace assignment"** screen explaining that their account
+is verified but not yet a member of any company. That screen is the intended
+state, not a fault — it tells them to ask you, which is the correct instruction.
+
+### 4.5 Create the company's project
 
 A project is **mandatory** — every query in the platform is scoped to the active
 project, and the dashboard forces project selection right after login. The
 5-step wizard's only required field is the **campaign name**.
 
-### 4.2 Required application settings
+### 4.6 Confirm email delivery before you sell
+
+Invitations depend on real mail delivery. **Verify this once per install**,
+before the first client onboarding:
+
+- Supabase's built-in mailer is heavily rate-limited, and on most plans delivers
+  only to project team members. A client address will often receive nothing.
+- Configure a real SMTP provider (Supabase -> Authentication -> Providers) or the
+  invite creates an account that sends no mail.
+- Test with a real non-team address, not your own.
+
+If mail cannot be delivered, the console reports **"User created, but the
+confirmation email could not be sent"** rather than reporting a successful
+invite — check for that message after the first invite.
+
+### 4.7 What this platform does not enforce
+
+Stated here so it is known before a contract quotes it:
+
+| Not enforced | What actually happens |
+| --- | --- |
+| **Seat limits** | Reported and highlighted; no write is refused |
+| **Storage quotas** | An allocation figure. Nothing measures actual object usage, so an over-quota company is not detectable |
+| **`dedicated_external` routing** | Credentials stored and readable; the application does not connect to that instance |
+| **Tenant export** | Nothing can export a company's data |
+| **Offboarding deletion** | Deleting a company that still owns projects is refused by the database. Reassign or archive first |
+
+### 4.8 Required application settings
 
 Open **Settings → Project & Map Settings**. The form is read-only unless you are
 an Administrator.
@@ -415,7 +526,7 @@ bucket + region, a GCS bucket, an Azure container, a Wasabi bucket.
 > **build-time** variables configured on Cloudflare Pages (see `01` §7.3). The
 > settings screen only pre-fills the form; it does not set them.
 
-### 4.3 Two settings that live somewhere unexpected
+### 4.9 Two settings that live somewhere unexpected
 
 `nasWorkBasePath` and `productionApiUrl` are **not** on the Admin Settings
 screen. Set them in **NAS & Daemon → Capacity & Volumes**:
@@ -425,7 +536,7 @@ screen. Set them in **NAS & Daemon → Capacity & Volumes**:
 | NAS working base path | Root the deliverable paths are resolved against |
 | Worker URL | Endpoint used when not proxying |
 
-### 4.4 Station address configuration
+### 4.10 Station address configuration
 
 > ✅ **No database step required.** Station addresses are set in the interface:
 > **Settings → Project & Map Settings → 4. Production Pipeline & Workstations**.
@@ -471,14 +582,20 @@ anyway so the LAN fallback and the monitoring views work.
 > After changing addresses, sign out and back in (or hard-refresh with
 > Ctrl+F5). The dashboard caches project settings in browser storage.
 
-### 4.5 Create operators
+### 4.11 Create operators
 
-As described in `01-Infrastructure.md` §4.4 — create the auth user, let them
-sign in once, then set the role in **Administration → Users**.
+**Prefer the Seller Console.** For an install that predates the console, the
+fallback is: create the auth user, let them sign in once, then set the role in
+**Administration -> Users**.
 
-### 4.6 Roles and capabilities
+> ⚠️ **This fallback does not put someone in a company.** Setting a role in
+> Administration grants *install-wide* capability, not tenant membership. Since
+> every operational table requires `sec.in_org()`, a user with no
+> `organization_members` row sees nothing at all. Use §4.3.
 
-Grant capabilities per operator in **Administration → Roles**. Note that only 8
+### 4.12 Roles and capabilities
+
+Grant capabilities per operator in **Administration -> Roles**. Note that only 8
 of the 21 capabilities are enforced by the database — see `01` §5.3 before you
 rely on any of the others for compliance.
 
@@ -535,7 +652,7 @@ Tier A cannot prove the on-prem half. Continue:
 | 8 | *WebGIS Release Gate* → Publish | Rows land in `panoramas` |
 | 9 | **Main Dashboard** | Published trajectory renders |
 
-> Steps 3–4 require §4.4 to have been completed. Without it the Flight Board
+> Steps 3–4 require §4.10 to have been completed. Without it the Flight Board
 > cannot reach the agents no matter how the tunnels are configured.
 
 > **Bucket gate limitation.** Inventory verification works only with the

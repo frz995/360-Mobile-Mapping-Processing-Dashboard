@@ -16,7 +16,8 @@
     "db:gate": "node scripts/run-db-gate.mjs",
     "admin:seed": "node scripts/seed-admin.mjs",
     "doctor": "node --no-warnings scripts/doctor.mjs",
-    "docs:pdf": "node scripts/build-setup-pdf.mjs"
+    "docs:pdf": "node scripts/build-setup-pdf.mjs",
+    "docs:verify": "node scripts/verify-docs.mjs"
   },
   "dependencies": {
     "@photo-sphere-viewer/core": "^5.15.1",

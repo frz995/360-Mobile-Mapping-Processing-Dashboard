@@ -46,6 +46,57 @@ vi.mock('../../../services/consoleAccess', async () => {
   };
 });
 
+vi.mock('../../../services/consoleStorage', () => ({
+  fetchCompanyStorageBreakdown: vi.fn().mockResolvedValue({
+    breakdown: [
+      {
+        organizationId: 'org-1',
+        organizationName: 'Tenaga Nasional Berhad',
+        clientCode: 'TNB-LV',
+        databaseType: 'cloud_shared',
+        licenseType: 'cloud_saas',
+        licenseExpiresAt: null,
+        status: 'active',
+        allocatedStorageGb: 500,
+        consumedStorageBytes: 15728640,
+        consumedFilesCount: 120,
+        mmsPicBytes: 10485760,
+        mmsPicFiles: 80,
+        panoramasBytes: 4194304,
+        panoramasFiles: 35,
+        geometryBytes: 1048576,
+        geometryFiles: 5,
+        otherBytes: 0,
+        otherFiles: 0,
+        consumedStorageGb: 0.015,
+        percentUsed: 0.003
+      }
+    ],
+    error: null
+  }),
+  fetchParentDatabaseStats: vi.fn().mockResolvedValue({
+    stats: {
+      databaseSizeBytes: 25165824,
+      databaseSizePretty: '24 MB',
+      storageBytes: 15728640,
+      storageBytesPretty: '15 MB',
+      storageFiles: 120,
+      totalAllocatedStorageGb: 500,
+      totalAllocatedSeats: 15,
+      totalCompanies: 1,
+      activeCompanies: 1,
+      postgresVersion: 'PostgreSQL 17.6',
+      postgisVersion: '3.4.2',
+      planTier: 'free',
+      planDbLimitBytes: 524288000,
+      planStorageLimitBytes: 1073741824
+    },
+    error: null
+  }),
+  formatBytes: (bytes: number | null | undefined) => (bytes != null ? `${bytes} B` : '—'),
+  formatPercent: (val: number | null | undefined) => (val != null ? `${val}%` : '—')
+}));
+
 const TNB: Organization = {
   id: 'org-1',
   name: 'Tenaga Nasional Berhad',
@@ -54,6 +105,8 @@ const TNB: Organization = {
   databaseType: 'cloud_shared',
   databaseConfig: {},
   status: 'active',
+  licenseType: 'cloud_saas',
+  licenseExpiresAt: null,
   settings: { allowedUserSeats: 15, storageQuotaGb: 500, contactEmail: 'mms@tnb.com.my' },
   createdAt: '2026-01-01',
   updatedAt: '2026-01-01'
@@ -250,14 +303,13 @@ describe('SellerPartnerConsole — panel navigation', () => {
     await waitFor(() => expect(screen.getByText(/Access unverified/i)).toBeInTheDocument());
   });
 
-  it('marks the allocation figures LIVE only when the directory read verified', async () => {
+  it('renders verified directory data and handles unverified error cleanly', async () => {
     renderConsole();
     await waitFor(() => expect(screen.getByText('Tenaga Nasional Berhad')).toBeInTheDocument());
-    // The directory read succeeded, so the allocation figures are real.
-    expect(screen.getByText('LIVE')).toBeInTheDocument();
+    expect(screen.getByText('Need Action')).toBeInTheDocument();
 
     fetchAllOrganizations.mockResolvedValue({ organizations: [], error: 'connection reset', unverified: true });
     renderConsole({});
-    await waitFor(() => expect(screen.getAllByText('UNVERIFIED').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/could not be verified/i).length).toBeGreaterThan(0));
   });
 });

@@ -20,9 +20,17 @@ import {
   testDedicatedDatabaseConnection,
   type Organization,
   type OrganizationDraft,
-  type OrganizationStatus
+  type OrganizationStatus,
+  type LicenseType
 } from '../../../services/tenantContext';
 import { ModalShell, Field, inputClass } from './consoleUi';
+
+export const LICENSE_TYPES: { key: LicenseType; label: string }[] = [
+  { key: 'cloud_saas', label: 'Cloud SaaS' },
+  { key: 'enterprise_dedicated', label: 'Enterprise Dedicated (Self-Hosted)' },
+  { key: 'trial', label: 'Trial / Pilot' },
+  { key: 'perpetual', label: 'Perpetual License' }
+];
 
 export const ORG_STATUSES: OrganizationStatus[] = ['active', 'trial', 'suspended', 'expired'];
 
@@ -30,8 +38,24 @@ const EMPTY_SETTINGS = {
   allowedUserSeats: 10,
   storageQuotaGb: 200,
   contactEmail: '',
-  nasApiUrl: ''
+  nasApiUrl: '',
+  storage: {
+    provider: 'supabase' as const,
+    bucketName: '',
+    cdnUrl: '',
+    region: ''
+  }
 };
+
+export const STORAGE_PROVIDERS = [
+  { key: 'supabase', label: 'Supabase Platform Storage (Default Shared)' },
+  { key: 'cloudflare_r2', label: 'Cloudflare R2 (Recommended BYOS - Zero Egress Fees)' },
+  { key: 'aws_s3', label: 'Amazon S3' },
+  { key: 'wasabi', label: 'Wasabi Hot Cloud Storage' },
+  { key: 'gcs', label: 'Google Cloud Storage' },
+  { key: 'nas_local', label: 'On-Premises NAS / Local Storage' },
+  { key: 'custom_cdn', label: 'Custom Object CDN' }
+] as const;
 
 function draftFrom(org: Organization | null): OrganizationDraft {
   if (!org) {
@@ -40,6 +64,8 @@ function draftFrom(org: Organization | null): OrganizationDraft {
       clientCode: '',
       logoUrl: '',
       databaseType: 'cloud_shared',
+      licenseType: 'cloud_saas',
+      licenseExpiresAt: null,
       databaseConfig: { url: '', anonKey: '' },
       settings: { ...EMPTY_SETTINGS }
     };
@@ -49,6 +75,8 @@ function draftFrom(org: Organization | null): OrganizationDraft {
     clientCode: org.clientCode,
     logoUrl: org.logoUrl || '',
     databaseType: org.databaseType,
+    licenseType: org.licenseType || (org.databaseType === 'dedicated_external' ? 'enterprise_dedicated' : 'cloud_saas'),
+    licenseExpiresAt: org.licenseExpiresAt || null,
     databaseConfig: org.databaseConfig || { url: '', anonKey: '' },
     settings: {
       // `?? 10` rather than `|| 10`: a company explicitly set to zero seats is
@@ -56,7 +84,13 @@ function draftFrom(org: Organization | null): OrganizationDraft {
       allowedUserSeats: org.settings?.allowedUserSeats ?? 10,
       storageQuotaGb: org.settings?.storageQuotaGb ?? 200,
       contactEmail: org.settings?.contactEmail || '',
-      nasApiUrl: org.settings?.nasApiUrl || ''
+      nasApiUrl: org.settings?.nasApiUrl || '',
+      storage: org.settings?.storage || {
+        provider: 'supabase',
+        bucketName: '',
+        cdnUrl: '',
+        region: ''
+      }
     }
   };
 }
@@ -98,6 +132,8 @@ export const OrganizationFormModal: React.FC<Props> = ({
           clientCode: formData.clientCode,
           logoUrl: formData.logoUrl,
           databaseType: formData.databaseType,
+          licenseType: formData.licenseType,
+          licenseExpiresAt: formData.licenseExpiresAt,
           databaseConfig: formData.databaseConfig,
           status,
           settings: formData.settings
@@ -288,6 +324,142 @@ export const OrganizationFormModal: React.FC<Props> = ({
             </div>
           </div>
         ) : null}
+
+        {/* Commercial Licensing & Expiration */}
+        <div className="space-y-3 pt-2 border-t border-slate-100">
+          <label className="block text-xs font-bold text-slate-700">Commercial Licensing & Expiry</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="License Model">
+              <select
+                value={formData.licenseType || 'cloud_saas'}
+                onChange={(e) => setFormData({ ...formData, licenseType: e.target.value as LicenseType })}
+                className={inputClass}
+              >
+                {LICENSE_TYPES.map((lt) => (
+                  <option key={lt.key} value={lt.key}>
+                    {lt.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="License Expiry Date">
+              <div className="space-y-1">
+                <input
+                  type="date"
+                  value={formData.licenseExpiresAt ? formData.licenseExpiresAt.split('T')[0] : ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({
+                      ...formData,
+                      licenseExpiresAt: val ? `${val}T23:59:59Z` : null
+                    });
+                  }}
+                  className={inputClass}
+                />
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>{formData.licenseExpiresAt ? 'Expiry active' : 'Empty = Perpetual'}</span>
+                  {formData.licenseExpiresAt ? (
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, licenseExpiresAt: null })}
+                      className="text-xs text-rose-600 hover:underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </Field>
+          </div>
+        </div>
+
+        {/* Dynamic Bucket & 360 Image Storage */}
+        <div className="space-y-3 pt-2 border-t border-slate-100">
+          <label className="block text-xs font-bold text-slate-700">360 Image Storage & Dynamic Bucket Hosting</label>
+          <Field label="Storage Provider">
+            <select
+              value={formData.settings?.storage?.provider || 'supabase'}
+              onChange={(e) => {
+                const prov = e.target.value as any;
+                setFormData({
+                  ...formData,
+                  settings: {
+                    ...formData.settings,
+                    storage: {
+                      ...formData.settings?.storage,
+                      provider: prov
+                    }
+                  }
+                });
+              }}
+              className={inputClass}
+            >
+              {STORAGE_PROVIDERS.map((sp) => (
+                <option key={sp.key} value={sp.key}>
+                  {sp.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {formData.settings?.storage?.provider && formData.settings.storage.provider !== 'supabase' ? (
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="text-[11px] font-bold text-slate-900">
+                Dynamic External Bucket Parameters (BYOS)
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Bucket Name">
+                  <input
+                    type="text"
+                    placeholder="e.g. tnb-panoramas-2026"
+                    value={formData.settings?.storage?.bucketName || ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        settings: {
+                          ...formData.settings,
+                          storage: {
+                            ...formData.settings?.storage,
+                            bucketName: e.target.value
+                          }
+                        }
+                      })
+                    }
+                    className={`${inputClass} font-mono`}
+                  />
+                </Field>
+                <Field label="Public CDN / Base URL">
+                  <input
+                    type="url"
+                    placeholder="https://pub-xxxxxx.r2.dev or https://cdn.client.com"
+                    value={formData.settings?.storage?.cdnUrl || ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        settings: {
+                          ...formData.settings,
+                          storage: {
+                            ...formData.settings?.storage,
+                            cdnUrl: e.target.value
+                          }
+                        }
+                      })
+                    }
+                    className={`${inputClass} font-mono`}
+                  />
+                </Field>
+              </div>
+              <p className="text-[10px] text-slate-600 leading-relaxed">
+                Images served from this dynamic bucket do not consume parent Supabase Free Plan storage quota.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-400">
+              Uses the parent Supabase Storage instance (`MMS_PIC`, `panoramas`). Subject to platform storage limits.
+            </p>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
           <Field label="Licensed Seats">

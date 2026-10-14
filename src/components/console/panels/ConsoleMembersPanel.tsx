@@ -92,7 +92,7 @@ function describeState(member: OrganizationMemberSummary): { label: string; deta
   return {
     label: 'Confirmed — awaiting first sign-in',
     detail: 'The address is verified. Access begins the first time they sign in.',
-    tone: 'text-sky-600'
+    tone: 'text-slate-700'
   };
 }
 
@@ -348,7 +348,11 @@ export const ConsoleMembersPanel: React.FC<Props> = ({ directory, selectedOrgId,
               retryLabel="Retry Read"
             />
           ) : isLoadingMembers ? (
-            <div className="py-10 text-center text-xs text-slate-400 font-medium">Reading the member list…</div>
+            <div className="space-y-3 p-4 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-14 bg-slate-50 border border-slate-100 rounded-2xl" />
+              ))}
+            </div>
           ) : members.length === 0 ? (
             <div className="py-12 text-center">
               <Building2 size={24} className="mx-auto mb-2 text-slate-400" />

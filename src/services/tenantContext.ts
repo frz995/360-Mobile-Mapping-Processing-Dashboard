@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 export type OrganizationStatus = 'active' | 'suspended' | 'trial' | 'expired';
 export type DatabaseType = 'cloud_shared' | 'dedicated_external';
+export type LicenseType = 'cloud_saas' | 'enterprise_dedicated' | 'trial' | 'perpetual';
 export type OrganizationMemberRole = 'CompanyAdmin' | 'Operator' | 'Inspector' | 'Viewer';
 
 export interface DatabaseConfig {
@@ -17,6 +18,8 @@ interface OrganizationRow {
   client_code?: string | null;
   logo_url?: string | null;
   database_type?: string | null;
+  license_type?: string | null;
+  license_expires_at?: string | null;
   status?: string | null;
   settings?: OrganizationSettings | null;
   created_at?: string | null;
@@ -30,6 +33,14 @@ interface OrganizationDatabaseRow {
   anon_key: string;
 }
 
+export interface OrganizationStorageConfig {
+  provider?: 'supabase' | 'cloudflare_r2' | 'aws_s3' | 'wasabi' | 'gcs' | 'azure_blob' | 'nas_local' | 'custom_cdn';
+  bucketName?: string;
+  cdnUrl?: string;
+  region?: string;
+  isPrivateBucket?: boolean;
+}
+
 export interface OrganizationSettings {
   nasApiUrl?: string;
   stationTokens?: Record<string, string>;
@@ -37,6 +48,7 @@ export interface OrganizationSettings {
   storageQuotaGb?: number;
   customTheme?: string;
   contactEmail?: string;
+  storage?: OrganizationStorageConfig;
 }
 
 export interface Organization {
@@ -48,6 +60,8 @@ export interface Organization {
   databaseType: DatabaseType;
   databaseConfig: DatabaseConfig;
   status: OrganizationStatus;
+  licenseType: LicenseType;
+  licenseExpiresAt: string | null;
   settings: OrganizationSettings;
   createdAt: string;
   updatedAt: string;
@@ -72,6 +86,8 @@ export interface OrganizationDraft {
   logoUrl?: string;
   databaseType?: DatabaseType;
   databaseConfig?: DatabaseConfig;
+  licenseType?: LicenseType;
+  licenseExpiresAt?: string | null;
   settings?: OrganizationSettings;
 }
 
@@ -120,6 +136,8 @@ const DEV_ONLY_ORGANIZATIONS: Organization[] = [
     databaseType: 'cloud_shared',
     databaseConfig: {},
     status: 'active',
+    licenseType: 'cloud_saas',
+    licenseExpiresAt: '2027-12-31T23:59:59Z',
     settings: {
       allowedUserSeats: 15,
       storageQuotaGb: 500,
@@ -139,6 +157,8 @@ const DEV_ONLY_ORGANIZATIONS: Organization[] = [
     databaseType: 'cloud_shared',
     databaseConfig: {},
     status: 'trial',
+    licenseType: 'trial',
+    licenseExpiresAt: '2026-11-30T23:59:59Z',
     settings: {
       allowedUserSeats: 5,
       storageQuotaGb: 100,
@@ -238,6 +258,11 @@ function mapOrganizationRow(row: OrganizationRow, databaseConfig?: DatabaseConfi
   // badge do not understand; it degrades to the same default a blank column
   // would take, which is what the `||` fallback already does for the rest.
   const databaseType: DatabaseType = row.database_type === 'dedicated_external' ? 'dedicated_external' : 'cloud_shared';
+  const licenseType: LicenseType =
+    row.license_type === 'enterprise_dedicated' || row.license_type === 'trial' || row.license_type === 'perpetual'
+      ? (row.license_type as LicenseType)
+      : (databaseType === 'dedicated_external' ? 'enterprise_dedicated' : 'cloud_saas');
+  const licenseExpiresAt: string | null = row.license_expires_at || null;
   const status: OrganizationStatus =
     row.status === 'suspended' || row.status === 'trial' || row.status === 'expired' ? row.status : 'active';
 
@@ -252,6 +277,8 @@ function mapOrganizationRow(row: OrganizationRow, databaseConfig?: DatabaseConfi
     // a platform administrator is the correct answer rather than a gap to fill.
     databaseConfig: databaseConfig || {},
     status,
+    licenseType,
+    licenseExpiresAt,
     settings: row.settings || {},
     // A missing timestamp is unknown, not "now": `new Date()` here would
     // fabricate a creation date for a row that never carried one.
@@ -377,6 +404,8 @@ const payload = {
     logo_url: draft.logoUrl || '',
     database_type: draft.databaseType || 'cloud_shared',
     status: 'active',
+    license_type: draft.licenseType || (draft.databaseType === 'dedicated_external' ? 'enterprise_dedicated' : 'cloud_saas'),
+    license_expires_at: draft.licenseExpiresAt || null,
     settings: draft.settings || { allowedUserSeats: 10, storageQuotaGb: 200 }
   };
 
@@ -475,6 +504,8 @@ export async function updateOrganization(id: string, patch: Partial<Organization
   if (patch.logoUrl !== undefined) payload.logo_url = patch.logoUrl;
   if (patch.databaseType !== undefined) payload.database_type = patch.databaseType;
   if (patch.status !== undefined) payload.status = patch.status;
+  if (patch.licenseType !== undefined) payload.license_type = patch.licenseType;
+  if (patch.licenseExpiresAt !== undefined) payload.license_expires_at = patch.licenseExpiresAt;
   if (patch.settings !== undefined) payload.settings = patch.settings;
 
   try {

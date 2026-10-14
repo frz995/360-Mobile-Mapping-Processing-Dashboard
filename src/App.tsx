@@ -401,6 +401,7 @@ export default function App() {
   const goToWorkspace = useCallback((key: WorkspaceKey, query?: WorkspacePathQuery) => {
     if (key === 'landing') {
       setShowLanding(true);
+      setCurrentPage('landing');
       setProjectGate('idle');
       pushWorkspace('landing');
       return;

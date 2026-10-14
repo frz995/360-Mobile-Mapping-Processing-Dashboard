@@ -8,6 +8,11 @@ installed system.
 - [§3 Environment variables](#3-environment-variables)
 - [§4 Schema and API index](#4-schema-and-api-index)
 
+> **Read §1.0 before quoting a contract.** It separates the tenant boundary,
+> which the database enforces and an executable gate verifies, from the
+> commercial controls (named seats, named storage, dedicated instances) that it
+> reports but does not enforce.
+
 ---
 
 ## 1. Known limitations
@@ -15,12 +20,38 @@ installed system.
 Read this before go-live. Several items below are product defects rather than
 configuration mistakes, and some will stop a client from completing setup.
 
+### 1.0 Multi-tenancy: what is enforced, and what is not
+
+Since migration `0036`, every operational table requires the caller to belong to
+the company that owns the row. That boundary **is** enforced by PostgreSQL and
+**is** verified by an executable cross-tenant gate (`npm run db:gate`, a blocking
+CI job). Treat that as solid.
+
+The commercial controls layered on top are a separate matter and are **not**
+enforced. This is the list to read before quoting a schedule of named seats,
+named storage, or a dedicated instance.
+
+| Not enforced | What actually happens |
+| --- | --- |
+| **Named user seats** | The Seat Licenses panel shows licensed seats beside `active` members and highlights any company over its limit. No write is refused, so a breach is *detectable* but not *prevented*. Whether an unconfirmed `invited` member should consume a paid seat has not been decided; the three states are counted separately so the question stays visible |
+| **Named storage quotas** | `storageQuotaGb` is an allocation figure. Nothing measures a company's actual object usage, so an over-quota company is not detectable at all |
+| **`dedicated_external` routing** | Credentials are stored in `organization_databases` and readable in the console, but the client application does not connect to that instance. A company routed this way behaves like a shared one. **Route new companies to `cloud_shared`** |
+| **Tenant export** | Nothing can export a company's data |
+| **Offboarding deletion** | Deleting a company that still owns projects is refused by the database (`ON DELETE RESTRICT`). Reassign or archive first — this is deliberate, not a defect |
+| **Runtime branding per tenant** | Branding is build-time (`VITE_BRAND_*`). `organizations.logo_url` is stored and displayed by the console but does not restyle the client application |
+| **Legacy flat-path storage objects** | Migration `0041` made un-namespaced object keys reachable only by a platform administrator, so an install that predates tenancy will not render panoramas for a tenant until its objects are re-keyed under `orgs/{id}/` |
+
+> **Seller Console access is enforced.** Only a platform administrator may open
+> `/console`, decided by `public.console_access()` in the database. The console
+> reports an *unverified* answer as unknown rather than guessing either way, so
+> an outage locks the console out rather than opening it.
+
 ### 1.1 Workstation addresses must be set before the board is useful
 
 **Resolved in the current build.** Station addresses are set in the interface at
 **Settings → Project & Map Settings → 4. Production Pipeline & Workstations**,
 then saved. No database step is involved. See
-[02-Operations.md §4.4](02-Operations.md#44-station-address-configuration).
+[02-Operations.md §4.10](02-Operations.md#410-station-address-configuration).
 
 This entry is retained because the behaviour is still worth knowing: until each
 station has an address configured,
@@ -148,6 +179,12 @@ failures are therefore **silent** — the table marks those.
 | Every map view is blank and images 404 | `VITE_MAP_URL` serves a different origin than the API | Confirm the WebGIS app is reachable from the browser |
 | Publish button permanently disabled | Provider bucket not configured | Set the bucket in Settings (`02` §4.2) |
 | Can't reach the Administration workspace | Seeded role resolved to Viewer | Verify `select sec.get_app_role();` (`01` §4.2) |
+| `Could not find the function public.console_access … in the schema cache` | **Migration `0044` is not applied.** The Seller Console reads its access decision from the database and refuses to guess | Apply `0044`, then `NOTIFY pgrst, 'reload schema';`. See `01` §2.3a |
+| Console says **"Could not verify console access"** | The access check did not complete. Deliberately *not* reported as a refusal | Check Supabase reachability, then **Try again** |
+| Invitation returns **503** | `SUPABASE_SERVICE_ROLE_KEY` is not set in the Cloudflare Pages environment | Add it. It is server-side only and never reaches the browser |
+| Invitation created but **no confirmation email arrives** | Supabase's built-in mailer is rate-limited and usually only delivers to project team members | Configure real SMTP. Test with a non-team address — see `02` §4.6 |
+| Every user sees an **"Awaiting workspace assignment"** screen | Their membership exists at `invited`, so it grants nothing until they confirm and sign in | Have them confirm the address and sign in once. If they have already, re-invite |
+| A user can sign in but sees **no data** | They are not an `active` member of any company. Setting a role in Administration does **not** create tenant membership | Invite them in the Seller Console — `02` §4.3 |
 | Migration error mentioning `sec.can` | `0009` not applied before `0010` | Re-apply in order (`01` §2.3) |
 | Every survey run reports **0 defects** | **`0032` not applied**, or PostgREST is serving a stale schema | Apply `0032`. If the column exists, `NOTIFY pgrst, 'reload schema';` or restart PostgREST. The select error is caught, so nothing is logged — the count is simply absent, not zero |
 | `Could not find the 'run_id' column` | Same as above: missing `0032`, or a stale PostgREST schema cache | Apply `0032`, then `NOTIFY pgrst, 'reload schema';` |
@@ -241,6 +278,7 @@ database wins — so a reseller can correct them on first run without rebuilding
 | --- | :--- | --- |
 | `SUPABASE_URL` | **Yes** | Session validation target |
 | `SUPABASE_ANON_KEY` | **Yes** | Session validation key |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Yes** | Server-side only, never sent to the browser. Required by the Seller Console's invite function (creating a sign-in account) and by per-company NAS worker resolution. **Without it, `/api/console-invite` returns 503 and invitations cannot be created** |
 | `NAS_API_URL` | **Yes** for NAS features | Worker tunnel origin, no trailing slash |
 | `NAS_WORKER_TOKEN` | **Yes** for NAS features | Must match the worker's token |
 | `NAS_IMAGE_TOKEN_SECRET` | No | HMAC key for short-lived preview URLs |
@@ -312,10 +350,22 @@ database wins — so a reseller can correct them on first run without rebuilding
 | `0023`–`0025` | `station_board_items`, `stage_event_ledger`, metric unit |
 | `0026` | `hub_session_state` |
 | `0027`–`0029` | Panorama column reconcile, file-inventory sync, CSV filename |
-| `0030` | Directory row becomes authoritative for role **and status**, so **Disa| `0032` | **`qa_defects.run_id`**, and the unique key widened to `(project_id, subgrid, run_id, point_id)` |
+| `0030` | Directory row becomes authoritative for role **and status**, so **Disabled** resolves to read-only at the database |
+| `0031` | RLS completeness backstop across `batch_logs`, `survey_recycle_bin` and the core tables |
+| `0032` | **`qa_defects.run_id`**, and the unique key widened to `(project_id, subgrid, run_id, point_id)` |
 | `0033` | **`qa_defects.item_key`** — added where missing, back-filled from `point_id`, then enforced `NOT NULL` |
 | `0034` | **`survey_metadata_filenames`** — records captured survey metadata files per subgrid run |
 | `0035` | **Privilege and RLS repair** — grants required `authenticated` table privileges to `station_board_items`, `hub_session_state`, and `survey_metadata_filenames` |
+| `0036` | **`organizations`**, **`organization_members`**, `user_accounts.is_platform_admin`, and the `sec.current_org()` / `sec.can_org()` / `sec.is_platform_admin()` functions. The foundation of the tenant boundary |
+| `0037` | `organization_id` attribution on the operational tables |
+| `0038` | `sec.in_org()` and tenant-scoped RLS on the operational tables |
+| `0039` | Tenant-scoped RLS on the production tables |
+| `0040` | Tenant-scoped RLS on the ledger tables, and re-gating of the project RPCs |
+| `0041` | Tenant-scoped storage-object policies, keys namespaced `orgs/{organization_id}/` |
+| `0042` | `file_inventory` attribution, plus the `0028` storage trigger repaired to set `organization_id` |
+| `0043` | **`organization_workers`** — per-company NAS worker endpoint and bearer token. Stops two companies sharing one database from browsing each other's raw survey imagery |
+| `0044` | **Seller Console access and membership** — `console_access()`, `console_organization_members()`, `console_invite_member()`, `activate_pending_memberships()`, `set_active_organization()`. Without it the console cannot open |
+| `0045` | **Console storage metrics, parent DB stats & licensing** — `console_parent_database_stats()`, `console_company_storage_breakdown()`, `organizations.license_type`, `organizations.license_expires_at`. Live storage gauges and quota bar chart |
 
 > 🚀 **Fastest Setup:** Apply all migrations in a single transaction via [`supabase/bootstrap.sql`](../../supabase/bootstrap.sql) (or rebuild via `npm run migrations:bootstrap`).
 
@@ -365,9 +415,14 @@ The other 13 capabilities in the interface matrix are **UI-only** — see
 | Job | Runs |
 | --- | --- |
 | Build | `tsc -b && vite build` |
-| Test | `vitest run` (115 test files, 1,423 tests) |
+| Test | `vitest run` (125 test files, 1,557 tests) |
 | Lint | ESLint & quality ratchets — **blocking on errors**, warnings within budget |
+| DB security gate | `npm run db:gate` — applies the full migration bundle to a throwaway Postgres and asserts the cross-tenant boundary with real SQL. **This is the only check that executes the database**; everything else mocks Supabase |
 | Python | `pytest` on both `worker` and `station-agent` suites on Python 3.10 & 3.11 |
+
+> The DB gate also carries negative controls: assertions that fail when a
+> security predicate is deliberately removed. A gate that has never been observed
+> failing is documentation with a green tick.
 
 ### 4.7 Turnkey CLI Tooling
 

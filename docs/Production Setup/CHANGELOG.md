@@ -1,5 +1,67 @@
 # GeoSphere 360 — Production Release Changelog
 
+## Seller Console, Tenancy and Documentation Release (v34 / v35)
+
+The platform changed shape: it is now **one deployment on one domain**
+(`https://app.geosphere.my`) with a **Seller Console** at `/console` where each
+client company is provisioned and staffed, rather than each client installing
+their own platform.
+
+### Console
+
+- **Team Members panel — new.** Invite staff by email address and set a company
+  role. A company created in the console previously could never have a member:
+  nothing wrote `organization_members`, and even a hand-written insert landed on
+  `status='invited'`, which grants no access. Migration `0044` supplies the
+  membership lifecycle.
+- **Four membership states**, reported separately rather than collapsed:
+  `invited` awaiting confirmation, `invited` confirmed awaiting first sign-in,
+  `active`, `suspended`. An invitation grants nothing until the invitee confirms
+  their address and signs in.
+- **Panel routing.** `/console/{dashboard,companies,members,database,seats,settings}`.
+  The five rail buttons previously set React state and rendered one identical
+  body, so there was no deep link, no Back button and no refresh-in-place.
+- **Access gate.** `/console` was gated on `authSession` alone, so any signed-in
+  Viewer could open it. It now requires a platform administrator, decided by
+  `public.console_access()` in the database. An unverified check reports
+  *unknown* rather than guessing either way.
+- **Unmeasured figures removed.** Totals, an activity chart, a node map and a
+  set of infrastructure health claims (`99.98% SLA`, `RLS Isolation Verified`,
+  `HEALTHY`) were hard-coded text. They are gone, and the console now states
+  what it does *not* enforce.
+
+### Database
+
+- **Migration `0044`** — console access and membership functions.
+  **Mandatory on upgrade**: without it `/console` refuses to open with
+  `Could not find the function public.console_access in the schema cache`.
+- **Gates 2.11–2.16** added to the cross-tenant security gate, covering console
+  access, member-list disclosure, invite authorization, activation self-scope, and
+  the confirmed-email requirement.
+- **`auth.users` column drift handled.** GoTrue renamed `confirmed_at` to
+  `email_confirmed_at`. `sec.auth_email_confirmed_at()` resolves whichever the
+  schema actually has and fails closed when neither exists. Hard-coding one name
+  would have made activation impossible on the other schema.
+- **`run-db-gate` fixed.** It failed non-deterministically at a different line of
+  the bundle on every run, because the readiness loop slept only on a positive
+  trigger count and so never paused while Postgres was still starting. Now every
+  unsuccessful attempt pauses, and an unreadable count is reported as unknown
+  rather than as a schema failure.
+
+### Documentation
+
+- **Restructured around one domain and one console.** Install order is split
+  into a once-per-platform phase (seller) and a per-client-company phase.
+- **`002-Operations.md` §4 rewritten** as "Onboarding a client company" —
+  create, route, invite, and what to tell the client.
+- **`03-Reference.md` §1.0 added**, separating the tenant boundary (enforced,
+  and verified by an executable gate) from the commercial controls (named seats,
+  named storage, dedicated instances) that are reported but **not** enforced.
+- **`Deployment-Topology.md` corrected.** It still described the NAS worker as
+  single-tenant and unaddressed by `0036`–`0042`; migration `0043` resolved that.
+
+---
+
 ## Commercial Distribution & Reseller Readiness Release
 
 This release hardens the GeoSphere 360 Mobile Mapping platform for commercial distribution across reseller channels, ensuring turnkey deployment and multi-cloud compatibility for enterprise customers.
@@ -34,8 +96,8 @@ This release hardens the GeoSphere 360 Mobile Mapping platform for commercial di
 - **Feature:** Turnkey CLI utilizing `@supabase/supabase-js` Admin API (`service_role` key) to idempotently create or elevate users in both Supabase Auth (`auth.users`) and the internal directory (`public.user_accounts`). Eliminates manual SQL/Dashboard deadlock on fresh installations.
 
 #### Consolidated Database Bootstrap Synchronization
-- **File:** Synchronized `supabase/bootstrap.sql` across all 34 migrations (`0001` through `0035`), preserving byte-identical migration history while ensuring turnkey, single-script execution on fresh Supabase / PostgreSQL instances.
-- **Verification:** Verified via `src/__tests__/bootstrap-migrations.test.ts` (30/30 unit tests passing).
+- **File:** Synchronized `supabase/bootstrap.sql` across all 45 migrations (`0001` through `0045`), preserving byte-identical migration history while ensuring turnkey, single-script execution on fresh Supabase / PostgreSQL instances.
+- **Verification:** Verified via `src/__tests__/bootstrap-migrations.test.ts` (33/33 unit tests passing).
 
 #### Customer Documentation & Master Setup Guide
 - **Update:** Updated `docs/Production Setup/01-Infrastructure.md`, `README.md`, and `docs/Production Setup/guide.html`.

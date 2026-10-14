@@ -32,7 +32,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { neutraliseEventTriggers } from './db-gate-readiness.mjs';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -204,7 +204,9 @@ try {
 
   const tmp = join(mkdtempSync(join(tmpdir(), 'geosphere-db-')), 'bundle.sql');
   writeFileSync(tmp, readFileSync(BUNDLE, 'utf8'));
-  step('apply the full migration bundle (0001-0044)', psqlTo(tmp, 'bundle'));
+  const migFiles = readdirSync(join(REPO, 'supabase', 'migrations')).filter((f) => f.endsWith('.sql'));
+  const highestMig = migFiles.map((f) => Number(f.slice(0, 4))).filter(Boolean).sort((a, b) => b - a)[0] || 45;
+  step(`apply the full migration bundle (0001-00${highestMig})`, psqlTo(tmp, 'bundle'));
 
   // 3. auth.jwt() again: the scaffolding must be present BEFORE the migrations
   //    that reference it in policy bodies, but the bundle also creates objects

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, LayoutDashboard, Building2, Users, Database, Settings as SettingsIcon, Plus, Shield } from 'lucide-react';
+import { LogOut, LayoutDashboard, Building2, Users, Database, HardDrive, Settings as SettingsIcon, Plus, Shield, ChevronRight } from 'lucide-react';
 import { CONSOLE_PANELS, CONSOLE_NEW_KEY, getConsolePanelDefinition, parseConsolePanel, pushConsolePanel, replaceConsolePanel, subscribeConsolePanel, getConsoleOrgQuery, type ConsolePanel } from '../../utils/consoleRouter';
 import { useConsoleDirectory } from './useConsoleDirectory';
 import { PrimaryButton, SecondaryButton } from './panels/consoleUi';
@@ -7,6 +7,7 @@ import ConsoleDashboardPanel from './panels/ConsoleDashboardPanel';
 import ConsoleCompaniesPanel from './panels/ConsoleCompaniesPanel';
 import ConsoleMembersPanel from './panels/ConsoleMembersPanel';
 import ConsoleDatabasePanel from './panels/ConsoleDatabasePanel';
+import ConsoleParentDbPanel from './panels/ConsoleParentDbPanel';
 import ConsoleSeatsPanel from './panels/ConsoleSeatsPanel';
 import ConsoleSettingsPanel from './panels/ConsoleSettingsPanel';
 import type { ConsoleAccess } from '../../services/consoleAccess';
@@ -35,12 +36,13 @@ const PANEL_ICONS: Record<ConsolePanel, React.ReactNode> = {
   companies: <Building2 size={18} />,
   members: <Users size={18} />,
   database: <Database size={18} />,
+  'parent-db': <HardDrive size={18} />,
   seats: <Users size={18} />,
   settings: <SettingsIcon size={18} />
 };
 
 /** Rail order. `database` and `seats` share an icon family; the labels differ. */
-const RAIL_ORDER: ConsolePanel[] = ['dashboard', 'companies', 'members', 'database', 'seats', 'settings'];
+const RAIL_ORDER: ConsolePanel[] = ['dashboard', 'companies', 'members', 'database', 'parent-db', 'seats', 'settings'];
 
 export const SellerPartnerConsole: React.FC<SellerPartnerConsoleProps> = ({
   onBackToApp,
@@ -155,8 +157,105 @@ export const SellerPartnerConsole: React.FC<SellerPartnerConsoleProps> = ({
     [panel]
   );
 
+interface ActionItem {
+  id: string;
+  orgId: string;
+  title: string;
+  subtitle: string;
+  severity: 'urgent' | 'warning' | 'info';
+  targetPanel: ConsolePanel;
+}
+
   const definition = getConsolePanelDefinition(panel);
-  const { organizations, metrics, metric, directoryError } = directory;
+  const { organizations } = directory;
+
+  const actionItems = React.useMemo<ActionItem[]>(() => {
+    const items: ActionItem[] = [];
+    const now = Date.now();
+
+    for (const org of organizations) {
+      let hasUrgent = false;
+
+      // 1. License expired
+      if (org.status === 'expired') {
+        items.push({
+          id: `${org.id}-status-expired`,
+          orgId: org.id,
+          title: org.name,
+          subtitle: 'License expired · Access blocked',
+          severity: 'urgent',
+          targetPanel: 'companies'
+        });
+        hasUrgent = true;
+      } else if (org.licenseExpiresAt) {
+        const expTime = new Date(org.licenseExpiresAt).getTime();
+        const diffDays = Math.ceil((expTime - now) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) {
+          items.push({
+            id: `${org.id}-date-expired`,
+            orgId: org.id,
+            title: org.name,
+            subtitle: `License expired (${Math.abs(diffDays)}d ago)`,
+            severity: 'urgent',
+            targetPanel: 'companies'
+          });
+          hasUrgent = true;
+        } else if (diffDays <= 30) {
+          items.push({
+            id: `${org.id}-expiring`,
+            orgId: org.id,
+            title: org.name,
+            subtitle: `License expires in ${diffDays}d`,
+            severity: 'warning',
+            targetPanel: 'companies'
+          });
+        }
+      }
+
+      // 2. Suspended tenant
+      if (org.status === 'suspended') {
+        items.push({
+          id: `${org.id}-suspended`,
+          orgId: org.id,
+          title: org.name,
+          subtitle: 'Tenant suspended · Logins disabled',
+          severity: 'warning',
+          targetPanel: 'companies'
+        });
+      }
+
+      // 3. Dedicated DB missing credentials or configuration
+      if (org.databaseType === 'dedicated_external') {
+        const hasUrl = Boolean(org.databaseConfig?.url);
+        const hasKey = Boolean(org.databaseConfig?.anonKey);
+        if (!hasUrl || !hasKey) {
+          items.push({
+            id: `${org.id}-db`,
+            orgId: org.id,
+            title: org.name,
+            subtitle: 'Dedicated DB missing credentials',
+            severity: 'warning',
+            targetPanel: 'database'
+          });
+        }
+      }
+
+      // 4. Missing contact email (only if no urgent issue)
+      if (!org.settings?.contactEmail && !hasUrgent) {
+        items.push({
+          id: `${org.id}-contact`,
+          orgId: org.id,
+          title: org.name,
+          subtitle: 'No contact email on file',
+          severity: 'info',
+          targetPanel: 'companies'
+        });
+      }
+    }
+
+    const order = { urgent: 0, warning: 1, info: 2 };
+    return items.sort((a, b) => order[a.severity] - order[b.severity]);
+  }, [organizations]);
 
   return (
     <div
@@ -286,35 +385,68 @@ export const SellerPartnerConsole: React.FC<SellerPartnerConsoleProps> = ({
             </div>
           </div>
 
-          {/* Allocation figures only. The previous sidebar also printed
-              `Row-Level Security 100% Active`, `Gateway SLA 99.98%`,
-              `Edge Ingestion Cloud + NAS` and an `RLS Isolation Verified`
-              badge as fixed text that no code path could contradict. Those
-              claims are either proven by 0011_security_tests.sql or not made. */}
+          {/* Need Action Report Center */}
           <div className="space-y-3 pt-4 border-t border-slate-100">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-slate-900 tracking-tight">Allocation</span>
-              <span className="text-[11px] font-bold text-slate-400">
-                {directoryError ? 'UNVERIFIED' : 'LIVE'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-black text-slate-900 tracking-tight">Need Action</span>
+                {actionItems.length > 0 ? (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#0c0d0e] text-white">
+                    {actionItems.length}
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                    0
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="text-[10px] text-slate-400 font-medium">Companies</div>
-                <div className="text-lg font-black text-slate-900 font-mono">{metric(metrics.activeCount)}</div>
-              </div>
-              <div>
-                <div className="text-[10px] text-slate-400 font-medium">Licensed seats</div>
-                <div className="text-lg font-black text-slate-900 font-mono">{metric(metrics.totalSeats)}</div>
-              </div>
-              <div>
-                <div className="text-[10px] text-slate-400 font-medium">Storage GB</div>
-                <div className="text-lg font-black text-slate-900 font-mono">{metric(metrics.totalQuota)}</div>
-              </div>
-              <div>
-                <div className="text-[10px] text-slate-400 font-medium">Dedicated</div>
-                <div className="text-lg font-black text-slate-900 font-mono">{metric(metrics.dedicatedCount)}</div>
-              </div>
+
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
+              {directory.isLoading ? (
+                <div className="space-y-2 animate-pulse">
+                  <div className="h-10 bg-slate-100 rounded-xl" />
+                  <div className="h-10 bg-slate-100 rounded-xl" />
+                </div>
+              ) : actionItems.length === 0 ? (
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1" />
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold text-slate-800">All systems nominal</div>
+                    <div className="text-[10px] text-slate-400">No company issues detected</div>
+                  </div>
+                </div>
+              ) : (
+                actionItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      selectOrg(item.orgId);
+                      go(item.targetPanel, item.orgId);
+                    }}
+                    className="w-full text-left p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 transition-colors flex items-start gap-2 group cursor-pointer"
+                    title={`Click to navigate to ${item.targetPanel} and resolve`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 mt-1 ${
+                        item.severity === 'urgent'
+                          ? 'bg-rose-500'
+                          : item.severity === 'warning'
+                          ? 'bg-amber-500'
+                          : 'bg-slate-400'
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-bold text-slate-900 truncate group-hover:text-black">
+                        {item.title}
+                      </div>
+                      <div className="text-[10px] text-slate-500 truncate">{item.subtitle}</div>
+                    </div>
+                    <ChevronRight size={12} className="text-slate-400 shrink-0 mt-1 group-hover:text-slate-700" />
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -371,7 +503,7 @@ export const SellerPartnerConsole: React.FC<SellerPartnerConsoleProps> = ({
           </div>
         </header>
 
-        <main className="flex-1 p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 px-6 lg:px-10 py-6 max-w-[1720px] w-full mx-auto">
           {panel === 'dashboard' ? (
             <ConsoleDashboardPanel
               directory={directory}
@@ -397,6 +529,10 @@ export const SellerPartnerConsole: React.FC<SellerPartnerConsoleProps> = ({
 
           {panel === 'database' ? (
             <ConsoleDatabasePanel directory={directory} selectedOrgId={selectedOrgId} onSelectOrg={selectOrg} />
+          ) : null}
+
+          {panel === 'parent-db' ? (
+            <ConsoleParentDbPanel directory={directory} />
           ) : null}
 
           {panel === 'seats' ? (

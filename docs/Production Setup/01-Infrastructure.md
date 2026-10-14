@@ -94,7 +94,7 @@ The migrations are applied as a **hand-run, ordered sequence**, or via the conso
 > - **Supabase SQL Editor:** Paste and run [`supabase/bootstrap.sql`](../../supabase/bootstrap.sql) (generated via `npm run migrations:bootstrap`).
 > - **psql:** `psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f supabase/bootstrap.sql`
 
-If applying individual files, run these **34 files in ascending numeric order**:
+If applying individual files, run these **44 files in ascending numeric order**:
 
 ```
 0001_schema_migrations.sql
@@ -132,7 +132,42 @@ If applying individual files, run these **34 files in ascending numeric order**:
 0033_qa_defects_item_key.sql
 0034_survey_metadata_filenames.sql
 0035_repair_privileges_and_rls.sql
+0036_organizations_and_tenancy.sql
+0037_tenant_attribution.sql
+0038_tenant_rls_operational.sql
+0039_tenant_rls_production.sql
+0040_tenant_rls_ledgers_and_rpcs.sql
+0041_tenant_storage_policies.sql
+0042_file_inventory_attribution.sql
+0043_organization_workers.sql
+0044_console_access_and_memberships.sql
+0045_console_storage_and_licensing.sql
 ```
+
+### 2.3a Migrations 0036-0045 are the multi-tenancy layer
+
+These are what make the Seller Console possible. On an install that predates
+them, applying `0036`-`0045` is not optional — the console cannot function
+without them.
+
+| Migration | Why it matters operationally |
+| --- | --- |
+| `0036` | Creates `organizations` and `organization_members`, and `sec.current_org()`, which decides which company a signed-in user belongs to. **Without it, every policy below cannot resolve a tenant.** |
+| `0037` | Adds `organization_id` to the operational tables |
+| `0038`–`0040` | Tenant-scoped RLS on every operational, production and ledger table |
+| `0041` | Tenant-scoped storage-object policies, keyed `orgs/{organization_id}/` |
+| `0042` | Attributes `file_inventory` rows to an organization |
+| `0043` | Per-company NAS worker credentials in `organization_workers` — this is what stops two companies sharing one database from browsing each other's raw survey imagery |
+| `0044` | The Seller Console's access and membership functions. **Without it `/console` refuses to open** with `Could not find the function public.console_access in the schema cache` |
+| `0045` | Console storage breakdown, parent cluster stats RPCs, and organization licensing/expiry tracking |
+
+> **Upgrading an existing install:** apply `0036` through `0045` in order, then
+> `NOTIFY pgrst, 'reload schema';`. Deploying the application before the
+> migration leaves the console locked — which is a safe failure (it refuses,
+> rather than opening), but it is still a lockout until the migration lands.
+>
+> The single-file path (`supabase/bootstrap.sql`) is for a **fresh** database. On
+> an install that already has `0001`-`0044`, apply `0045` alone.
 
 > ⚠️ **`0011_security_tests.sql` is a test, not a migration.** It makes no schema
 > changes. Run it separately as a verification step — see §5.2. A common mistake
@@ -142,7 +177,10 @@ If applying individual files, run these **34 files in ascending numeric order**:
 > ℹ️ **Fresh install compatibility:** In current builds, `0004` safely guards
 > `panoramas` and `staging_panoramas` RLS activation with existence checks. `0012`
 > creates the core tables and applies authoritative role-guarded RLS. Sequential
-> execution from `0001` through `0035` now passes cleanly with 0 errors.
+> execution from `0001` through `0045` now passes cleanly with 0 errors. This is
+> verified, not asserted: `npm run db:gate` applies the whole bundle to a
+> throwaway Postgres and runs the cross-tenant security gate against it, and it
+> is a blocking CI job.
 
 > ⚠️ **`0019` is `map_shares_public_access.sql`**, not
 > `map_shares_auth_only.sql`. It grants `anon` SELECT — i.e. public read of
@@ -162,11 +200,19 @@ If applying individual files, run these **34 files in ascending numeric order**:
 | `0030` before `0031` | keep in order so the RLS sweep sees the final schema |
 | `0031` before `0032`, `0033` | `0032` scopes `qa_defects` to `run_id`; `0033` enforces `item_key` |
 | `0034` before `0035` | `0034` creates `survey_metadata_filenames`; `0035` grants privileges |
+| `0036` before `0037`-`0042` | `0037`-`0042` all add `organization_id` columns and call `sec.current_org()`, which `0036` creates |
+| `0036` before `0043` | `0043` references `organizations` and its `sec.is_platform_admin()` guard |
+| `0036` before `0044` | `0044`'s console functions call `sec.require_platform_admin()` and `sec.member_org_ids()` from `0036` |
+| `0042` before `0043` | `0043`'s worker lookup assumes `file_inventory` is already attributed |
 
 > **`0035` is critical for operator access.** Migrations `0023`, `0026`, and `0034`
 > created tables granted only to `postgres`. `0035` grants them to `authenticated`
 > and aligns `sec.can('deleteData')` so operators can capture metadata and use
 > the flight board without receiving "permission denied" errors.
+
+> **`0036`-`0044` are critical for multi-tenancy.** `0036` creates the company
+> registry and the `sec.current_org()` function that every later policy resolves
+> against. Applying `0038`-`0042` without `0036` under them aborts the bundle.
 
 **How to run them**
 

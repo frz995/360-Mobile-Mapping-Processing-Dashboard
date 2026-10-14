@@ -140,6 +140,14 @@ export const ConsoleSeatsPanel: React.FC<Props> = ({ directory, selectedOrgId, o
 
         {summaryError ? (
           <ReadFailure reason={summaryError} subject="seat summary" onRetry={() => void load()} retryLabel="Retry Read" />
+        ) : isLoading ? (
+          <div className="overflow-x-auto rounded-2xl border border-slate-100 mt-5">
+            <div className="p-4 space-y-3 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 bg-slate-50 border border-slate-100 rounded-xl" />
+              ))}
+            </div>
+          </div>
         ) : rows.length === 0 ? (
           <p className="py-10 text-center text-xs text-slate-500">No companies are registered yet.</p>
         ) : (

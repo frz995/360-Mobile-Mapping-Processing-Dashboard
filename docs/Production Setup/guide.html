@@ -314,6 +314,7 @@ approval (6.3).</div>
       <li><span class="tt">NAS layout</span><span class="dd">Required folder tree, depth rules, subgrid naming</span></li>
       <li><span class="tt">NAS worker</span><span class="td">Install, configure, run, verify</span></li>
       <li><span class="tt">Station agents</span><span class="td">One per workstation, configuration, firewall, autostart</span></li>
+      <li><span class="tt">Onboarding a client company</span><span class="td">Seller Console: create the company, invite staff, what the client sees</span></li>
       <li><span class="tt">First-run configuration</span><span class="td">Project, settings, station address setup, roles</span></li>
       <li><span class="tt">Verification</span><span class="td">Tier A and Tier B acceptance, smoke test, sign-off sheet</span></li>
       <li><span class="tt">Known limitations</span><span class="td">Product defects that affect a client installation</span></li>
@@ -671,15 +672,26 @@ approval (6.3).</div>
       <tr><td>32</td><td><code>0033_qa_defects_item_key.sql</code></td><td><b>Required.</b> Adds <code>qa_defects.item_key</code> where missing, back-fills it from <code>point_id</code>, then enforces <code>NOT NULL</code></td></tr>
       <tr><td>33</td><td><code>0034_survey_metadata_filenames.sql</code></td><td><b>Required.</b> Creates <code>survey_metadata_filenames</code> table, tracking captured metadata files per survey run</td></tr>
       <tr><td>34</td><td><code>0035_repair_privileges_and_rls.sql</code></td><td><b>Required.</b> Repairs table privileges for <code>station_board_items</code>, <code>hub_session_state</code>, and <code>survey_metadata_filenames</code> to <code>authenticated</code>, and aligns capability gating</td></tr>
+      <tr><td>35</td><td><code>0036_organizations_and_tenancy.sql</code></td><td><b>Required for multi-tenancy.</b> Creates <code>organizations</code> and <code>organization_members</code>, adds <code>user_accounts.is_platform_admin</code>, and defines <code>sec.current_org()</code> &mdash; the function every later tenant policy resolves against</td></tr>
+      <tr><td>36</td><td><code>0037_tenant_attribution.sql</code></td><td><b>Required.</b> Adds <code>organization_id</code> attribution to the operational tables</td></tr>
+      <tr><td>37</td><td><code>0038_tenant_rls_operational.sql</code></td><td><b>Required.</b> Tenant-scoped Row-Level Security on the operational tables via <code>sec.in_org()</code></td></tr>
+      <tr><td>38</td><td><code>0039_tenant_rls_production.sql</code></td><td><b>Required.</b> Tenant-scoped RLS on the production tables</td></tr>
+      <tr><td>39</td><td><code>0040_tenant_rls_ledgers_and_rpcs.sql</code></td><td><b>Required.</b> Tenant-scoped RLS on the ledger tables; re-gates the project RPCs</td></tr>
+      <tr><td>40</td><td><code>0041_tenant_storage_policies.sql</code></td><td><b>Required.</b> Tenant-scoped storage policies, object keys namespaced <code>orgs/{organization_id}/</code></td></tr>
+      <tr><td>41</td><td><code>0042_file_inventory_attribution.sql</code></td><td><b>Required.</b> Attributes <code>file_inventory</code> rows to an organization and repairs the storage trigger</td></tr>
+      <tr><td>42</td><td><code>0043_organization_workers.sql</code></td><td><b>Required for multi-tenancy.</b> Per-company NAS worker endpoint and bearer token in <code>organization_workers</code>. Without it two companies sharing a database could browse each other&rsquo;s raw survey imagery</td></tr>
+      <tr><td>43</td><td><code>0044_console_access_and_memberships.sql</code></td><td><b>Required for the Seller Console.</b> <code>console_access()</code>, <code>console_organization_members()</code>, <code>console_invite_member()</code>, <code>activate_pending_memberships()</code>. <b>Without it <code>/console</code> refuses to open</b></td></tr>
     </tbody>
   </table>
 
   <div class="callout c-warn">
     <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-    <span class="ct">0032 through 0035 are required, not optional</span>
+    <span class="ct">0032 through 0044 are required, not optional</span>
     <p>Stopping early produces a build that starts, reads, and quietly fails.</p>
     <p><b>Without <code>0032</code> &amp; <code>0033</code></b> the <code>qa_defects</code> select fails or defect upserts reject on missing columns.</p>
     <p><b>Without <code>0035</code></b> table privileges on <code>station_board_items</code>, <code>hub_session_state</code>, and <code>survey_metadata_filenames</code> belong only to <code>postgres</code>. Application users and operators encounter silent permission denied errors.</p>
+    <p><b>Without <code>0036</code>&ndash;<code>0042</code></b> the tenant boundary does not exist: every company sees every other company&rsquo;s data.</p>
+    <p><b>Without <code>0044</code></b> the Seller Console cannot open. It reports <code>Could not find the function public.console_access in the schema cache</code> and refuses &mdash; a safe failure, but still a lockout.</p>
     <p>All migrations are idempotent and safe to re-run. Apply the complete set.</p>
   </div>
 
@@ -702,6 +714,8 @@ approval (6.3).</div>
       <tr><td><code>0023</code> before <code>0025</code></td><td><code>0025</code> warns and exits if the station board table is absent</td></tr>
       <tr><td><code>0007</code> and <code>0016</code> before <code>0031</code></td><td><code>0031</code> backstops <code>survey_recycle_bin</code> and <code>batch_logs</code>, which those two create</td></tr>
       <tr><td><code>0034</code> before <code>0035</code></td><td><code>0034</code> creates <code>survey_metadata_filenames</code>; <code>0035</code> grants privileges</td></tr>
+      <tr><td><code>0036</code> before <code>0037</code>&ndash;<code>0042</code></td><td>Those migrations add <code>organization_id</code> columns and call <code>sec.current_org()</code>, which <code>0036</code> creates</td></tr>
+      <tr><td><code>0036</code> before <code>0043</code>, <code>0044</code></td><td>Both reference <code>organizations</code> and the <code>sec.*</code> guards it defines</td></tr>
       <tr><td><b>Resolved:</b> <code>0004</code> and <code>0012</code></td><td><code>0004</code> guards <code>panoramas</code> and <code>staging_panoramas</code> with existence checks so fresh installs run cleanly without halting; <code>0012</code> creates the tables and sets authoritative role-guarded RLS</td></tr>
     </tbody>
   </table>
@@ -1294,6 +1308,7 @@ WantedBy=multi-user.target</code></pre>
     <tbody>
       <tr><td><code>SUPABASE_URL</code></td><td class="yes">Yes</td><td>Session validation target</td></tr>
       <tr><td><code>SUPABASE_ANON_KEY</code></td><td class="yes">Yes</td><td>Session validation key</td></tr>
+      <tr><td><code>SUPABASE_SERVICE_ROLE_KEY</code></td><td class="yes">Yes</td><td>Server-side only; never sent to the browser. Required by the Seller Console&rsquo;s invite function (it creates the sign-in account) and by per-company NAS worker resolution. <b>Without it, <code>/api/console-invite</code> returns 503 and no invitation can be created.</b></td></tr>
       <tr><td><code>NAS_API_URL</code></td><td class="yes">Yes</td><td>Worker tunnel origin, <b>no trailing slash</b></td></tr>
       <tr><td><code>NAS_WORKER_TOKEN</code></td><td class="yes">Yes</td><td>Must match the worker's token exactly</td></tr>
       <tr><td><code>NAS_IMAGE_TOKEN_SECRET</code></td><td class="opt">No</td><td>Signing key for short-lived preview URLs; falls back to the worker token</td></tr>
@@ -1691,12 +1706,95 @@ AGENT_PORT=8000</code></pre>
   <h1 class="sec"><span class="num">12</span>First-run configuration</h1>
   <p class="sec-lede">Configuring the application itself, including one step that currently has no screen.</p>
 
-  <h2>12.1 Create your first project</h2>
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span class="ct">The platform is deployed once. Clients are onboarded through the console.</span>
+    <p>Everything above this point &mdash; accounts, the Supabase project, the
+    migrations, the first administrator, the Pages deploy &mdash; is a
+    <b>once-per-platform</b> task performed by the Seller. A client company is
+    then onboarded in the <b>Seller Console</b> at
+    <code>https://app.geosphere.my/console</code>, and never installs the
+    platform themselves. Only their survey hardware (NAS, worker, four station
+    agents) is theirs.</p>
+  </div>
+
+  <h2>12.1 Onboarding a client company</h2>
+
+  <h3>12.1.1 Who may open the console</h3>
+  <p>Only a <b>platform administrator</b>. The decision is made by the database
+  (<code>public.console_access()</code>), not by the interface: the console
+  refuses to render anything until that read answers. A Viewer or Survey Operator
+  who navigates to <code>/console</code> sees a refusal screen, and if the check
+  cannot reach the database at all the screen says the answer is <b>unknown</b>
+  rather than guessing either way.</p>
+
+  <h3>12.1.2 Create the company</h3>
+  <p><b>Seller Console &#8594; Companies &#8594; Add Client Company.</b> Give it a name,
+  a unique client code, a contact email, a status, a licensed seat count and a
+  storage quota, then choose the database routing.</p>
+  <p>A <b>suspended</b> or <b>expired</b> company grants nobody access, even to
+  people whose invitations have already been accepted.</p>
+
+  <h3>12.1.3 Invite the staff</h3>
+  <p><b>Seller Console &#8594; Team Members &#8594; select the company &#8594; Invite Member.</b>
+  One address at a time, with a company role: <code>CompanyAdmin</code>,
+  <code>Operator</code>, <code>Inspector</code> or <code>Viewer</code>.</p>
+  <p>The invitee appears immediately, in one of four states. They are deliberately
+  not collapsed into a single &ldquo;registered&rdquo; badge, because the
+  distinction is the whole point:</p>
+  <table>
+    <thead><tr><th style="width:40%">State</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><b>Invited &#8212; awaiting confirmation</b></td><td>An account exists, but the person has not confirmed the address. <b>Grants no access.</b></td></tr>
+      <tr><td><b>Confirmed &#8212; awaiting first sign-in</b></td><td>The address is verified. Access begins when they first sign in.</td></tr>
+      <tr><td><b>Active</b></td><td>Signed in and working in the company.</td></tr>
+      <tr><td><b>Suspended</b></td><td>Revoked. That company can no longer read their data.</td></tr>
+    </tbody>
+  </table>
+  <p><b>An invitation grants nothing on its own.</b> Access begins only after the
+  person confirms their email address and signs in for the first time. This is
+  deliberate: if confirmation is not required, anyone who can register an
+  address can claim the company that owns it.</p>
+
+  <h3>12.1.4 What to tell the client</h3>
+  <p>They receive a confirmation email, click it, and sign in at
+  <code>https://app.geosphere.my</code>. On first sign-in their membership
+  activates automatically. If they sign in before confirming, they see an
+  <b>&ldquo;Awaiting workspace assignment&rdquo;</b> screen explaining that their
+  account is verified but not yet a member of any company &mdash; which is the
+  correct instruction to give them: ask you.</p>
+
+  <h3>12.1.5 Confirm email delivery before you sell</h3>
+  <p>Invitations depend on real mail delivery. Supabase&rsquo;s built-in mailer is
+  heavily rate-limited and on most plans delivers only to project team members, so
+  a client address will often receive nothing. Configure real SMTP
+  (Supabase &#8594; Authentication &#8594; Providers) and test once with a
+  non-team address. If the mail cannot be delivered, the console says so
+  (&ldquo;User created, but the confirmation email could not be sent&rdquo;)
+  rather than reporting a successful invitation.</p>
+
+  <div class="callout c-warn">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    <span class="ct">What the platform does not enforce</span>
+    <p>The tenant boundary <b>is</b> enforced by PostgreSQL and verified by an
+    executable cross-tenant gate. These commercial controls are
+    <b>reported but not enforced</b>:</p>
+    <p>&bull; <b>Named user seats</b> &mdash; shown beside confirmed members, with
+    over-limit companies highlighted. No write is refused.</p>
+    <p>&bull; <b>Named storage quotas</b> &mdash; an allocation figure. Actual object
+    usage is not measured, so an over-quota company is not detectable.</p>
+    <p>&bull; <b><code>dedicated_external</code> routing</b> &mdash; credentials are
+    stored and readable, but the application does not connect to that instance.
+    Route new companies to <code>cloud_shared</code>.</p>
+    <p>&bull; <b>Tenant export and offboarding deletion</b> &mdash; not available.</p>
+  </div>
+
+  <h2>12.2 Create your first project</h2>
   <p>A project is <b>mandatory</b> &#8212; every query in the platform is scoped to the active project,
   and the dashboard forces project selection immediately after login. The wizard's only required
   field is the campaign name.</p>
 
-  <h2>12.2 Required settings</h2>
+  <h2>12.3 Required settings</h2>
   <p>Open <b>Settings &#8594; Project and Map Settings</b>. The form is read-only unless you are an
   Administrator.</p>
   <table>
@@ -1721,7 +1819,7 @@ AGENT_PORT=8000</code></pre>
     no effect on the running application.</p>
   </div>
 
-  <h2>12.3 Two settings in an unexpected place</h2>
+  <h2>12.4 Two settings in an unexpected place</h2>
   <p>The working directory and worker endpoint are <b>not</b> on the admin screen. Set them in
   <b>NAS and Daemon &#8594; Capacity and Volumes</b>:</p>
   <table style="width:74%">
@@ -1732,7 +1830,7 @@ AGENT_PORT=8000</code></pre>
     </tbody>
   </table>
 
-  <h2>12.4 Station address configuration</h2>
+  <h2>12.5 Station address configuration</h2>
   <div class="callout c-ok">
     <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
     <span class="ct">No database step required</span>
@@ -1781,7 +1879,7 @@ AGENT_PORT=8000</code></pre>
   Functions using the hostname map, so the addresses matter less. Set them anyway so that local
   network fallback and the monitoring views work.</p>
 
-  <h2>12.5 Roles and capabilities</h2>
+  <h2>12.6 Roles and capabilities</h2>
   <p>Grant capabilities per operator in <b>Administration &#8594; Roles</b>. Remember that only eight
   capabilities are enforced by the database (Section 6.3) &#8212; do not rely on the others for
   compliance.</p>
@@ -1815,7 +1913,7 @@ AGENT_PORT=8000</code></pre>
       <text x="356" y="60" font-size="9.4" fill="#334155" text-anchor="middle">Production pipeline</text>
       <text x="272" y="80" font-size="8.4" fill="#334155">Requires the NAS worker, the four</text>
       <text x="272" y="93" font-size="8.4" fill="#334155">agents, all five tunnels, and the</text>
-      <text x="272" y="106" font-size="8.4" fill="#334155">station registration from 12.4.</text>
+      <text x="272" y="106" font-size="8.4" fill="#334155">station registration from 12.5.</text>
       <text x="272" y="122" font-size="8.4" fill="#334155">Proves: scans, board, intake,</text>
       <text x="272" y="135" font-size="8.4" fill="#334155">gates, publish.</text>
 
@@ -1894,7 +1992,7 @@ AGENT_PORT=8000</code></pre>
 
   <div class="callout c-warn">
     <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-    <span class="ct">Steps 3 and 4 depend on Section 12.4</span>
+    <span class="ct">Steps 3 and 4 depend on Section 12.5</span>
     <p>Without the station registration those cards cannot reach the agents, however correctly the
     tunnels are configured.</p>
   </div>
@@ -1923,7 +2021,7 @@ AGENT_PORT=8000</code></pre>
   <p><b>Resolution.</b> Earlier revisions had no screen for this and required a settings-table SQL
   update, and a settings export silently dropped the address and port keys. Both are fixed: set the
   addresses in <b>Settings &#8594; Project &amp; Map Settings &#8594; 4. Production Pipeline &amp;
-  Workstations</b> (Section 12.4), and the stored settings type now declares those keys. No
+  Workstations</b> (Section 12.5), and the stored settings type now declares those keys. No
   migration is required when upgrading.</p>
 
   <h2>14.2 Bucket upload works for all cloud providers <span class="tag-fixed">fixed</span></h2>
@@ -2005,10 +2103,10 @@ AGENT_PORT=8000</code></pre>
       <tr><td>No processor or memory figures on a station</td><td>Process library not installed</td><td>Install the requirements on that PC (11.2)</td></tr>
       <tr><td>No GPU card on the monitoring screen</td><td>GPU bindings not installed</td><td>Install the optional GPU package (11.2)</td></tr>
       <tr><td>Panoramas render broken <span class="opt">(silent)</span></td><td>Bucket is private, or the wrong bucket name</td><td>Make it public; re-check the setting (4.1)</td></tr>
-      <tr><td>"No resolvable panorama URL" in quality review</td><td>Storage provider or bucket incomplete</td><td>Re-check Section 12.2</td></tr>
+      <tr><td>"No resolvable panorama URL" in quality review</td><td>Storage provider or bucket incomplete</td><td>Re-check Section 12.3</td></tr>
       <tr><td>Subgrid scan returns an empty list <span class="opt">(silent)</span></td><td>Folder tree mismatch, or base path wrong</td><td>Re-check Sections 9.1 and 10.2</td></tr>
       <tr><td>Coordinates not paired to imagery <span class="opt">(silent)</span></td><td>Run folder names differ between the two stage folders</td><td>Make them identical (9.1)</td></tr>
-      <tr><td>Publish button permanently disabled</td><td>Provider bucket not configured</td><td>Set the bucket in Settings (12.2)</td></tr>
+      <tr><td>Publish button permanently disabled</td><td>Provider bucket not configured</td><td>Set the bucket in Settings (12.3)</td></tr>
       <tr><td>Cannot reach the Administration workspace</td><td>Seeded role resolved to Viewer</td><td>Verify the role query (5.2)</td></tr>
       <tr><td>Migration error mentioning a security function</td><td>Applied out of order</td><td>Re-apply in order (3.3)</td></tr>
       <tr><td>Every survey run reports <b>0 defects</b></td><td><code>0032</code> not applied, or PostgREST serves a stale schema</td><td>Apply <code>0032</code>. If the column exists, <code>NOTIFY pgrst, 'reload schema';</code> or restart PostgREST. The select error is caught, so nothing is logged &#8212; the count is absent, not zero</td></tr>
@@ -2202,7 +2300,7 @@ AGENT_PORT=8000</code></pre>
       <tr><td class="box"></td><td>Tunnels and services set to start automatically</td><td></td><td></td></tr>
       <tr><td class="box"></td><td>Edge project root directory set to the repository root</td><td></td><td></td></tr>
       <tr><td class="box"></td><td>Build-time and runtime variables configured</td><td></td><td></td></tr>
-      <tr><td class="box"></td><td>Station addresses registered (12.4)</td><td></td><td></td></tr>
+      <tr><td class="box"></td><td>Station addresses registered (12.5)</td><td></td><td></td></tr>
       <tr><td class="box"></td><td>Tier A verification complete (13.1)</td><td></td><td></td></tr>
       <tr><td class="box"></td><td>Tier B verification complete (13.2)</td><td></td><td></td></tr>
       <tr><td class="box"></td><td>Smoke test complete (13.3)</td><td></td><td></td></tr>

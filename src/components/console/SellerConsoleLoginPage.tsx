@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/api/client';
-import { Eye, EyeOff, AlertCircle, RefreshCw, ArrowLeft, Shield } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, RefreshCw, ArrowLeft } from 'lucide-react';
 
 interface SellerConsoleLoginPageProps {
   onLoginSuccess: (session: any) => void;
@@ -114,7 +114,7 @@ export const SellerConsoleLoginPage: React.FC<SellerConsoleLoginPageProps> = ({
             <span>Super Admin Console</span>
           </h1>
           <p className="text-xs text-slate-400 font-medium mt-1 leading-relaxed">
-            Enterprise Multi-Tenant Infrastructure &amp; Security Portal
+            Multi-Tenant Infrastructure &amp; Security Portal
           </p>
         </div>
 
@@ -124,6 +124,7 @@ export const SellerConsoleLoginPage: React.FC<SellerConsoleLoginPageProps> = ({
             backgroundColor: '#ffffff',
             borderColor: '#edf0f4',
             color: '#0f172a',
+            colorScheme: 'light',
             borderRadius: '20px'
           }}
           className="w-full p-8 border shadow-2xl"
@@ -132,10 +133,6 @@ export const SellerConsoleLoginPage: React.FC<SellerConsoleLoginPageProps> = ({
             <div>
               <h2 className="text-sm font-black text-slate-900 tracking-tight">Console Access</h2>
               <p className="text-[11px] text-slate-500 font-medium mt-0.5">Authorized administrators only</p>
-            </div>
-            <div className="flex items-center gap-1 text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded-md">
-              <Shield size={11} className="text-slate-900" />
-              <span>SUPER ADMIN</span>
             </div>
           </div>
 
@@ -151,15 +148,18 @@ export const SellerConsoleLoginPage: React.FC<SellerConsoleLoginPageProps> = ({
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="superadmin@geosphere.my"
+                placeholder="admin@geosphere.my"
                 style={{
                   backgroundColor: '#f8fafc',
                   borderColor: '#e2e8f0',
                   color: '#0f172a',
+                  WebkitTextFillColor: '#0f172a',
+                  caretColor: '#0f172a',
+                  colorScheme: 'light',
                   boxShadow: 'none',
                   borderRadius: '10px'
                 }}
-                className="w-full px-3.5 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all placeholder-slate-400 font-medium"
+                className="w-full px-3.5 py-2.5 text-xs text-slate-900 border focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all placeholder-slate-400 font-medium"
               />
             </div>
 
@@ -190,10 +190,13 @@ export const SellerConsoleLoginPage: React.FC<SellerConsoleLoginPageProps> = ({
                     backgroundColor: '#f8fafc',
                     borderColor: '#e2e8f0',
                     color: '#0f172a',
+                    WebkitTextFillColor: '#0f172a',
+                    caretColor: '#0f172a',
+                    colorScheme: 'light',
                     boxShadow: 'none',
                     borderRadius: '10px'
                   }}
-                  className="w-full pl-3.5 pr-10 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all placeholder-slate-400 font-medium"
+                  className="w-full pl-3.5 pr-10 py-2.5 text-xs text-slate-900 border focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all placeholder-slate-400 font-medium"
                 />
                 <button
                   type="button"
@@ -240,27 +243,20 @@ export const SellerConsoleLoginPage: React.FC<SellerConsoleLoginPageProps> = ({
             </button>
           </form>
 
-          {/* Security Assurance */}
-          <div className="mt-6 pt-4 border-t border-slate-100 text-center">
-            <p className="text-[10px] text-slate-400 font-medium">
-              Enterprise 256-bit Row-Level Security · Dedicated Session Token
-            </p>
-          </div>
+          {/* Return to GeoSphere 360 */}
+          {onBackToApp && (
+            <div className="mt-6 pt-4 border-t border-slate-100 text-center">
+              <button
+                type="button"
+                onClick={onBackToApp}
+                className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900 font-semibold transition-colors cursor-pointer group"
+              >
+                <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-0.5" />
+                <span>Return to GeoSphere 360</span>
+              </button>
+            </div>
+          )}
         </div>
-
-        {/* Bottom Navigation */}
-        {onBackToApp && (
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={onBackToApp}
-              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors cursor-pointer group"
-            >
-              <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-0.5" />
-              <span>Return to Client Application</span>
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -194,22 +194,25 @@ is refused. It runs as a blocking CI job.
 
 | Risk | Detail |
 | --- | --- |
-| **Seat and quota are not enforced** | `allowedUserSeats` / `storageQuotaGb` are stored and displayed. Nothing counts usage or blocks a 16th seat. |
+| **Seat and quota are not enforced** | `allowedUserSeats` / `storageQuotaGb` are stored and displayed, and the Seller Console counts `active` / `invited` / `suspended` separately so a breach is detectable. Nothing blocks a 16th seat. |
 | **No tenant export or offboarding deletion** | Nothing can export or delete a company's data. A Track 1 contract needs both for PDPA. |
 | **`project_settings` is a single global row** | The storage provider, base URL and worker settings are install-wide, not per-company. Switching provider for one tenant changes it for all of them. |
 | **Legacy flat-path storage objects** | `0041` made un-namespaced keys reachable only by a platform administrator, so an existing install's panoramas will not render for a tenant until they are re-keyed. See §5. |
-| **The NAS worker is single-tenant** | `worker/app.py:53-94` has one `NAS_BASE_PATH` and one shared token; `functions/api/nas-image.js:30` attaches the install-wide token to every valid user. Two companies sharing one database would browse each other's raw imagery. This is the largest remaining Track 1 gap and it is **not** addressed by `0036`–`0042`. |
+| **The NAS worker is per-organisation — RESOLVED in `0043`** | ~~`worker/app.py:53-94` has one `NAS_BASE_PATH` and one shared token~~ **Fixed.** Migration `0043` added `organization_workers`, holding a per-company worker endpoint and bearer token, and `functions/_lib/tenantWorker.js` resolves the credential from the caller's *verified membership* rather than a request parameter. One worker row per company is required; the install-wide `NAS_WORKER_TOKEN` fallback applies only while `organization_workers` is entirely empty. See `02-Operations.md` §2.2 |
 
-> ### ⚠️ Do not onboard a second company until the NAS worker is per-organisation.
+> ### ⚠️ What is still required before onboarding a second company
 >
-> Everything above is enforced. The worker is not: with one shared
-> `NAS_BASE_PATH` and one shared token, a signed-in user of any company can
-> browse the raw survey filesystem of any other. That is a larger exposure than
-> the database leaks `0036`–`0042` closed, and it has no compensating policy.
+> The database boundary is enforced and gated. The worker boundary is now
+> enforced too, by `0043`.
 >
-> Until it is fixed, a Track 1 tenant may be provisioned **only** where their
-> field hardware is out of scope — that is, the WebGIS, data management, road
-> analysis and reporting surfaces listed in §3, with the station board left out.
+> **One action is still required per company:** register its worker row in
+> `organization_workers` (`organization_id`, `nas_api_url`, `worker_token`) —
+> see `02-Operations.md` §2.2. Until a company has its own row, the edge
+> **refuses** to route it (`TenantWorkerError`, HTTP 409) rather than falling
+> back to the install-wide worker, which is the safe failure.
+>
+> Seat quotas, storage quotas, `dedicated_external` routing and tenant export
+> remain unenforced. They are listed above and in `03-Reference.md` §1.0.
 
 ### 4.3 Track 2 — why separate projects remain the default
 

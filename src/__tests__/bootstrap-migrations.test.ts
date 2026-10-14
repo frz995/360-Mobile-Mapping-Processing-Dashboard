@@ -47,8 +47,9 @@ describe('migration files load and parse', () => {
     // 0039 production policies, 0040 ledgers/shares/RPC re-gating,
     // 0041 storage policies, 0042 inventory attribution, 0043 organization
     // workers. v34 adds 0044 console access and membership lifecycle (42).
+    // v35 adds 0045 console storage metrics, parent DB stats and licensing (44 bundled).
     // The count below is the bundled total after 0011 is excluded.
-    expect(migrations).toHaveLength(43)
+    expect(migrations).toHaveLength(44)
     expect(migrations.some((m) => m.name.startsWith('0011'))).toBe(false)
   })
 
@@ -107,6 +108,15 @@ describe('migration files load and parse', () => {
     // The activation gate is the whole security property of the invite flow,
     // so its absence must fail here rather than at runtime.
     expect(sql).toContain('auth_email_confirmed_at')
+  })
+
+  it('includes the console storage metrics and parent DB stats from 0045', () => {
+    const m0045 = migrations.find((x) => x.name.startsWith('0045'))
+    expect(m0045).toBeDefined()
+    const sql = migrationSql('0045')
+    expect(sql).toContain('FUNCTION public.console_parent_database_stats()')
+    expect(sql).toContain('FUNCTION public.console_company_storage_breakdown()')
+    expect(sql).toContain('pg_database_size')
   })
 
   it('loads them in filename order', () => {

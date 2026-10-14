@@ -18,12 +18,14 @@ describe('SellerConsoleLoginPage', () => {
   });
 
   it('renders the clean black & white login page with brand header', () => {
-    render(<SellerConsoleLoginPage onLoginSuccess={vi.fn()} />);
+    const onBackToApp = vi.fn();
+    render(<SellerConsoleLoginPage onLoginSuccess={vi.fn()} onBackToApp={onBackToApp} />);
 
     expect(screen.getByText('Super Admin Console')).toBeInTheDocument();
-    expect(screen.getByText(/Enterprise Multi-Tenant Infrastructure/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('superadmin@geosphere.my')).toBeInTheDocument();
+    expect(screen.getByText(/Multi-Tenant Infrastructure/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('admin@geosphere.my')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Sign In to Console/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Return to GeoSphere 360/i })).toBeInTheDocument();
   });
 
   it('submits credentials and invokes onLoginSuccess on valid login', async () => {
@@ -36,7 +38,7 @@ describe('SellerConsoleLoginPage', () => {
     const onLoginSuccess = vi.fn();
     render(<SellerConsoleLoginPage onLoginSuccess={onLoginSuccess} />);
 
-    fireEvent.change(screen.getByPlaceholderText('superadmin@geosphere.my'), {
+    fireEvent.change(screen.getByPlaceholderText('admin@geosphere.my'), {
       target: { value: 'admin@geosphere.my' }
     });
     fireEvent.change(screen.getByPlaceholderText('••••••••••••'), {
@@ -62,7 +64,7 @@ describe('SellerConsoleLoginPage', () => {
 
     render(<SellerConsoleLoginPage onLoginSuccess={vi.fn()} />);
 
-    fireEvent.change(screen.getByPlaceholderText('superadmin@geosphere.my'), {
+    fireEvent.change(screen.getByPlaceholderText('admin@geosphere.my'), {
       target: { value: 'wrong@geosphere.my' }
     });
     fireEvent.change(screen.getByPlaceholderText('••••••••••••'), {

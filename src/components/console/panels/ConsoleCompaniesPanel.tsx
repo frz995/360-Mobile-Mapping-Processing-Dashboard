@@ -18,6 +18,7 @@ import { STATUS_LABEL, STATUS_TONE } from '../useConsoleDirectory';
 import { ConfirmDialog, PanelCard, PanelHeader, ReadFailure, SecondaryButton } from './consoleUi';
 import OrganizationFormModal from './OrganizationFormModal';
 import { wantsConsoleCreate } from '../../../utils/consoleRouter';
+import { getLicenseExpiryStatus } from './ConsoleDashboardPanel';
 import { toast } from '../../common/toast';
 
 interface Props {
@@ -183,6 +184,7 @@ export const ConsoleCompaniesPanel: React.FC<Props> = ({
                 <th className="px-6 py-3.5">Company</th>
                 <th className="px-6 py-3.5">Client Code</th>
                 <th className="px-6 py-3.5">Database Routing</th>
+                <th className="px-6 py-3.5">License &amp; Expiry</th>
                 <th className="px-6 py-3.5">Seats &amp; Storage</th>
                 <th className="px-6 py-3.5">Status</th>
                 <th className="px-6 py-3.5 text-right">Actions</th>
@@ -190,21 +192,36 @@ export const ConsoleCompaniesPanel: React.FC<Props> = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
-                    <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-slate-600" />
-                    <span>Querying live Supabase organizations…</span>
-                  </td>
-                </tr>
+                <>
+                  {[1, 2, 3, 4].map((i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
+                          <div className="space-y-1.5 flex-1">
+                            <div className="h-3.5 w-32 bg-slate-200 rounded" />
+                            <div className="h-2.5 w-40 bg-slate-100 rounded" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4"><div className="h-3 w-16 bg-slate-200 rounded" /></td>
+                      <td className="px-6 py-4"><div className="h-3.5 w-24 bg-slate-200 rounded" /></td>
+                      <td className="px-6 py-4"><div className="h-5 w-20 bg-slate-200 rounded-full" /></td>
+                      <td className="px-6 py-4"><div className="h-3 w-12 bg-slate-200 rounded" /></td>
+                      <td className="px-6 py-4"><div className="h-5 w-16 bg-slate-200 rounded-full" /></td>
+                      <td className="px-6 py-4 text-right"><div className="h-7 w-14 bg-slate-200 rounded-xl ml-auto" /></td>
+                    </tr>
+                  ))}
+                </>
               ) : directoryError ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <ReadFailure reason={directoryError} subject="company list" onRetry={() => void reload()} />
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                     <Building2 size={24} className="mx-auto mb-2 text-slate-400" />
                     <div className="font-bold text-sm text-slate-800">
                       {search || statusFilter !== 'ALL' || dbTypeFilter !== 'ALL'
@@ -240,14 +257,63 @@ export const ConsoleCompaniesPanel: React.FC<Props> = ({
                     <td className="px-6 py-4 font-mono font-semibold">{org.clientCode || '—'}</td>
                     <td className="px-6 py-4">
                       {org.databaseType === 'dedicated_external' ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-700">
-                          <Server size={13} /> Dedicated External
-                        </span>
+                        <div className="space-y-1">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                            <Server size={13} className="text-slate-600" /> Dedicated External
+                          </span>
+                          {org.settings?.storage?.provider && org.settings.storage.provider !== 'supabase' ? (
+                            <div>
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-800 border border-slate-200">
+                                {org.settings.storage.provider.replace('_', ' ')} BYOS
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-sky-700">
-                          <Database size={13} /> Cloud Shared RLS
-                        </span>
+                        <div className="space-y-1">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                            <Database size={13} className="text-slate-600" /> Cloud Shared RLS
+                          </span>
+                          {org.settings?.storage?.provider && org.settings.storage.provider !== 'supabase' ? (
+                            <div>
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-800 border border-slate-200">
+                                {org.settings.storage.provider.replace('_', ' ')} BYOS
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
                       )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="space-y-0.5">
+                        <div className="font-semibold text-xs text-slate-800 capitalize">
+                          {(org.licenseType || 'cloud_saas').replace('_', ' ')}
+                        </div>
+                        <div className="text-[11px]">
+                          {org.licenseExpiresAt ? (
+                            (() => {
+                              const exp = getLicenseExpiryStatus(org.licenseExpiresAt);
+                              return (
+                                <span
+                                  className={
+                                    exp.tone === 'active'
+                                      ? 'text-emerald-700 font-semibold'
+                                      : exp.tone === 'warning'
+                                      ? 'text-amber-700 font-semibold'
+                                      : exp.tone === 'expired'
+                                      ? 'text-rose-700 font-semibold'
+                                      : 'text-slate-500'
+                                  }
+                                >
+                                  {exp.label}
+                                </span>
+                              );
+                            })()
+                          ) : (
+                            <span className="text-slate-400 font-medium">Perpetual</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-slate-600">
                       {/* `?? 0` rather than `|| 0` — same reason as the form. */}

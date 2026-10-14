@@ -32,7 +32,7 @@ export const AwaitingAssignment: React.FC<Props> = ({ email, onSignOut, onRetry 
   <div className="min-h-screen bg-app flex items-center justify-center p-6">
     <div className="w-full max-w-lg">
       <div className="bg-card border border-subtle rounded-2xl shadow-md p-7">
-        <div className="w-11 h-11 rounded-xl bg-inner border border-subtle text-sky-400 flex items-center justify-center">
+        <div className="w-11 h-11 rounded-xl bg-inner border border-subtle text-text-base flex items-center justify-center">
           <MailCheck size={22} />
         </div>
 

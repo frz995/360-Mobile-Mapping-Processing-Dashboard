@@ -101,6 +101,18 @@ select:-webkit-autofill:focus {
   transition: background-color 9999s ease-in-out 0s;
 }
 
+/* Scoped console login autofill override to ensure black text and light background */
+#seller-console-login-root input,
+#seller-console-login-root input:-webkit-autofill,
+#seller-console-login-root input:-webkit-autofill:hover,
+#seller-console-login-root input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #0f172a !important;
+  color: #0f172a !important;
+  caret-color: #0f172a !important;
+  -webkit-box-shadow: 0 0 0 1000px #f8fafc inset !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
 /* Precision Studio Range Slider */
 .studio-slider {
   -webkit-appearance: none;
