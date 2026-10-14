@@ -31,6 +31,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { neutraliseEventTriggers } from './db-gate-readiness.mjs';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -169,31 +170,24 @@ try {
   //    pg_isready reports ready before the image's init script has finished
   //    creating its triggers, so this retries rather than assuming.
   if (!dbUrl) {
-    // `armed` is the live count of enabled triggers; the loop finishes when it
-    // reaches zero. Counting successful ALTERs instead would read as a failure
-    // on the success path, because the loop exits before the last increment.
-    let armed = -1;
-    for (let attempt = 0; attempt < 30 && armed !== 0; attempt++) {
-      const res = run('docker', [
-        'exec', CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres',
-        '-tAq', '-c',
-        "SELECT count(*) FROM pg_event_trigger WHERE evtenabled <> 'D';"
-      ]);
-      armed = Number((res.stdout || '').trim() || -1);
-      if (res.status === 0 && armed === 0) break;
-      run('docker', [
-        'exec', CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres',
-        '-tAq', '-c',
-        "DO $$ DECLARE r record; BEGIN FOR r IN SELECT evtname FROM pg_event_trigger WHERE evtenabled <> 'D' LOOP EXECUTE 'ALTER EVENT TRIGGER ' || quote_ident(r.evtname) || ' DISABLE'; END LOOP; END $$;"
-      ]);
-      if (armed > 0) spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},1500)']);
-    }
+    // The loop lives in `db-gate-readiness.mjs` so it can be tested without
+    // Docker; its rationale, including the retry bug this replaced, is there.
+    const { armed, lastReadError } = neutraliseEventTriggers(
+      (sql) =>
+        run('docker', [
+          'exec', CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-tAq', '-c', sql
+        ]),
+      { sleep: () => spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},1500)']) }
+    );
 
     if (armed !== 0) {
-      fail(
-        `could not neutralise the base image event triggers (${armed} still armed); ` +
-          'the bundle would abort on a broken service dependency'
-      );
+      // Warn and proceed rather than aborting. This check is a heuristic about
+      // container readiness, not a property of the schema under test, and a
+      // hard stop on it turns a slow machine into a red build. If the triggers
+      // do matter, the bundle apply immediately below fails loudly with the
+      // actual Postgres error, which is the diagnostic worth having.
+      console.warn(`    warning: could not neutralise every base-image event trigger (armed=${armed}${lastReadError ? `, last read: ${lastReadError}` : ''}).`);
+      console.warn('    proceeding — the bundle apply below will fail loudly if those triggers are the cause.');
     }
   }
 
