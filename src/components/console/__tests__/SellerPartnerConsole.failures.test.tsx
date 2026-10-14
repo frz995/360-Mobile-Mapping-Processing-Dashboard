@@ -45,6 +45,34 @@ vi.mock('../../../services/consoleAccess', async () => {
   };
 });
 
+vi.mock('../../../services/consoleStorage', () => ({
+  fetchCompanyStorageBreakdown: vi.fn().mockResolvedValue({
+    breakdown: [],
+    error: null
+  }),
+  fetchParentDatabaseStats: vi.fn().mockResolvedValue({
+    stats: {
+      databaseSizeBytes: 25165824,
+      databaseSizePretty: '24 MB',
+      storageBytes: 15728640,
+      storageBytesPretty: '15 MB',
+      storageFiles: 120,
+      totalAllocatedStorageGb: 500,
+      totalAllocatedSeats: 15,
+      totalCompanies: 1,
+      activeCompanies: 1,
+      postgresVersion: 'PostgreSQL 17.6',
+      postgisVersion: '3.4.2',
+      planTier: 'free',
+      planDbLimitBytes: 524288000,
+      planStorageLimitBytes: 1073741824
+    },
+    error: null
+  }),
+  formatBytes: (bytes: number | null | undefined) => (bytes != null ? `${bytes} B` : '—'),
+  formatPercent: (val: number | null | undefined) => (val != null ? `${val}%` : '—')
+}));
+
 vi.mock('../../common/toast', () => ({
   toast: {
     success: (...args: unknown[]) => toastSuccess(...args),
