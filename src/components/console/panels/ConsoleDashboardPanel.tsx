@@ -17,8 +17,7 @@ import {
   Building2,
   Users,
   HardDrive,
-  Server,
-  RefreshCw
+  Server
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -37,7 +36,7 @@ import {
   formatPercent,
   type CompanyStorageBreakdown
 } from '../../../services/consoleStorage';
-import { KpiCard, PanelCard, PanelHeader, ReadFailure, SecondaryButton } from './consoleUi';
+import { KpiCard, PanelCard, PanelHeader, ReadFailure } from './consoleUi';
 
 interface Props {
   directory: ConsoleDirectory;
@@ -90,17 +89,43 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
   const withContact = organizations.filter((o) => Boolean(o.settings?.contactEmail));
 
   // Prepare chart data (excluding system unassigned row from main company bar comparison)
-  const chartData = breakdown
-    .filter((b) => b.organizationId !== '00000000-0000-0000-0000-000000000000')
-    .map((b) => ({
-      name: b.organizationName.length > 15 ? `${b.organizationName.slice(0, 14)}…` : b.organizationName,
+  const activeBreakdown = breakdown.filter((b) => b.organizationId !== '00000000-0000-0000-0000-000000000000');
+  const maxStorageGb = Math.max(
+    ...activeBreakdown.map((b) => Math.max(b.consumedStorageGb, b.allocatedStorageGb || 0)),
+    0
+  );
+  const useMbUnit = maxStorageGb > 0 && maxStorageGb < 1.0;
+  const storageUnit = useMbUnit ? 'MB' : 'GB';
+
+  const chartData = activeBreakdown.map((b) => {
+    const rawAllocated = b.allocatedStorageGb;
+    const consumedVal = useMbUnit
+      ? Number((b.consumedStorageBytes / (1024 * 1024)).toFixed(1))
+      : Number(b.consumedStorageGb.toFixed(3));
+    const allocatedVal =
+      rawAllocated !== null && rawAllocated > 0
+        ? useMbUnit
+          ? Number((rawAllocated * 1024).toFixed(0))
+          : rawAllocated
+        : null;
+
+    // Smart label: show up to 26 chars for small tenant sets so names like "GeoSphere (bootstrap)" are not clipped
+    const nameLimit = activeBreakdown.length <= 3 ? 26 : 16;
+    const displayName =
+      b.organizationName.length > nameLimit ? `${b.organizationName.slice(0, nameLimit - 2)}…` : b.organizationName;
+
+    return {
+      name: displayName,
       fullName: b.organizationName,
       clientCode: b.clientCode,
+      consumedVal,
+      allocatedVal,
       consumedGb: Number(b.consumedStorageGb.toFixed(3)),
-      allocatedGb: b.allocatedStorageGb || 0,
+      allocatedGb: rawAllocated,
       consumedBytes: b.consumedStorageBytes,
       filesCount: b.consumedFilesCount
-    }));
+    };
+  });
 
   const totalConsumedBytes = breakdown.reduce((acc, b) => acc + b.consumedStorageBytes, 0);
 
@@ -111,18 +136,6 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
         <PanelHeader
           title="Portfolio"
           subtitle="Figures read live from the organization directory and storage catalog on this page load."
-          actions={
-            <SecondaryButton
-              onClick={() => {
-                void reload();
-                void loadStorage();
-              }}
-              disabled={directoryLoading || isStorageLoading}
-            >
-              <RefreshCw size={14} className={directoryLoading || isStorageLoading ? 'animate-spin' : ''} />
-              {directoryLoading || isStorageLoading ? 'Refreshing…' : 'Refresh All'}
-            </SecondaryButton>
-          }
         />
 
         {directoryError ? (
@@ -212,7 +225,8 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={chartData}
-                  margin={{ top: 15, right: 20, left: 0, bottom: 25 }}
+                  margin={{ top: 15, right: 20, left: 10, bottom: 25 }}
+                  barSize={chartData.length > 8 ? 20 : 32}
                   barGap={6}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -220,32 +234,49 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
                     dataKey="name"
                     tick={{ fontSize: 11, fill: '#64748b' }}
                     interval={0}
-                    angle={-15}
-                    textAnchor="end"
+                    angle={chartData.length > 3 ? -15 : 0}
+                    textAnchor={chartData.length > 3 ? 'end' : 'middle'}
                   />
                   <YAxis
                     tick={{ fontSize: 11, fill: '#64748b' }}
-                    unit=" GB"
+                    unit={` ${storageUnit}`}
                     allowDecimals={true}
                   />
                   <Tooltip
+                    cursor={false}
                     content={({ active, payload }) => {
                       if (!active || !payload || !payload.length) return null;
                       const d = payload[0].payload as {
                         fullName: string;
                         clientCode: string;
                         consumedBytes: number;
-                        allocatedGb: number;
+                        allocatedGb: number | null;
                         filesCount: number;
                       };
                       return (
-                        <div className="bg-slate-900 text-white p-3 rounded-xl shadow-lg text-xs space-y-1">
-                          <div className="font-bold border-b border-slate-700 pb-1">{d.fullName} ({d.clientCode})</div>
-                          <div className="text-slate-200">
-                            Consumed: <strong className="text-white">{formatBytes(d.consumedBytes)}</strong> ({d.filesCount.toLocaleString()} files)
+                        <div className="bg-slate-900 text-white p-3 rounded-xl shadow-xl text-xs space-y-1.5 select-none pointer-events-none border border-slate-800">
+                          <div className="font-bold border-b border-slate-700/80 pb-1.5 text-slate-100 flex items-center justify-between gap-3">
+                            <span>{d.fullName}</span>
+                            {d.clientCode && d.clientCode !== '—' && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                                {d.clientCode}
+                              </span>
+                            )}
                           </div>
-                          <div className="text-slate-300">
-                            Allocated Quota: <strong className="text-white">{d.allocatedGb} GB</strong>
+                          <div className="text-slate-300 flex items-center justify-between gap-4 pt-0.5">
+                            <span className="text-slate-400">Consumed:</span>
+                            <span className="font-semibold text-white">
+                              {formatBytes(d.consumedBytes)}{' '}
+                              <span className="text-slate-400 font-normal">({d.filesCount.toLocaleString()} files)</span>
+                            </span>
+                          </div>
+                          <div className="text-slate-300 flex items-center justify-between gap-4">
+                            <span className="text-slate-400">Allocated Quota:</span>
+                            <span className="font-semibold text-white">
+                              {typeof d.allocatedGb === 'number' && d.allocatedGb > 0
+                                ? `${d.allocatedGb} GB`
+                                : 'Uncapped / Not set'}
+                            </span>
                           </div>
                         </div>
                       );
@@ -257,18 +288,16 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
                     wrapperStyle={{ paddingBottom: 15, fontSize: 12 }}
                   />
                   <Bar
-                    dataKey="consumedGb"
-                    name="Consumed Storage (GB)"
+                    dataKey="consumedVal"
+                    name={`Consumed Storage (${storageUnit})`}
                     fill="#0f172a"
                     radius={[4, 4, 0, 0]}
-                    maxBarSize={45}
                   />
                   <Bar
-                    dataKey="allocatedGb"
-                    name="Allocated Quota (GB)"
-                    fill="#cbd5e1"
+                    dataKey="allocatedVal"
+                    name={`Allocated Quota (${storageUnit})`}
+                    fill="#94a3b8"
                     radius={[4, 4, 0, 0]}
-                    maxBarSize={45}
                   />
                 </BarChart>
               </ResponsiveContainer>

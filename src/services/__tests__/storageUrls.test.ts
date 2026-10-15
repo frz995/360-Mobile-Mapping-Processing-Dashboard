@@ -146,3 +146,58 @@ describe('sanitizeBucketName & private bucket URL resolution', () => {
     expect(configUrl).toBe('http://192.168.1.50:8000/storage/v1/object/public/MMS_PIC/tiles/N93E70/N93E70-0001/config.json');
   });
 });
+
+describe('tenantStorage BYOS overrides', () => {
+  it('overrides default R2 domain when tenantStorage.cdnUrl is configured', () => {
+    const settings: StorageResolveSettings = {
+      ...defaultSettings,
+      tenantStorage: {
+        provider: 'cloudflare_r2',
+        cdnUrl: 'https://tenant-r2.customcorp.com',
+        bucketName: 'tenant-bucket'
+      }
+    };
+    const url = resolvePanoramaUrl('N93E70-0001.jpg', settings);
+    expect(url).toBe('https://tenant-r2.customcorp.com/N93E70-0001.jpg');
+
+    const configUrl = resolvePanoramaConfigUrl('N93E70-0001.jpg', settings);
+    expect(configUrl).toBe('https://tenant-r2.customcorp.com/tiles/N93E70/N93E70-0001/config.json');
+  });
+
+  it('overrides default Supabase bucket with tenantStorage.bucketName', () => {
+    const settings: StorageResolveSettings = {
+      storageProvider: 'supabase',
+      supabaseUrl: 'https://shared.supabase.co',
+      supabaseBucket: 'default_bucket',
+      tenantStorage: {
+        provider: 'supabase',
+        bucketName: 'org_specific_bucket'
+      }
+    };
+    const url = resolvePanoramaUrl('N93E70-0001.jpg', settings);
+    expect(url).toBe('https://shared.supabase.co/storage/v1/object/public/org_specific_bucket/N93E70-0001.jpg');
+
+    const configUrl = resolvePanoramaConfigUrl('N93E70-0001.jpg', settings);
+    expect(configUrl).toBe('https://shared.supabase.co/storage/v1/object/public/org_specific_bucket/tiles/N93E70/N93E70-0001/config.json');
+  });
+
+  it('respects tenantStorage.isPrivateBucket flag', () => {
+    const settings: StorageResolveSettings = {
+      storageProvider: 'supabase',
+      supabaseUrl: 'https://shared.supabase.co',
+      supabaseBucket: 'default_bucket',
+      tenantStorage: {
+        provider: 'supabase',
+        bucketName: 'private_tenant_bucket',
+        isPrivateBucket: true
+      }
+    };
+    const url = resolvePanoramaUrl('N93E70-0001.jpg', settings);
+    expect(url).toBe('https://shared.supabase.co/storage/v1/object/authenticated/private_tenant_bucket/N93E70-0001.jpg');
+  });
+
+  it('falls back to default settings when tenantStorage is undefined', () => {
+    const url = resolvePanoramaUrl('N93E70-0001.jpg', defaultSettings);
+    expect(url).toBe('https://pub-23569d9628d547acb97ec86212ecd51a.r2.dev/N93E70-0001.jpg');
+  });
+});

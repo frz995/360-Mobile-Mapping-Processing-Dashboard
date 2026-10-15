@@ -87,6 +87,18 @@ export interface StorageResolveSettings {
    * moved, so nothing becomes unreachable by turning this on.
    */
   tenantOrganizationId?: string;
+  /**
+   * Dynamic BYOS (Bring Your Own Storage) configuration for the active tenant.
+   * Overrides platform defaults when a company configures external Cloudflare R2,
+   * S3, Wasabi or custom CDN hosting in the Seller Console.
+   */
+  tenantStorage?: {
+    provider?: string;
+    bucketName?: string;
+    cdnUrl?: string;
+    region?: string;
+    isPrivateBucket?: boolean;
+  } | null;
 }
 
 export function formatCloudflareUrl(domainOrUrl: string): string {
@@ -177,8 +189,13 @@ export function resolvePanoramaUrl(
     return cachedSigned;
   }
 
-  const provider: StorageProviderType =
-    (settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'cloudflare_r2') as StorageProviderType;
+  const tenantStorage = settings?.tenantStorage;
+  const provider: StorageProviderType = (
+    tenantStorage?.provider ||
+    settings?.storageProvider ||
+    import.meta.env.VITE_STORAGE_PROVIDER ||
+    'cloudflare_r2'
+  ) as StorageProviderType;
   const isMultiRes = settings?.imageStorageStrategy !== 'single_equirectangular';
   const nameWithoutExt = cleanFn.replace(/\.[^/.]+$/, '');
 
@@ -194,6 +211,7 @@ export function resolvePanoramaUrl(
     case 'cloudflare_r2':
     case 'custom_cdn': {
       const rawDomain =
+        tenantStorage?.cdnUrl ||
         settings?.r2Domain ||
         settings?.r2PublicUrl ||
         settings?.r2PublicDomain ||
@@ -212,7 +230,7 @@ export function resolvePanoramaUrl(
             ? rawSbUrl
             : defaultSupabaseUrl
         ).replace(/\/+$/, '');
-        const bucket = sanitizeBucketName(settings?.supabaseBucket);
+        const bucket = sanitizeBucketName(tenantStorage?.bucketName || settings?.supabaseBucket);
         return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
       }
 
@@ -273,15 +291,15 @@ export function resolvePanoramaUrl(
     }
 
     case 'aws_s3': {
-      const bucket = settings?.s3Bucket || import.meta.env.VITE_S3_BUCKET || '';
-      const region = settings?.s3Region || import.meta.env.VITE_S3_REGION || REGION_DEFAULTS.s3Region;
+      const bucket = tenantStorage?.bucketName || settings?.s3Bucket || import.meta.env.VITE_S3_BUCKET || '';
+      const region = tenantStorage?.region || settings?.s3Region || import.meta.env.VITE_S3_REGION || REGION_DEFAULTS.s3Region;
       const baseUrl = `https://${bucket}.s3.${region}.amazonaws.com`;
       if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
       return `${baseUrl}/${cleanFn}`;
     }
 
     case 'gcs': {
-      const bucket = settings?.gcsBucket || import.meta.env.VITE_GCS_BUCKET || '';
+      const bucket = tenantStorage?.bucketName || settings?.gcsBucket || import.meta.env.VITE_GCS_BUCKET || '';
       const baseUrl = `https://storage.googleapis.com/${bucket}`;
       if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
       return `${baseUrl}/${cleanFn}`;
@@ -289,15 +307,15 @@ export function resolvePanoramaUrl(
 
     case 'azure_blob': {
       const account = settings?.azureAccount || import.meta.env.VITE_AZURE_ACCOUNT || '';
-      const container = settings?.azureContainer || import.meta.env.VITE_AZURE_CONTAINER || '';
+      const container = tenantStorage?.bucketName || settings?.azureContainer || import.meta.env.VITE_AZURE_CONTAINER || '';
       const baseUrl = `https://${account}.blob.core.windows.net/${container}`;
       if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
       return `${baseUrl}/${cleanFn}`;
     }
 
     case 'wasabi': {
-      const bucket = settings?.wasabiBucket || import.meta.env.VITE_WASABI_BUCKET || '';
-      const region = settings?.wasabiRegion || import.meta.env.VITE_WASABI_REGION || REGION_DEFAULTS.wasabiRegion;
+      const bucket = tenantStorage?.bucketName || settings?.wasabiBucket || import.meta.env.VITE_WASABI_BUCKET || '';
+      const region = tenantStorage?.region || settings?.wasabiRegion || import.meta.env.VITE_WASABI_REGION || REGION_DEFAULTS.wasabiRegion;
       const baseUrl = `https://s3.${region}.wasabisys.com/${bucket}`;
       if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
       return `${baseUrl}/${cleanFn}`;
@@ -365,8 +383,8 @@ export function resolvePanoramaUrl(
           ? rawSbUrl
           : defaultSupabaseUrl
       ).replace(/\/+$/, '');
-      const bucket = sanitizeBucketName(settings?.supabaseBucket);
-      const isPrivate = Boolean(settings?.isPrivateBucket || settings?.useSignedUrls);
+      const bucket = sanitizeBucketName(tenantStorage?.bucketName || settings?.supabaseBucket);
+      const isPrivate = Boolean(tenantStorage?.isPrivateBucket ?? (settings?.isPrivateBucket || settings?.useSignedUrls));
       const objectEndpoint = isPrivate ? 'authenticated' : 'public';
 
       const pattern = settings?.singleImagePathPattern;
@@ -403,11 +421,12 @@ export function resolvePanoramaConfigUrl(
   if (!filename) return '';
 
   // 1. Resolve base domain dynamically from user settings
-  const provider = (settings?.storageProvider || '').toLowerCase().trim();
+  const tenantStorage = settings?.tenantStorage;
+  const provider = (tenantStorage?.provider || settings?.storageProvider || '').toLowerCase().trim();
   let baseUrl = '';
 
-  if (provider === 'cloudflare_r2' || provider === 'r2') {
-    baseUrl = (settings?.r2Domain || settings?.r2PublicDomain || settings?.cloudStorageBaseUrl || '').trim();
+  if (provider === 'cloudflare_r2' || provider === 'r2' || provider === 'custom_cdn') {
+    baseUrl = (tenantStorage?.cdnUrl || settings?.r2Domain || settings?.r2PublicDomain || settings?.cloudStorageBaseUrl || settings?.customCdnUrl || '').trim();
   } else if (provider === 'supabase' || provider === 'supabase_self_hosted') {
     const rawSbUrl = provider === 'supabase_self_hosted'
       ? (settings?.selfHostedStorageUrl || settings?.supabaseUrl || 'http://localhost:8000').trim()
@@ -419,15 +438,17 @@ export function resolvePanoramaConfigUrl(
         : defaultSupabaseUrl
     ).replace(/\/+$/, '');
     const bucket = sanitizeBucketName(
-      provider === 'supabase_self_hosted'
-        ? (settings?.selfHostedBucket || settings?.supabaseBucket)
-        : settings?.supabaseBucket
+      tenantStorage?.bucketName || (
+        provider === 'supabase_self_hosted'
+          ? (settings?.selfHostedBucket || settings?.supabaseBucket)
+          : settings?.supabaseBucket
+      )
     );
-    const isPrivate = Boolean(settings?.isPrivateBucket || settings?.useSignedUrls);
+    const isPrivate = Boolean(tenantStorage?.isPrivateBucket ?? (settings?.isPrivateBucket || settings?.useSignedUrls));
     const objectEndpoint = isPrivate ? 'authenticated' : 'public';
     baseUrl = sbUrl ? `${sbUrl}/storage/v1/object/${objectEndpoint}/${bucket}` : '';
   } else {
-    baseUrl = (settings?.customCdnUrl || settings?.customStorageUrl || settings?.cloudStorageBaseUrl || '').trim();
+    baseUrl = (tenantStorage?.cdnUrl || settings?.customCdnUrl || settings?.customStorageUrl || settings?.cloudStorageBaseUrl || '').trim();
   }
 
   baseUrl = baseUrl.replace(/\/+$/, '');

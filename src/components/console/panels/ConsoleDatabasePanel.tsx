@@ -19,10 +19,10 @@
  */
 
 import React from 'react';
-import { Database, Server, Activity, Check, ShieldAlert, ExternalLink } from 'lucide-react';
+import { Database, Server, Activity, Check, ShieldAlert, Users } from 'lucide-react';
 import { testDedicatedDatabaseConnection, type Organization } from '../../../services/tenantContext';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
-import { PanelCard, PanelHeader, ReadFailure, SecondaryButton } from './consoleUi';
+import { PanelCard, PanelHeader, ReadFailure } from './consoleUi';
 import { getLicenseExpiryStatus } from './ConsoleDashboardPanel';
 
 type ProbeState =
@@ -34,22 +34,25 @@ interface Props {
   directory: ConsoleDirectory;
   selectedOrgId: string;
   onSelectOrg: (orgId: string) => void;
+  onOpenMembers: (orgId: string) => void;
 }
 
 const CompanyRow: React.FC<{
   org: Organization;
   probe: ProbeState;
   onProbe: () => void;
-  onOpen: () => void;
+  onOpenMembers: () => void;
+  onSelect: () => void;
   isOpen: boolean;
-}> = ({ org, probe, onProbe, onOpen, isOpen }) => {
+}> = ({ org, probe, onProbe, onOpenMembers, onSelect, isOpen }) => {
   const dedicated = org.databaseType === 'dedicated_external';
   const hasCredentials = Boolean(org.databaseConfig?.url && org.databaseConfig?.anonKey);
 
   return (
     <div
-      className={`rounded-2xl border p-5 transition-colors ${
-        isOpen ? 'border-slate-900 bg-slate-50' : 'border-slate-100 bg-white'
+      onClick={onSelect}
+      className={`rounded-2xl border p-5 transition-colors cursor-pointer ${
+        isOpen ? 'border-slate-900 bg-slate-50' : 'border-slate-100 bg-white hover:border-slate-200'
       }`}
     >
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -119,11 +122,12 @@ const CompanyRow: React.FC<{
           )}
           <button
             type="button"
-            onClick={onOpen}
-            className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-[#0c0d0e] hover:bg-black text-white flex items-center gap-1 cursor-pointer"
+            onClick={onOpenMembers}
+            title={`View team members for ${org.name}`}
+            className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-[#0c0d0e] hover:bg-black text-white flex items-center gap-1.5 cursor-pointer transition-colors"
           >
-            Staff
-            <ExternalLink size={10} className="opacity-70" />
+            <Users size={12} />
+            <span>Staff</span>
           </button>
         </div>
       </div>
@@ -142,7 +146,7 @@ const CompanyRow: React.FC<{
   );
 };
 
-export const ConsoleDatabasePanel: React.FC<Props> = ({ directory, selectedOrgId, onSelectOrg }) => {
+export const ConsoleDatabasePanel: React.FC<Props> = ({ directory, selectedOrgId, onSelectOrg, onOpenMembers }) => {
   const { organizations, isLoading, directoryError, reload } = directory;
   const [probes, setProbes] = React.useState<Record<string, ProbeState>>({});
 
@@ -165,7 +169,6 @@ export const ConsoleDatabasePanel: React.FC<Props> = ({ directory, selectedOrgId
         <PanelHeader
           title="Database Routing"
           subtitle="Each company is either isolated on the shared cluster by RLS, or pointed at its own instance."
-          actions={<SecondaryButton onClick={() => void reload()} disabled={isLoading}>Refresh</SecondaryButton>}
         />
 
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -228,7 +231,8 @@ export const ConsoleDatabasePanel: React.FC<Props> = ({ directory, selectedOrgId
                 org={org}
                 probe={probes[org.id] || { kind: 'idle' }}
                 onProbe={() => void runProbe(org)}
-                onOpen={() => onSelectOrg(org.id)}
+                onOpenMembers={() => onOpenMembers(org.id)}
+                onSelect={() => onSelectOrg(org.id)}
                 isOpen={org.id === selectedOrgId}
               />
             ))}

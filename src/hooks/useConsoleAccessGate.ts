@@ -29,6 +29,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchConsoleAccess, activatePendingMemberships, type ConsoleAccess } from '../services/consoleAccess';
+import { fetchUserOrganizations, getActiveOrganizationId, type Organization } from '../services/tenantContext';
 
 export interface TenantSessionState {
   /** null until the question is answered. See the three-state rule above. */
@@ -121,4 +122,152 @@ export function needsAwaitingAssignment({
   if (!access || !access.verified) return false;
   if (access.allowed) return false;
   return access.organizationIds.length === 0;
+}
+
+export interface TenantLicenseState {
+  organization: Organization | null;
+  isExpired: boolean;
+  isSuspended: boolean;
+  licenseExpiresAt: string | null;
+  checking: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+}
+
+/**
+ * Commercial license and tenancy status gate.
+ *
+ * Verifies whether the user's active tenant organization is allowed to access
+ * production GIS dashboards, 360 viewer streaming, and survey operations.
+ *
+ * Expiration rules:
+ * - Cloud SaaS / Trial: Bound by `licenseExpiresAt`. If timestamp < now, expired.
+ * - Perpetual: Does NOT expire by date. Only blocked if status is explicitly
+ *   'expired' or 'suspended'.
+ * - Unverified network reads never falsely lock out a valid paying client.
+ */
+export function useTenantLicenseGate(sessionUserId: string, isGuest: boolean): TenantLicenseState {
+  const [state, setState] = useState<{
+    organization: Organization | null;
+    isExpired: boolean;
+    isSuspended: boolean;
+    licenseExpiresAt: string | null;
+    error: string | null;
+  }>({
+    organization: null,
+    isExpired: false,
+    isSuspended: false,
+    licenseExpiresAt: null,
+    error: null
+  });
+  const [checking, setChecking] = useState(false);
+
+  const evaluateLicense = useCallback(async () => {
+    if (!sessionUserId || isGuest) {
+      setState({
+        organization: null,
+        isExpired: false,
+        isSuspended: false,
+        licenseExpiresAt: null,
+        error: null
+      });
+      return;
+    }
+
+    setChecking(true);
+    try {
+      const result = await fetchUserOrganizations(sessionUserId);
+      if (result.error || result.unverified || result.organizations.length === 0) {
+        setState({
+          organization: null,
+          isExpired: false,
+          isSuspended: false,
+          licenseExpiresAt: null,
+          error: result.error
+        });
+        return;
+      }
+
+      const activeOrgId = getActiveOrganizationId();
+      const currentOrg =
+        (activeOrgId ? result.organizations.find((o) => o.id === activeOrgId) : null) || result.organizations[0];
+
+      if (!currentOrg) {
+        setState({
+          organization: null,
+          isExpired: false,
+          isSuspended: false,
+          licenseExpiresAt: null,
+          error: null
+        });
+        return;
+      }
+
+      const isSuspended = currentOrg.status === 'suspended';
+      let isExpired = currentOrg.status === 'expired';
+
+      if (!isExpired && currentOrg.licenseExpiresAt && currentOrg.licenseType !== 'perpetual') {
+        const expiryTime = new Date(currentOrg.licenseExpiresAt).getTime();
+        if (!Number.isNaN(expiryTime) && expiryTime < Date.now()) {
+          isExpired = true;
+        }
+      }
+
+      setState({
+        organization: currentOrg,
+        isExpired,
+        isSuspended,
+        licenseExpiresAt: currentOrg.licenseExpiresAt,
+        error: null
+      });
+    } catch (err: unknown) {
+      setState((prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : 'Failed to verify license'
+      }));
+    } finally {
+      setChecking(false);
+    }
+  }, [sessionUserId, isGuest]);
+
+  useEffect(() => {
+    void evaluateLicense();
+  }, [evaluateLicense]);
+
+  return {
+    organization: state.organization,
+    isExpired: state.isExpired,
+    isSuspended: state.isSuspended,
+    licenseExpiresAt: state.licenseExpiresAt,
+    checking,
+    error: state.error,
+    refresh: evaluateLicense
+  };
+}
+
+export interface LicenseLockoutInput {
+  licenseState: TenantLicenseState | null;
+  isPlatformAdmin: boolean;
+  isGuest: boolean;
+  hasSession: boolean;
+  /** Excluded routes that must keep working for unassigned/unauthorized users. */
+  route: string;
+}
+
+/**
+ * True when the client organization's license has expired or is suspended,
+ * blocking workspace access. Platform administrators and guests are exempt.
+ */
+export function needsLicenseLockout({
+  licenseState,
+  isPlatformAdmin,
+  isGuest,
+  hasSession,
+  route
+}: LicenseLockoutInput): boolean {
+  if (!hasSession || isGuest) return false;
+  if (ALWAYS_ALLOWED_ROUTES.has(route)) return false;
+  if (isPlatformAdmin) return false;
+  if (!licenseState || !licenseState.organization) return false;
+  return licenseState.isExpired || licenseState.isSuspended;
 }

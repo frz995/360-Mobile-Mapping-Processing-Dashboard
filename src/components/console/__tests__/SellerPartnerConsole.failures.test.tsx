@@ -26,6 +26,7 @@ vi.mock('../../../services/tenantContext', () => ({
   updateOrganization: (...args: unknown[]) => updateOrganization(...args),
   deleteOrganization: (...args: unknown[]) => deleteOrganization(...args),
   setActiveOrganizationId: vi.fn(),
+  setActiveOrganizationStorage: vi.fn(),
   testDedicatedDatabaseConnection: vi.fn().mockResolvedValue({ success: true, message: 'Connected' })
 }));
 

@@ -7,7 +7,7 @@ import {
   type Branding
 } from './src/config/branding'
 
-function devApiPlugin() {
+function devApiPlugin(env: Record<string, string> = {}) {
   return {
     name: 'dev-api-plugin',
     configureServer(server: any) {
@@ -22,6 +22,75 @@ function devApiPlugin() {
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: err.message }));
           }
+          return;
+        }
+
+        if (req.url && req.url.startsWith('/api/console-invite') && req.method === 'POST') {
+          const supabaseUrl = (
+            env.VITE_SUPABASE_URL ||
+            env.SUPABASE_URL ||
+            'http://localhost:8000'
+          ).trim().replace(/\/+$/, '');
+
+          const supabaseAnonKey = (
+            env.VITE_SUPABASE_ANON_KEY ||
+            env.SUPABASE_ANON_KEY ||
+            ''
+          ).trim();
+
+          const supabaseServiceKey = (
+            env.SUPABASE_SERVICE_ROLE_KEY ||
+            env.SERVICE_ROLE_KEY ||
+            ''
+          ).trim();
+
+          if (!supabaseServiceKey) {
+            res.statusCode = 503;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                error:
+                  'SUPABASE_SERVICE_ROLE_KEY is missing in .env. To invite members in local development, add SUPABASE_SERVICE_ROLE_KEY to your .env file.'
+              })
+            );
+            return;
+          }
+
+          const chunks: any[] = [];
+          req.on('data', (chunk: any) => chunks.push(chunk));
+          req.on('end', async () => {
+            try {
+              const globalAny = globalThis as any;
+              const bodyStr = globalAny.Buffer.concat(chunks).toString('utf-8');
+              const fullUrl = `http://${req.headers.host || 'localhost'}${req.url}`;
+              const standardReq = new globalAny.Request(fullUrl, {
+                method: 'POST',
+                headers: req.headers,
+                body: bodyStr || undefined
+              });
+
+              const pagesEnv = {
+                SUPABASE_URL: supabaseUrl,
+                SUPABASE_ANON_KEY: supabaseAnonKey,
+                SUPABASE_SERVICE_ROLE_KEY: supabaseServiceKey
+              };
+
+              // @ts-ignore
+              const { onRequestPost } = await import('./functions/api/console-invite.js');
+              const response = await onRequestPost({ request: standardReq, env: pagesEnv });
+
+              res.statusCode = response.status;
+              response.headers.forEach((val: string, key: string) => {
+                res.setHeader(key, val);
+              });
+              const text = await response.text();
+              res.end(text);
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message || 'Error processing invite in local dev' }));
+            }
+          });
           return;
         }
 
@@ -172,7 +241,7 @@ export default defineConfig(({ mode }) => {
     // Branding first: index.html is the identity surface, so it is rewritten
     // before the React transform ever sees the page. Reads as
     // "identity, then bundling".
-    plugins: [brandingHtmlPlugin(resolveBranding(env)), react(), devApiPlugin()],
+    plugins: [brandingHtmlPlugin(resolveBranding(env)), react(), devApiPlugin(env)],
     // Compiled in so the client can tell "worker proxy not configured" apart
     // from "worker unreachable" instead of firing a request that can only 404.
     define: {

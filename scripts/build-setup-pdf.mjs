@@ -25,6 +25,8 @@ const SHOT_DIR = join(ROOT, 'docs', 'Production Setup', '.preview');
 
 const argv = process.argv.slice(2);
 const wantScreenshots = argv.includes('--screenshot');
+const srcIdx = argv.indexOf('--src');
+const srcPath = srcIdx !== -1 && argv[srcIdx + 1] ? resolve(argv[srcIdx + 1]) : SRC;
 const outIdx = argv.indexOf('--out');
 const outPath = outIdx !== -1 && argv[outIdx + 1] ? resolve(argv[outIdx + 1]) : OUT;
 
@@ -86,8 +88,8 @@ function run(browser, args) {
 }
 
 function main() {
-  if (!existsSync(SRC)) {
-    console.error(`error: source not found: ${SRC}`);
+  if (!existsSync(srcPath)) {
+    console.error(`error: source not found: ${srcPath}`);
     process.exit(1);
   }
 
@@ -97,9 +99,9 @@ function main() {
     process.exit(1);
   }
   console.log(`browser : ${browser}`);
-  console.log(`source  : ${SRC}`);
+  console.log(`source  : ${srcPath}`);
 
-  const fileUrl = `file:///${SRC.replace(/\\/g, '/').replace(/ /g, '%20')}`;
+  const fileUrl = `file:///${srcPath.replace(/\\/g, '/').replace(/ /g, '%20')}`;
 
   // ---- PDF -------------------------------------------------------------
   run(browser, [

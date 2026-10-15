@@ -287,7 +287,7 @@ export const OrganizationFormModal: React.FC<Props> = ({
                 className={`${inputClass} font-mono`}
               />
             </Field>
-            <Field label="Client Anon / Service Key">
+            <Field label="Client Anon Key">
               <input
                 type="password"
                 placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
@@ -451,12 +451,12 @@ export const OrganizationFormModal: React.FC<Props> = ({
                 </Field>
               </div>
               <p className="text-[10px] text-slate-600 leading-relaxed">
-                Images served from this dynamic bucket do not consume parent Supabase Free Plan storage quota.
+                Images served from this dynamic bucket bypass parent Supabase storage quota. Base URL overrides default storage for viewer tiles and panoramas. Ensure objects follow the standard subgrid/tile structure.
               </p>
             </div>
           ) : (
             <p className="text-[11px] text-slate-400">
-              Uses the parent Supabase Storage instance (`MMS_PIC`, `panoramas`). Subject to platform storage limits.
+              Uses the parent Supabase Storage instance (`MMS_PIC`, `panoramas`). Subject to platform storage limits. Ensure object keys follow <code className="text-slate-600 font-mono text-[10px]">orgs/&#123;company_id&#125;/...</code> so inventory metrics and storage quotas attribute correctly.
             </p>
           )}
         </div>

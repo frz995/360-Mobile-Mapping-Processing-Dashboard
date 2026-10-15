@@ -22,19 +22,20 @@
  */
 
 import React from 'react';
-import { Users, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Users, AlertTriangle } from 'lucide-react';
 import { fetchSeatSummary, type SeatSummaryRow } from '../../../services/consoleAccess';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
 import { formatMetric } from '../useConsoleDirectory';
-import { PanelCard, PanelHeader, PrimaryButton, ReadFailure, SecondaryButton } from './consoleUi';
+import { PanelCard, PanelHeader, PrimaryButton, ReadFailure } from './consoleUi';
 
 interface Props {
   directory: ConsoleDirectory;
   selectedOrgId: string;
   onSelectOrg: (orgId: string) => void;
+  onOpenMembers: (orgId: string) => void;
 }
 
-export const ConsoleSeatsPanel: React.FC<Props> = ({ directory, selectedOrgId, onSelectOrg }) => {
+export const ConsoleSeatsPanel: React.FC<Props> = ({ directory, selectedOrgId, onSelectOrg, onOpenMembers }) => {
   const { organizations } = directory;
 
   const [rows, setRows] = React.useState<SeatSummaryRow[]>([]);
@@ -52,10 +53,6 @@ export const ConsoleSeatsPanel: React.FC<Props> = ({ directory, selectedOrgId, o
   React.useEffect(() => {
     void load();
   }, [load]);
-
-  const refresh = async () => {
-    await Promise.all([directory.reload(), load()]);
-  };
 
   // Totals only make sense over a verified read. A failed read would sum an
   // empty array to zero, which is the defect this codebase keeps rediscovering.
@@ -83,14 +80,9 @@ export const ConsoleSeatsPanel: React.FC<Props> = ({ directory, selectedOrgId, o
           title="Seat Licenses"
           subtitle="What was sold, against who is actually using it."
           actions={
-            <>
-              <SecondaryButton onClick={() => void refresh()} disabled={isLoading} icon={<RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />}>
-                Refresh
-              </SecondaryButton>
-              <PrimaryButton onClick={() => onSelectOrg(selectedOrgId || organizations[0]?.id || '')} icon={<Users size={14} />}>
-                Manage Members
-              </PrimaryButton>
-            </>
+            <PrimaryButton onClick={() => onOpenMembers(selectedOrgId || organizations[0]?.id || '')} icon={<Users size={14} />}>
+              Manage Members
+            </PrimaryButton>
           }
         />
 
@@ -169,7 +161,8 @@ export const ConsoleSeatsPanel: React.FC<Props> = ({ directory, selectedOrgId, o
                   return (
                     <tr
                       key={row.organizationId}
-                      className={`transition-colors ${
+                      onClick={() => onSelectOrg(row.organizationId)}
+                      className={`transition-colors cursor-pointer ${
                         row.organizationId === selectedOrgId ? 'bg-slate-50' : 'hover:bg-slate-50/70'
                       }`}
                     >
@@ -189,8 +182,9 @@ export const ConsoleSeatsPanel: React.FC<Props> = ({ directory, selectedOrgId, o
                       <td className="px-6 py-4 text-right">
                         <button
                           type="button"
-                          onClick={() => onSelectOrg(row.organizationId)}
-                          className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 cursor-pointer"
+                          onClick={() => onOpenMembers(row.organizationId)}
+                          title={`Manage team members for ${row.organizationName}`}
+                          className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-[#0c0d0e] hover:bg-black text-white cursor-pointer transition-colors"
                         >
                           Manage
                         </button>

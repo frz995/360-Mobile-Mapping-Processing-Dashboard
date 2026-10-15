@@ -104,6 +104,7 @@ const QAQCWorkbench = React.lazy(() => import('./components/QAQCWorkbench').then
 // fallback on the way to saying "you cannot use this console".
 import { AwaitingAssignment } from './components/console/AwaitingAssignment';
 import { ConsoleRouteGate } from './components/console/ConsoleRouteGate';
+import { LicenseExpiredScreen } from './components/console/LicenseExpiredScreen';
 const SellerConsoleLoginPage = React.lazy(() => import('./components/console/SellerConsoleLoginPage'));
 import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
 import { useAppData } from './hooks/useAppData';
@@ -120,7 +121,13 @@ import { AboutPlatformModal } from './components/modals/AboutPlatformModal';
 import { DashboardKpiSummary } from './components/dashboard/DashboardKpiSummary';
 import { DashboardBatchTable } from './components/dashboard/DashboardBatchTable';
 import { parseWorkspace, pushWorkspace, replaceWorkspace, subscribeWorkspace, isExplicitRoute, getSubgridQuery } from './utils/urlRouter';
-import { useConsoleAccessGate, useActivatePendingMemberships, needsAwaitingAssignment } from './hooks/useConsoleAccessGate';
+import {
+  useConsoleAccessGate,
+  useActivatePendingMemberships,
+  needsAwaitingAssignment,
+  useTenantLicenseGate,
+  needsLicenseLockout
+} from './hooks/useConsoleAccessGate';
 import type { WorkspaceKey, WorkspacePathQuery } from './utils/urlRouter';
 import {
   getStoredWorkspaceKey,
@@ -891,6 +898,7 @@ export default function App() {
   const sessionUserId = authSession?.user?.id || '';
   const { access: consoleAccess, refresh: refreshConsoleAccess } = useConsoleAccessGate(sessionUserId, isGuestUser);
   useActivatePendingMemberships(sessionUserId, isGuestUser);
+  const tenantLicense = useTenantLicenseGate(sessionUserId, isGuestUser);
 
   // Admin-visible pending deletion-request badge on the Administration icon.
   useEffect(() => {
@@ -2969,6 +2977,28 @@ subgrid: nextSubgrid,
   ) {
     return (
       <AwaitingAssignment email={authSession?.user?.email} onSignOut={handleSignOut} onRetry={refreshConsoleAccess} />
+    );
+  }
+
+  if (
+    needsLicenseLockout({
+      licenseState: tenantLicense,
+      isPlatformAdmin: Boolean(consoleAccess?.verified && consoleAccess?.allowed),
+      isGuest: isGuestUser,
+      hasSession: Boolean(authSession),
+      route: currentPage
+    })
+  ) {
+    return (
+      <LicenseExpiredScreen
+        organizationName={tenantLicense.organization?.name}
+        email={authSession?.user?.email}
+        status={tenantLicense.isSuspended ? 'suspended' : 'expired'}
+        expiresAt={tenantLicense.licenseExpiresAt}
+        onSignOut={handleSignOut}
+        onCheckAgain={tenantLicense.refresh}
+        checking={tenantLicense.checking}
+      />
     );
   }
 

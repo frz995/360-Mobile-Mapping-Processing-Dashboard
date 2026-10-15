@@ -312,7 +312,7 @@ interface ActionItem {
             <button
               type="button"
               aria-label="Add Client Company"
-              onClick={() => go('companies')}
+              onClick={startCreateCompany}
               style={{
                 width: 40,
                 height: 40,
@@ -450,18 +450,6 @@ interface ActionItem {
             </div>
           </div>
         </div>
-
-        <div className="pt-4 border-t border-slate-100">
-          <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-              <Shield size={16} />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-[11px] font-bold text-slate-900 leading-tight">Tenant boundary enforced in Postgres</span>
-              <span className="text-[10px] text-slate-400">Asserted by 0011_security_tests.sql</span>
-            </div>
-          </div>
-        </div>
       </aside>
 
       {/* ---- Column 3: main ------------------------------------------------ */}
@@ -528,7 +516,12 @@ interface ActionItem {
           ) : null}
 
           {panel === 'database' ? (
-            <ConsoleDatabasePanel directory={directory} selectedOrgId={selectedOrgId} onSelectOrg={selectOrg} />
+            <ConsoleDatabasePanel
+              directory={directory}
+              selectedOrgId={selectedOrgId}
+              onSelectOrg={selectOrg}
+              onOpenMembers={(orgId) => go('members', orgId)}
+            />
           ) : null}
 
           {panel === 'parent-db' ? (
@@ -536,7 +529,12 @@ interface ActionItem {
           ) : null}
 
           {panel === 'seats' ? (
-            <ConsoleSeatsPanel directory={directory} selectedOrgId={selectedOrgId} onSelectOrg={selectOrg} />
+            <ConsoleSeatsPanel
+              directory={directory}
+              selectedOrgId={selectedOrgId}
+              onSelectOrg={selectOrg}
+              onOpenMembers={(orgId) => go('members', orgId)}
+            />
           ) : null}
 
           {panel === 'settings' ? (

@@ -395,6 +395,17 @@ html.showcase-active[data-theme] aside {
     background-color: var(--table-row-hover) !important;
 }
 
+/* Seller Partner Console light canvas overrides (prevent dark hover contamination) */
+[data-theme] .console-canvas-bg table tr:hover,
+[data-theme] .console-canvas-bg table tbody tr:hover {
+    background-color: #f1f5f9 !important;
+}
+
+[data-theme] .console-canvas-bg table tr.bg-slate-50,
+[data-theme] .console-canvas-bg table tbody tr.bg-slate-50 {
+    background-color: #f8fafc !important;
+}
+
 /* ==========================================================================
    LIGHT MODE ARCHITECTURAL & EXECUTIVE OVERRIDES
    ========================================================================== */

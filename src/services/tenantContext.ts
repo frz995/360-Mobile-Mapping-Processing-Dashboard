@@ -92,13 +92,17 @@ export interface OrganizationDraft {
 }
 
 export const ACTIVE_ORGANIZATION_KEY = 'geosphere360_active_org_id';
+export const ACTIVE_ORGANIZATION_STORAGE_KEY = 'geosphere360_active_org_storage';
 
 let memoryActiveOrgId: string | null = null;
+let memoryActiveOrgStorage: OrganizationStorageConfig | null = null;
 
 export function getActiveOrganizationId(): string | null {
   if (memoryActiveOrgId) return memoryActiveOrgId;
   try {
-    return localStorage.getItem(ACTIVE_ORGANIZATION_KEY);
+    const session = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(ACTIVE_ORGANIZATION_KEY) : null;
+    if (session) return session;
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(ACTIVE_ORGANIZATION_KEY) : null;
   } catch {
     return null;
   }
@@ -108,9 +112,47 @@ export function setActiveOrganizationId(orgId: string | null): void {
   memoryActiveOrgId = orgId;
   try {
     if (orgId) {
-      localStorage.setItem(ACTIVE_ORGANIZATION_KEY, orgId);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(ACTIVE_ORGANIZATION_KEY, orgId);
+      if (typeof localStorage !== 'undefined') localStorage.setItem(ACTIVE_ORGANIZATION_KEY, orgId);
     } else {
-      localStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
+        sessionStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
+        localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+      }
+      memoryActiveOrgStorage = null;
+    }
+  } catch {
+    // Ignore storage quota errors in sandbox
+  }
+}
+
+export function getActiveOrganizationStorage(): OrganizationStorageConfig | null {
+  if (memoryActiveOrgStorage) return memoryActiveOrgStorage;
+  try {
+    const raw =
+      (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY) : null) ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY) : null);
+    if (!raw) return null;
+    return JSON.parse(raw) as OrganizationStorageConfig;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveOrganizationStorage(storage: OrganizationStorageConfig | null): void {
+  memoryActiveOrgStorage = storage;
+  try {
+    if (storage) {
+      const serialized = JSON.stringify(storage);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, serialized);
+      if (typeof localStorage !== 'undefined') localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, serialized);
+    } else {
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
     }
   } catch {
     // Ignore storage quota errors in sandbox
@@ -579,16 +621,40 @@ export async function testDedicatedDatabaseConnection(
 ): Promise<{ success: boolean; message: string }> {
   try {
     const trimmedUrl = url.trim().replace(/\/$/, '');
-    const res = await fetch(`${trimmedUrl}/rest/v1/`, {
-      headers: {
-        apikey: anonKey.trim(),
-        Authorization: `Bearer ${anonKey.trim()}`
+    const key = anonKey.trim();
+    const headers = {
+      apikey: key,
+      Authorization: `Bearer ${key}`
+    };
+
+    // 1. Try Supabase Auth health endpoint first (standard across Supabase Cloud, Docker & CLI, accepts anon key)
+    try {
+      const authRes = await fetch(`${trimmedUrl}/auth/v1/health`, {
+        headers,
+        signal: typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(8000) : undefined
+      });
+      if (authRes.ok || authRes.status === 200) {
+        return { success: true, message: 'Connection verified (HTTP 200 OK)' };
       }
+      if (authRes.status === 401 || authRes.status === 403) {
+        return { success: false, message: `Server replied with HTTP ${authRes.status} (Authentication failed)` };
+      }
+    } catch (authErr: unknown) {
+      if (authErr instanceof Error && authErr.name === 'TimeoutError') {
+        return { success: false, message: 'Connection timed out after 8s' };
+      }
+      // Continue to fallback if auth endpoint was unreachable or errored
+    }
+
+    // 2. Fallback to /rest/v1/ for raw PostgREST instances where GoTrue/Auth is not deployed
+    const restRes = await fetch(`${trimmedUrl}/rest/v1/`, {
+      headers,
+      signal: typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(8000) : undefined
     });
-if (res.ok || res.status === 200 || res.status === 404) {
+    if (restRes.ok || restRes.status === 200 || restRes.status === 404) {
       return { success: true, message: 'Connection verified (HTTP 200 OK)' };
     }
-    return { success: false, message: `Server replied with HTTP ${res.status}` };
+    return { success: false, message: `Server replied with HTTP ${restRes.status}` };
   } catch (err: unknown) {
     return { success: false, message: errorMessage(err, 'Failed to reach external database') };
   }

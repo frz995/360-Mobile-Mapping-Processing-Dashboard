@@ -11,11 +11,11 @@
  */
 
 import React from 'react';
-import { Building2, Database, Server, Eye, Edit3, Trash2, ExternalLink, RefreshCw } from 'lucide-react';
-import { deleteOrganization, setActiveOrganizationId, type Organization } from '../../../services/tenantContext';
+import { Building2, Database, Server, Eye, Edit3, Trash2, ExternalLink } from 'lucide-react';
+import { deleteOrganization, setActiveOrganizationId, setActiveOrganizationStorage, type Organization } from '../../../services/tenantContext';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
 import { STATUS_LABEL, STATUS_TONE } from '../useConsoleDirectory';
-import { ConfirmDialog, PanelCard, PanelHeader, ReadFailure, SecondaryButton } from './consoleUi';
+import { ConfirmDialog, PanelCard, PanelHeader, ReadFailure } from './consoleUi';
 import OrganizationFormModal from './OrganizationFormModal';
 import { wantsConsoleCreate } from '../../../utils/consoleRouter';
 import { getLicenseExpiryStatus } from './ConsoleDashboardPanel';
@@ -110,6 +110,7 @@ export const ConsoleCompaniesPanel: React.FC<Props> = ({
    */
   const openClientApp = (org: Organization) => {
     setActiveOrganizationId(org.id);
+    setActiveOrganizationStorage(org.settings?.storage || null);
     onSelectOrg(org.id);
     onBackToApp();
   };
@@ -120,14 +121,6 @@ export const ConsoleCompaniesPanel: React.FC<Props> = ({
         <PanelHeader
           title="Client Companies"
           subtitle="Provision, edit and route every company on this installation."
-          actions={
-            // No "Add Client Company" here: the shell's top bar already renders
-            // one on every panel. Two buttons with the same label and different
-            // behaviour is worse than one.
-            <SecondaryButton onClick={() => void reload()} disabled={isLoading} icon={<RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />}>
-              Refresh
-            </SecondaryButton>
-          }
         />
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mt-5">

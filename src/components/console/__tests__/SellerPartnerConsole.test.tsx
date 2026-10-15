@@ -20,6 +20,7 @@ const fetchAllOrganizations = vi.fn();
 const fetchOrganizationMembers = vi.fn();
 const fetchSeatSummary = vi.fn();
 const setActiveOrganizationId = vi.fn();
+const setActiveOrganizationStorage = vi.fn();
 
 vi.mock('../../../services/tenantContext', () => ({
   fetchAllOrganizations: (...args: unknown[]) => fetchAllOrganizations(...args),
@@ -27,6 +28,9 @@ vi.mock('../../../services/tenantContext', () => ({
   updateOrganization: vi.fn().mockResolvedValue({ success: true }),
   deleteOrganization: vi.fn().mockResolvedValue({ success: true }),
   setActiveOrganizationId: (...args: unknown[]) => setActiveOrganizationId(...args),
+  setActiveOrganizationStorage: (...args: unknown[]) => setActiveOrganizationStorage(...args),
+  getActiveOrganizationId: vi.fn(),
+  getActiveOrganizationStorage: vi.fn(),
   testDedicatedDatabaseConnection: vi.fn().mockResolvedValue({ success: true, message: 'Connected' })
 }));
 
@@ -233,7 +237,53 @@ describe('SellerPartnerConsole — panel navigation', () => {
     // The old implementation opened `/dashboard?tenant=<slug>`, a parameter
     // nothing read. The tenant now reaches the app through the documented key.
     expect(setActiveOrganizationId).toHaveBeenCalledWith('org-1');
+    expect(setActiveOrganizationStorage).toHaveBeenCalled();
     expect(onBackToApp).toHaveBeenCalled();
+  });
+
+  it('rail Add Client Company button opens create flow with ?new=1', async () => {
+    renderConsole();
+    await waitFor(() => expect(screen.getByText('Tenaga Nasional Berhad')).toBeInTheDocument());
+
+    const createButtons = screen.getAllByRole('button', { name: 'Add Client Company' });
+    expect(createButtons.length).toBe(2);
+
+    // Click the rail '+' button
+    fireEvent.click(createButtons[0]);
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/console/companies');
+      expect(screen.getByRole('heading', { name: 'Register New Client Company' })).toBeInTheDocument();
+    });
+  });
+
+  it('seats panel Manage button navigates directly to team members for that company', async () => {
+    window.history.replaceState({}, '', '/console/seats');
+    renderConsole();
+    await waitFor(() => expect(screen.getByText('Per Company')).toBeInTheDocument());
+
+    const manageBtn = screen.getByTitle(/manage team members for tenaga nasional berhad/i);
+    fireEvent.click(manageBtn);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/console/members');
+      expect(window.location.search).toBe('?org=org-1');
+      expect(screen.getByRole('heading', { name: 'Team Members', level: 2 })).toBeInTheDocument();
+    });
+  });
+
+  it('database hub Staff button navigates directly to team members for that company', async () => {
+    window.history.replaceState({}, '', '/console/database');
+    renderConsole();
+    await waitFor(() => expect(screen.getByText('Tenaga Nasional Berhad')).toBeInTheDocument());
+
+    const staffBtn = screen.getByTitle(/view team members for tenaga nasional berhad/i);
+    fireEvent.click(staffBtn);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/console/members');
+      expect(window.location.search).toBe('?org=org-1');
+      expect(screen.getByRole('heading', { name: 'Team Members', level: 2 })).toBeInTheDocument();
+    });
   });
 
   it('shows the seat table as licensed against actual, not an allocation total', async () => {

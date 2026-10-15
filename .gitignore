@@ -74,6 +74,8 @@ implementation_plan*.md
 docs/*
 !docs/Production Setup/
 !docs/Deployment-Topology.md
+!docs/SELLER_PARTNER_CONSOLE_GUIDE.md
+!docs/SELLER_PARTNER_CONSOLE_GUIDE.html
 
 doc/
 *.docx

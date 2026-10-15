@@ -232,16 +232,16 @@ BEGIN
 
   RETURN QUERY
     SELECT m.user_id,
-           u.email,
+           u.email::TEXT,
            sec.auth_email_confirmed_at(m.user_id),
-           m.role,
-           m.status,
+           m.role::TEXT,
+           m.status::TEXT,
            m.invited_at,
            m.created_at
       FROM public.organization_members m
       LEFT JOIN auth.users u ON u.id = m.user_id
      WHERE m.organization_id = p_organization_id
-     ORDER BY lower(COALESCE(u.email, '')), m.invited_at DESC NULLS LAST;
+     ORDER BY lower(COALESCE(u.email::TEXT, '')), m.invited_at DESC NULLS LAST;
 END;
 $$;
 

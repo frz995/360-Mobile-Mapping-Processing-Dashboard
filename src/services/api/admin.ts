@@ -3,7 +3,7 @@ import { STORAGE_BUCKET_DEFAULT } from '../../config/defaults';
 import type { ExtendedProjectSettings } from '../../types/admin';
 import { getStorageInventoryCacheTotalFiles } from './storage';
 import { isUuid } from '../../utils/userAccountId';
-import { getActiveOrganizationId } from '../tenantContext';
+import { getActiveOrganizationId, getActiveOrganizationStorage } from '../tenantContext';
 
 /**
  * Fetch persisted audit logs from Supabase database.
@@ -657,10 +657,15 @@ export async function saveUserAccountToSupabase(users: any[]): Promise<boolean> 
 function withTenantOrganizationScope(settings: any): any {
   if (!settings || typeof settings !== 'object') return settings;
   const orgId = getActiveOrganizationId();
-  // Absent org => leave the key absent, which keeps the legacy flat layout.
-  // Rewriting to null would be indistinguishable from "configured but blank".
-  if (!orgId) return settings;
-  return { ...settings, tenantOrganizationId: orgId };
+  const tenantStorage = getActiveOrganizationStorage();
+  let scoped = settings;
+  if (orgId) {
+    scoped = { ...scoped, tenantOrganizationId: orgId };
+  }
+  if (tenantStorage) {
+    scoped = { ...scoped, tenantStorage };
+  }
+  return scoped;
 }
 
 /**
@@ -695,7 +700,7 @@ export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
     if (!cached) return null;
     const parsed = JSON.parse(cached);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed;
+      return withTenantOrganizationScope(parsed);
     }
     localStorage.removeItem('geosphere_project_settings');
   } catch (_) {
