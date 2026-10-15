@@ -60,8 +60,8 @@ async function timedFetch(url, init, timeoutMs) {
  *  RLS on `user_accounts` is what proves it — no privileged credential is
  *  involved in the decision about who the caller is. */
 async function callerIsPlatformAdmin(env, bearer) {
-  const url = (env.SUPABASE_URL || '').replace(/\/+$/, '');
-  const anon = env.SUPABASE_ANON_KEY || '';
+  const url = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+  const anon = env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || '';
   if (!url || !anon) return null;
 
   const target =
@@ -89,12 +89,12 @@ async function callerIsPlatformAdmin(env, bearer) {
 
 /** Look up an existing auth user by email. Returns `{ userId }` or null. */
 async function findUserByEmail(env, email) {
-  const url = (env.SUPABASE_URL || '').replace(/\/+$/, '');
-  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const url = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || env.SERVICE_ROLE_KEY || '';
+  if (!url || !serviceKey) return null;
 
-  const target =
-    `${url}/auth/v1/admin/users?email=` +
-    `${encodeURIComponent(email)}&per_page=1`;
+  // GoTrue returns { users: [...], total: ... } from GET /admin/users
+  const target = `${url}/auth/v1/admin/users?per_page=1000`;
 
   let res;
   try {
@@ -108,11 +108,11 @@ async function findUserByEmail(env, email) {
   }
   if (!res.ok) return null;
 
-  const users = await res.json();
-  const usersArray = Array.isArray(users) ? users.users : users;
-  if (!Array.isArray(usersArray) || usersArray.length === 0) return null;
-  const id = usersArray[0]?.id;
-  return id ? { userId: String(id) } : null;
+  const data = await res.json().catch(() => null);
+  const usersArray = Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []);
+  const normalized = email.toLowerCase().trim();
+  const matched = usersArray.find((u) => (u?.email || '').toLowerCase().trim() === normalized);
+  return matched?.id ? { userId: String(matched.id) } : null;
 }
 
 /**
@@ -120,8 +120,8 @@ async function findUserByEmail(env, email) {
  * ->  { user_id, created, confirmation_sent, already_platform_admin }
  */
 export async function onRequestPost({ request, env }) {
-  const url = (env.SUPABASE_URL || '').replace(/\/+$/, '');
-  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const url = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || env.SERVICE_ROLE_KEY || '';
   if (!url || !serviceKey) {
     return fail(503, 'Configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Cloudflare Pages.');
   }
@@ -194,6 +194,19 @@ export async function onRequestPost({ request, env }) {
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
       const message = payload?.msg || payload?.message || payload?.error_description || `HTTP ${res.status}`;
+      // Fallback: if user already exists in auth.users, resolve their id rather than aborting
+      if (res.status === 422 && /already.*registered/i.test(message)) {
+        const retry = await findUserByEmail(env, email);
+        if (retry) {
+          const alreadyAdmin = await callerEmailIsPlatformAdmin(env, serviceKey, retry.userId);
+          return json({
+            user_id: retry.userId,
+            created: false,
+            confirmation_sent: false,
+            already_platform_admin: alreadyAdmin === true
+          });
+        }
+      }
       return fail(res.status === 422 ? 409 : 502, `The account could not be created: ${message}`);
     }
     created = payload;
@@ -224,7 +237,7 @@ export async function onRequestPost({ request, env }) {
 
 /** Best-effort check so the console can warn before writing a no-op invite. */
 async function callerEmailIsPlatformAdmin(env, serviceKey, userId) {
-  const url = (env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const url = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
   try {
     const res = await timedFetch(
       `${url}/rest/v1/user_accounts?select=is_platform_admin&id=eq.${encodeURIComponent(userId)}&limit=1`,

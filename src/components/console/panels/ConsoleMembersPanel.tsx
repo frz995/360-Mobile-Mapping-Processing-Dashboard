@@ -125,12 +125,11 @@ const InviteMemberModal: React.FC<InviteModalProps> = ({ orgId, orgName, onClose
       return;
     }
 
+    // Platform administrators already possess global access across all tenants,
+    // but writing an explicit company membership row ensures they are listed on
+    // this company's staff directory for operational and testing visibility.
     if (account.outcome.alreadyPlatformAdmin) {
-      setError(
-        'That account is a platform administrator, which already grants access to every company on this installation. Adding a company role would have no effect.'
-      );
-      setBusy(false);
-      return;
+      // Intentional pass-through: allow adding platform admin to tenant roster
     }
 
     const membership = await inviteOrganizationMember(orgId, account.outcome.userId, role);

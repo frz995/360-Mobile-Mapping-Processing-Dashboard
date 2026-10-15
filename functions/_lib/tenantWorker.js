@@ -56,8 +56,8 @@ const BOOTSTRAP_ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001';
 const MEMBERSHIP_QUERY_TIMEOUT_MS = 5_000;
 
 function requireConfig(env) {
-  const url = (env.SUPABASE_URL || '').replace(/\/+$/, '');
-  const key = env.SUPABASE_ANON_KEY || '';
+  const url = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+  const key = env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || '';
   if (!url || !key) {
     throw new TenantWorkerError(503, 'Configure SUPABASE_URL and SUPABASE_ANON_KEY in Cloudflare Pages.');
   }

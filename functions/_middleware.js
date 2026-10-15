@@ -40,8 +40,8 @@ export async function onRequest(context) {
   if (!hasBearer) {
     return json({ error: 'Sign in to access Production Pipeline services.' }, 401);
   }
-  const supabaseUrl = (env.SUPABASE_URL || '').replace(/\/+$/, '');
-  const supabaseKey = env.SUPABASE_ANON_KEY || '';
+  const supabaseUrl = (env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+  const supabaseKey = env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || '';
   if (!supabaseUrl || !supabaseKey) {
     return json({ error: 'Configure SUPABASE_URL and SUPABASE_ANON_KEY in Cloudflare Pages.' }, 503);
   }
