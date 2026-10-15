@@ -8,6 +8,8 @@ import { STORAGE_BUCKET_DEFAULT, REGION_DEFAULTS, DEFAULT_BASEMAP, resolveBasema
 const DEFAULT_TRAJECTORY_FILTERS = { published: true, defect: true, stitching: true, missingFrames: true } as const;
 import type { Layer, Folder } from '../types/catalog';
 import { ensureDistrictGeometriesLoaded, rehydrateDistrictBoundary } from './boundary/malaysiaDistricts';
+import { getActiveOrganizationWebgis } from '../services/tenantContext';
+import { resolveWebgisUrl, createMapOriginMatcher } from '../utils/mapOrigin';
 
 export const MapComponent = ({
   dataManagement = false,
@@ -53,6 +55,15 @@ export const MapComponent = ({
   trajectoryStatusFiltersRef.current = trajectoryStatusFilters;
   const showPanotrackLayerRef = useRef(showPanotrackLayer);
   showPanotrackLayerRef.current = showPanotrackLayer;
+
+  // Project settings outrank the tenant override, which outranks the build-time
+  // env value; `resolveWebgisUrl` owns that precedence and the trailing-slash
+  // normalisation, so this call site cannot drift from the other five.
+  const tenantWebgisUrl = getActiveOrganizationWebgis();
+  const configuredMapUrl = useMemo(
+    () => resolveWebgisUrl(passedSettings?.webgisUrl || tenantWebgisUrl, import.meta.env.VITE_MAP_URL),
+    [passedSettings?.webgisUrl, tenantWebgisUrl]
+  );
 
   // Loading/preparing overlay: shown while the embedded WebGIS applies the
   // project basemap + boundary + settings on cold boot and on every project
@@ -525,20 +536,16 @@ export const MapComponent = ({
     } catch (e) { }
   }, [effectiveSettings, formattedStagedItems]);
 
+  // Deny-by-default, rebuilt when the host changes. Subdomain trust stays OFF:
+  // whether every host under the apex is ours is unverified (plan §7.7).
+  const isAllowedMapOrigin = useMemo(
+    () => createMapOriginMatcher(configuredMapUrl, window.location.origin),
+    [configuredMapUrl]
+  );
+
   useEffect(() => {
     const handler = (e: MessageEvent) => {
-      // Security: only accept messages from the configured WebGIS iframe origin or same origin
-      let allowedOrigin = '';
-      try {
-        if (import.meta.env.VITE_MAP_URL) {
-          allowedOrigin = new URL(import.meta.env.VITE_MAP_URL, window.location.origin).origin;
-        }
-      } catch {
-        allowedOrigin = (import.meta.env.VITE_MAP_URL || '').replace(/\/+$/, '');
-      }
-      if (allowedOrigin && e.origin !== allowedOrigin && e.origin !== window.location.origin) {
-        return;
-      }
+      if (!isAllowedMapOrigin(e.origin)) return;
       if (e.data?.type === 'MAP_COORDS' && typeof e.data.lat === 'number') {
         const lngVal = typeof e.data.lng === 'number' ? e.data.lng : e.data.lon;
         if (typeof lngVal === 'number') {
@@ -557,7 +564,7 @@ export const MapComponent = ({
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [syncMapSettings, sendStagedData, finishPreparingNow]);
+  }, [syncMapSettings, sendStagedData, finishPreparingNow, isAllowedMapOrigin]);
 
   // Send postMessage subgrid filter and staged data updates to embedded WebGIS map iframe
   useEffect(() => {
@@ -636,7 +643,7 @@ export const MapComponent = ({
           if (iframeRefCb) iframeRefCb(el);
         }}
         key={`webgis-map-${iframeReloadNonce}`}
-        src={`${import.meta.env.VITE_MAP_URL || ''}/?embed=true&dashboard=true${dataManagement ? '&noSonar=1' : ''}`}
+        src={`${configuredMapUrl}/?embed=true&dashboard=true${dataManagement ? '&noSonar=1' : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             // Map loaded freshly: keep the preparing overlay well past the

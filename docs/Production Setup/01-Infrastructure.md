@@ -684,13 +684,13 @@ equivalent is needed.
 
 ### 7.3 Build-time variables (Pages → Settings → Environment variables)
 
-These are **compiled into the browser bundle**. Only three are required.
+These are **compiled into the browser bundle**. Only two are required.
 
 | Variable | Required | Value | Notes |
 | --- | :--- | :--- | --- |
 | `VITE_SUPABASE_URL` | **Yes** | `https://<project>.supabase.co` | No fallback; the app warns if absent |
 | `VITE_SUPABASE_ANON_KEY` | **Yes** | anon / publishable key | The only credential the browser needs |
-| `VITE_MAP_URL` | **Yes** | Your WebGIS app URL | **No code fallback.** Unset ⇒ every embedded map is a blank iframe |
+| `VITE_MAP_URL` | No | Your WebGIS app URL | Defaults to `https://map.geosphere.my`. Unset is no longer a blank iframe |
 | `VITE_WORKER_API_MODE` | No | `proxy` | Default. Leave unset |
 | `VITE_STATION_AGENT_MODE` | No | `proxy` | Default in production |
 | `VITE_SUPABASE_BUCKET` | No | `MMS_PIC` | Default is already `MMS_PIC` |
@@ -703,6 +703,22 @@ These are **compiled into the browser bundle**. Only three are required.
 > ⚠️ **`VITE_NAS_API_ENABLED` does not exist.** It appears in some older notes but
 > is not read by any code. Proxy behaviour is derived from `VITE_WORKER_API_MODE`
 > and whether the runtime secrets below are present.
+
+> **Which WebGIS host does the bundle actually load?** Resolved in this order by
+> `src/utils/activeWebgisUrl.ts`:
+> 1. the activated company's `webgisUrl`, set in the Seller Console
+>    (`/console/companies` → Edit → External WebGIS & Mobile Mapping Portal);
+> 2. `VITE_MAP_URL`;
+> 3. `https://map.geosphere.my`.
+>
+> The result is never empty and never ends in a trailing slash, so an unset
+> `VITE_MAP_URL` produces a working map rather than a blank iframe. Set
+> `VITE_MAP_URL` only when the whole deployment should use a host other than the
+> platform default — the console override is per-company and needs no rebuild.
+>
+> Note the activation semantics: the override applies once the seller opens
+> that company's client app, the same as the BYOS storage setting. It is not
+> applied by signing in.
 
 ### 7.4 Runtime variables and secrets (Pages → Settings → Environment variables)
 
@@ -748,7 +764,7 @@ production does:
 ```ini
 VITE_SUPABASE_URL=https://<project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon key>
-VITE_MAP_URL=<your WebGIS URL>
+VITE_MAP_URL=<your WebGIS URL>   # optional; defaults to https://map.geosphere.my
 
 NAS_API_URL=https://nas-api.example.com
 NAS_WORKER_TOKEN=<same token as the worker>

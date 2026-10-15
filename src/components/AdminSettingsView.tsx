@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
+import { resolveActiveWebgisUrl } from '../utils/activeWebgisUrl';
 import {
   Users,
   Shield,
@@ -210,6 +211,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   // Map Preview Iframe State & Ref
   const previewIframeRef = React.useRef<HTMLIFrameElement | null>(null);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const previewWebgisUrl = resolveActiveWebgisUrl(import.meta.env.VITE_MAP_URL);
   const [previewCoords, setPreviewCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(() => {
     return (projectSettings as any)?.projectBoundary?.regionId || null;
@@ -2966,7 +2968,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           <iframe
                             ref={previewIframeRef}
                             key={`${previewRefreshKey}-${themeMode}-${projectSettings.defaultBasemap || DEFAULT_BASEMAP}`}
-                            src={`${import.meta.env.VITE_MAP_URL || ''}/?embed=true&preview=true&theme=${themeMode}&basemap=${projectSettings.defaultBasemap || DEFAULT_BASEMAP}&t=${previewRefreshKey}`}
+                            src={`${previewWebgisUrl}/?embed=true&preview=true&theme=${themeMode}&basemap=${projectSettings.defaultBasemap || DEFAULT_BASEMAP}&t=${previewRefreshKey}`}
                             onLoad={() => {
                               sendPreviewData();
                               setTimeout(sendPreviewData, 400);
@@ -3009,7 +3011,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                 <span>Refresh</span>
                               </button>
                               <a
-                                href={import.meta.env.VITE_MAP_URL || ''}
+                                href={previewWebgisUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 title="Open WebGIS in new tab"

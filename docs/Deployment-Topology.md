@@ -44,16 +44,18 @@ Four variables are **inlined into `dist/` at build time** by Vite:
 | --- | --- |
 | `VITE_SUPABASE_URL` | Which database the build talks to |
 | `VITE_SUPABASE_ANON_KEY` | Which credential it presents |
-| `VITE_MAP_URL` | Which WebGIS app the iframes load |
+| `VITE_MAP_URL` | Which WebGIS app the iframes load. Defaults to `https://map.geosphere.my`; a per-company console override outranks it |
 | `VITE_BRAND_*` (six) | Product name, tab title, report footers, metadata |
 
 Consequences, stated plainly because they drive everything below:
 
 - **One `npm run build` per client.** Pointing a deployment at a different
   database is a *rebuild*, not a settings change. There is no runtime switch for
-  these four.
+  these four — **except** `VITE_MAP_URL`, which each company can override at
+  runtime from the Seller Console without a rebuild.
 - **Therefore one app deployment per client**, each with its own `dist/`. The
-  dashboard and the WebGIS instance are still two apps linked by `VITE_MAP_URL`.
+  dashboard and the WebGIS instance are still two apps; they are linked by
+  `VITE_MAP_URL` or, per company, by the console's WebGIS host override.
 - The Admin Settings `configureSupabaseBackend()` switch
   (`src/services/api/client.ts:151`) **re-points a running build** between hosts
   at runtime. That is useful for testing against a second project. It is **not**
@@ -262,7 +264,10 @@ their instance.
 - [ ] Anon key issued; **rotated** if a previous one was ever committed to git
 - [ ] Cloudflare Pages project created; deploy previews used for acceptance
 - [ ] Tunnel hostnames: five (1 NAS worker + 4 station agents) per `02` §3
-- [ ] `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_MAP_URL` set
+- [ ] `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` set
+- [ ] `VITE_MAP_URL` set only if the deployment must not use
+      `https://map.geosphere.my`; per-company overrides are set later in the
+      Seller Console
 - [ ] `VITE_BRAND_*` set if deploying under the client's identity
 - [ ] `npm run build` → `dist/` deployed
 - [ ] First administrator bootstrapped; a **second** admin created via the

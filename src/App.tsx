@@ -121,6 +121,7 @@ import { AboutPlatformModal } from './components/modals/AboutPlatformModal';
 import { DashboardKpiSummary } from './components/dashboard/DashboardKpiSummary';
 import { DashboardBatchTable } from './components/dashboard/DashboardBatchTable';
 import { parseWorkspace, pushWorkspace, replaceWorkspace, subscribeWorkspace, isExplicitRoute, getSubgridQuery } from './utils/urlRouter';
+import { resolveActiveWebgisUrl } from './utils/activeWebgisUrl';
 import {
   useConsoleAccessGate,
   useActivatePendingMemberships,
@@ -260,9 +261,8 @@ export default function App() {
     if (!import.meta.env.VITE_SUPABASE_URL) {
       console.warn('[config] Missing VITE_SUPABASE_URL — Supabase data & storage features will not work. Set it in your .env / deployment environment.');
     }
-    if (!import.meta.env.VITE_MAP_URL) {
-      console.warn('[config] Missing VITE_MAP_URL — embedded WebGIS map links will be blank. Set it in your .env / deployment environment.');
-    }
+    // No VITE_MAP_URL warning here: `resolveWebgisUrl` always yields a host, so the
+    // "maps will be blank" case this used to report can no longer occur.
   }, []);
 
   // Pop up daily briefing modal once initial dashboard data loading completes (unless suppressed for today)
@@ -3226,7 +3226,7 @@ subgrid: nextSubgrid,
         mobileNavOpen={mobileNavOpen}
         onToggleMobileNav={() => setMobileNavOpen((prev) => !prev)}
         tourStep={tourStep}
-        liveWebgisUrl={import.meta.env.VITE_MAP_URL}
+        liveWebgisUrl={resolveActiveWebgisUrl(import.meta.env.VITE_MAP_URL)}
         onOpenBriefing={() => setIsHandoverModalOpen(true)}
         onOpenHelpGuide={() => {
           setHelpGuideInitialTab('map');

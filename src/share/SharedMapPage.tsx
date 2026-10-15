@@ -19,6 +19,7 @@ import {
 } from '../utils/mapShares';
 import { SharePasswordGate } from './SharePasswordGate';
 import { buildMeshExpression, classRangeLabel, METRIC_UNIT } from '../utils/choroplethSettings';
+import { resolveActiveWebgisUrl } from '../utils/activeWebgisUrl';
 
 const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
 if (typeof (maplibregl as any).setWorkerUrl === 'function') {
@@ -1008,7 +1009,7 @@ type ShareCoords = { lat: number; lng: number } | null;
  * snapshot renderer remains the stable product behavior.
  */
 function liveShareUrl(share: MapShare): string {
-  const base = (import.meta.env.VITE_MAP_URL as string | undefined) || '';
+  const base = resolveActiveWebgisUrl(import.meta.env.VITE_MAP_URL);
   const p = new URLSearchParams({
     embed: 'true',
     preview: 'true',

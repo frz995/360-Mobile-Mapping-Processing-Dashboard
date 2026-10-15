@@ -1263,13 +1263,13 @@ WantedBy=multi-user.target</code></pre>
 
   <h2>8.3 Build-time variables</h2>
   <p>These are <b>compiled into the browser bundle</b>. Set them under <b>Settings &#8594;
-  Environment variables</b>. Only three are required.</p>
+  Environment variables</b>. Only two are required.</p>
   <table>
     <thead><tr><th style="width:36%">Variable</th><th style="width:12%">Required</th><th>Purpose</th></tr></thead>
     <tbody>
       <tr><td><code>VITE_SUPABASE_URL</code></td><td class="yes">Yes</td><td>Project base URL. No fallback; the application warns if absent</td></tr>
       <tr><td><code>VITE_SUPABASE_ANON_KEY</code></td><td class="yes">Yes</td><td>Public anon / publishable key &#8212; the only credential the browser needs</td></tr>
-      <tr><td><code>VITE_MAP_URL</code></td><td class="yes">Yes</td><td>WebGIS application URL. <b>No code fallback</b> &#8212; unset means every embedded map is a blank frame</td></tr>
+      <tr><td><code>VITE_MAP_URL</code></td><td class="opt">No</td><td>WebGIS application URL. Defaults to <code>https://map.geosphere.my</code>, and a per-company override set in the Seller Console takes precedence over it</td></tr>
       <tr><td><code>VITE_WORKER_API_MODE</code></td><td class="opt">No</td><td><code>proxy</code> (default) or <code>direct</code></td></tr>
       <tr><td><code>VITE_STATION_AGENT_MODE</code></td><td class="opt">No</td><td><code>proxy</code> in production, <code>direct</code> in development</td></tr>
       <tr><td><code>VITE_SUPABASE_BUCKET</code></td><td class="opt">No</td><td>Defaults to <code>MMS_PIC</code></td></tr>

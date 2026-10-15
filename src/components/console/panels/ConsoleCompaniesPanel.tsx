@@ -12,7 +12,7 @@
 
 import React from 'react';
 import { Building2, Database, Server, Eye, Edit3, Trash2, ExternalLink } from 'lucide-react';
-import { deleteOrganization, setActiveOrganizationId, setActiveOrganizationStorage, type Organization } from '../../../services/tenantContext';
+import { deleteOrganization, setActiveOrganizationId, setActiveOrganizationStorage, setActiveOrganizationWebgis, type Organization } from '../../../services/tenantContext';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
 import { STATUS_LABEL, STATUS_TONE } from '../useConsoleDirectory';
 import { ConfirmDialog, PanelCard, PanelHeader, ReadFailure } from './consoleUi';
@@ -107,10 +107,17 @@ export const ConsoleCompaniesPanel: React.FC<Props> = ({
    * shares `localStorage['geosphere360_active_org_id']`, which is a single
    * browser-wide key, so two clients open in two tabs silently overwrite each
    * other. The explicit key write is stated in the UI for that reason.
+   *
+   * The WebGIS host is staged here for the same reason BYOS storage is: the
+   * client app reads it through `getActiveOrganizationWebgis()`, so it must be
+   * written before `onBackToApp()` mounts. `null` for a company with no
+   * override is deliberate — a stale URL from the previously activated company
+   * would point this client's workspace at another tenant's map.
    */
   const openClientApp = (org: Organization) => {
     setActiveOrganizationId(org.id);
     setActiveOrganizationStorage(org.settings?.storage || null);
+    setActiveOrganizationWebgis(org.settings?.webgisUrl || null);
     onSelectOrg(org.id);
     onBackToApp();
   };

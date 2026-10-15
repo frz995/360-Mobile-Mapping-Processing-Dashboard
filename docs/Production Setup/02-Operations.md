@@ -526,9 +526,11 @@ an Administrator.
 Storage settings vary by provider — a Supabase bucket name, an R2 domain, an S3
 bucket + region, a GCS bucket, an Azure container, a Wasabi bucket.
 
-> `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_MAP_URL` are
-> **build-time** variables configured on Cloudflare Pages (see `01` §7.3). The
-> settings screen only pre-fills the form; it does not set them.
+> `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are **build-time** variables
+> configured on Cloudflare Pages (see `01` §7.3). The settings screen only
+> pre-fills the form; it does not set them. `VITE_MAP_URL` is also build-time, but
+> it is optional and each company can override it at runtime from the Seller
+> Console without a rebuild.
 
 ### 4.9 Two settings that live somewhere unexpected
 
@@ -620,7 +622,7 @@ on-premises pipeline.
 | 4 | Complete the wizard — campaign name is the only required field | Telemetry loader, then the dashboard |
 | 5 | Expand the left navigation rail | All workspaces listed; Settings and Administration unlocked |
 | 6 | **Settings → Diagnostics** → **Ping** | *Connected*, PostGIS *operational*, storage *operational*, a real latency figure |
-| 7 | Expand **Runtime Environment** | `VITE_SUPABASE_URL` and `VITE_MAP_URL` show values, not "not set" |
+| 7 | Expand **Runtime Environment** | `VITE_SUPABASE_URL` shows a value, not "not set". `VITE_MAP_URL` may read "not set" — that is now a valid state and maps fall back to `https://map.geosphere.my` |
 | 8 | **Administration → System Health** → **Run Diagnostics** | PostGIS *operational* with a real ms figure |
 | 9 | **Administration → Users** | Your row present with role **Administrator** |
 | 10 | **Administration → Roles** | The capability matrix renders |
@@ -637,7 +639,10 @@ on-premises pipeline.
 > install — that probe is not implemented and the fields are hard-coded. Ignore
 > them; judge health from PostGIS, storage and latency.
 
-> ⚠️ A **blank WebGIS iframe** on the dashboard means `VITE_MAP_URL` is unset.
+> ⚠️ A **blank WebGIS iframe** on the dashboard means the *resolved* WebGIS host
+> is wrong or unreachable. `VITE_MAP_URL` being unset no longer causes this — it
+> falls back to `https://map.geosphere.my`. Check the activated company's WebGIS
+> host override in the Seller Console first (`01` §7.3).
 > There is no code fallback; fix the Pages variable and rebuild.
 
 ### 5.2 Tier B — production pipeline verified
@@ -665,7 +670,7 @@ Tier A cannot prove the on-prem half. Continue:
 
 ### 5.3 Full smoke test
 
-[`docs/SMOKE_CHECKLIST.md`](../SMOKE_CHECKLIST.md) has the detailed pass/fail
+[`docs/Product Dashboard/SMOKE_CHECKLIST.md`](../Product Dashboard/SMOKE_CHECKLIST.md) has the detailed pass/fail
 list including the auth-boundary and image-revalidation checks.
 
 ---

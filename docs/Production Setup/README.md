@@ -45,8 +45,8 @@ section (§) so you can link straight to the part you need.
 
 Annexes (deeper reference, kept with the original sources):
 
-- [`docs/production_worker_api.md`](../production_worker_api.md) — NAS worker HTTP contract
-- [`docs/SMOKE_CHECKLIST.md`](../SMOKE_CHECKLIST.md) — post-install smoke test
+- [`docs/Product Dashboard/production_worker_api.md`](../Product Dashboard/production_worker_api.md) — NAS worker HTTP contract
+- [`docs/Product Dashboard/SMOKE_CHECKLIST.md`](../Product Dashboard/SMOKE_CHECKLIST.md) — post-install smoke test
 - [`docs/Deployment-Topology.md`](../Deployment-Topology.md) — Track 1 (this platform) vs Track 2 (fully on-premises)
 
 ---

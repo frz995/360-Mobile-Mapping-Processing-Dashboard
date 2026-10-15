@@ -84,6 +84,7 @@ function draftFrom(org: Organization | null): OrganizationDraft {
       allowedUserSeats: org.settings?.allowedUserSeats ?? 10,
       storageQuotaGb: org.settings?.storageQuotaGb ?? 200,
       contactEmail: org.settings?.contactEmail || '',
+      webgisUrl: org.settings?.webgisUrl || '',
       nasApiUrl: org.settings?.nasApiUrl || '',
       storage: org.settings?.storage || {
         provider: 'supabase',
@@ -459,6 +460,26 @@ export const OrganizationFormModal: React.FC<Props> = ({
               Uses the parent Supabase Storage instance (`MMS_PIC`, `panoramas`). Subject to platform storage limits. Ensure object keys follow <code className="text-slate-600 font-mono text-[10px]">orgs/&#123;company_id&#125;/...</code> so inventory metrics and storage quotas attribute correctly.
             </p>
           )}
+        </div>
+
+        <div className="pt-2 border-t border-slate-100">
+          <Field label="External WebGIS & Portal URL">
+            <input
+              type="url"
+              placeholder="https://map.geosphere.my"
+              value={formData.settings?.webgisUrl || ''}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  settings: { ...formData.settings, webgisUrl: e.target.value }
+                })
+              }
+              className={`${inputClass} font-mono`}
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Base URL for the 360 WebGIS map. Leave empty to default to <code className="font-mono text-slate-600">https://map.geosphere.my</code>.
+            </p>
+          </Field>
         </div>
 
         <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">

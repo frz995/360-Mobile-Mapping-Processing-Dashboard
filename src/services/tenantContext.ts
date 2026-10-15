@@ -48,6 +48,7 @@ export interface OrganizationSettings {
   storageQuotaGb?: number;
   customTheme?: string;
   contactEmail?: string;
+  webgisUrl?: string;
   storage?: OrganizationStorageConfig;
 }
 
@@ -118,12 +119,15 @@ export function setActiveOrganizationId(orgId: string | null): void {
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
         sessionStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+        sessionStorage.removeItem(ACTIVE_ORGANIZATION_WEBGIS_KEY);
       }
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
         localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+        localStorage.removeItem(ACTIVE_ORGANIZATION_WEBGIS_KEY);
       }
       memoryActiveOrgStorage = null;
+      memoryActiveOrgWebgis = null;
     }
   } catch (err) {
     console.debug('Storage sync ignored:', err);
@@ -156,6 +160,36 @@ export function setActiveOrganizationStorage(storage: OrganizationStorageConfig 
     }
   } catch (err) {
     console.debug('Storage sync ignored:', err);
+  }
+}
+
+export const ACTIVE_ORGANIZATION_WEBGIS_KEY = 'geosphere360_active_org_webgis';
+let memoryActiveOrgWebgis: string | null = null;
+
+export function getActiveOrganizationWebgis(): string | null {
+  if (memoryActiveOrgWebgis) return memoryActiveOrgWebgis;
+  try {
+    const raw =
+      (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(ACTIVE_ORGANIZATION_WEBGIS_KEY) : null) ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem(ACTIVE_ORGANIZATION_WEBGIS_KEY) : null);
+    return raw || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveOrganizationWebgis(url: string | null): void {
+  memoryActiveOrgWebgis = url;
+  try {
+    if (url) {
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(ACTIVE_ORGANIZATION_WEBGIS_KEY, url);
+      if (typeof localStorage !== 'undefined') localStorage.setItem(ACTIVE_ORGANIZATION_WEBGIS_KEY, url);
+    } else {
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(ACTIVE_ORGANIZATION_WEBGIS_KEY);
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(ACTIVE_ORGANIZATION_WEBGIS_KEY);
+    }
+  } catch (err) {
+    console.debug('Webgis sync ignored:', err);
   }
 }
 

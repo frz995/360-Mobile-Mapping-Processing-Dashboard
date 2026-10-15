@@ -21,6 +21,7 @@ const fetchOrganizationMembers = vi.fn();
 const fetchSeatSummary = vi.fn();
 const setActiveOrganizationId = vi.fn();
 const setActiveOrganizationStorage = vi.fn();
+const setActiveOrganizationWebgis = vi.fn();
 
 vi.mock('../../../services/tenantContext', () => ({
   fetchAllOrganizations: (...args: unknown[]) => fetchAllOrganizations(...args),
@@ -29,8 +30,10 @@ vi.mock('../../../services/tenantContext', () => ({
   deleteOrganization: vi.fn().mockResolvedValue({ success: true }),
   setActiveOrganizationId: (...args: unknown[]) => setActiveOrganizationId(...args),
   setActiveOrganizationStorage: (...args: unknown[]) => setActiveOrganizationStorage(...args),
+  setActiveOrganizationWebgis: (...args: unknown[]) => setActiveOrganizationWebgis(...args),
   getActiveOrganizationId: vi.fn(),
   getActiveOrganizationStorage: vi.fn(),
+  getActiveOrganizationWebgis: vi.fn(),
   testDedicatedDatabaseConnection: vi.fn().mockResolvedValue({ success: true, message: 'Connected' })
 }));
 
@@ -239,6 +242,22 @@ describe('SellerPartnerConsole — panel navigation', () => {
     expect(setActiveOrganizationId).toHaveBeenCalledWith('org-1');
     expect(setActiveOrganizationStorage).toHaveBeenCalled();
     expect(onBackToApp).toHaveBeenCalled();
+  });
+
+  it('stages the tenant WebGIS host on activation, and clears it when the company has no override', async () => {
+    // The override is dead code without this write: `getActiveOrganizationWebgis()`
+    // is what MapComponent resolves the iframe URL from, and it only ever reads
+    // what this handler staged. Asserting the value, not just the call, because
+    // staging the *previous* tenant's URL is the failure mode that matters.
+    const { unmount } = renderConsole();
+    await waitFor(() => expect(screen.getByText('Tenaga Nasional Berhad')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('link', { name: 'Companies' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Client Companies' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTitle(/open the client application as/i));
+
+    expect(setActiveOrganizationWebgis).toHaveBeenCalledWith(null);
+    unmount();
   });
 
   it('rail Add Client Company button opens create flow with ?new=1', async () => {

@@ -30,7 +30,9 @@
     "Updated for v34: the Seller Partner Console was decomposed from one 1532-line SellerPartnerConsole.tsx into a shell plus six panels under src/components/console/panels/, a shared directory hook and a local primitive set. That monolith was absent from this table, and the ratchet only iterates keys that ARE here, so it escaped the budget entirely - the decomposition is what makes the pins below meaningful. Every console file is now under the 800-line floor, so these entries are deliberate pins rather than overflow allowances: they exist so that regrowth in the console fails the same way it would in any tracked god file.",
     "Updated for v35: added Parent Database telemetry, Need Action operational report sidebar, license management modal with expiration datepicker and license type tiers, and panel-wide skeleton loaders. SellerPartnerConsole.tsx moved to 558 lines, ConsoleDashboardPanel.tsx to 519, OrganizationFormModal.tsx to 525, ConsoleCompaniesPanel.tsx to 409, ConsoleDatabasePanel.tsx to 242, ConsoleSeatsPanel.tsx to 210, ConsoleMembersPanel.tsx to 486, App.tsx to 4615, and consoleRouter.ts to 201. All 9 budgets repinned so regrowth fails again.",
     "Updated for v36: console production hardening for dedicated external databases and license expiration routing. App.tsx moved from 4615 to 4645 lines, ConsoleDatabasePanel.tsx from 242 to 246 lines, and ConsoleDashboardPanel.tsx from 519 to 548 lines. All 3 repinned.",
-    "Updated for console member invite link generation: ConsoleMembersPanel.tsx repinned 486 -> 534, consoleAccess.ts repinned 557 -> 561."
+    "Updated for console member invite link generation: ConsoleMembersPanel.tsx repinned 486 -> 534, consoleAccess.ts repinned 557 -> 561.",
+    "Updated for v37: External WebGIS portal configuration in Console OrganizationFormModal.tsx repinned 525 -> 546.",
+    "Updated for v37 §7.4: WebGIS host resolution consolidated into src/utils/activeWebgisUrl.ts, so all six VITE_MAP_URL call sites honour the tenant override. AdminSettingsView.tsx repinned 3487 -> 3489 (+1 import, +1 shared const that replaced two divergent inline fallbacks) and SharedMapPage.tsx repinned 1297 -> 1298 (+1 import). Both were already at ceiling and the change is a net correctness fix, not new surface. AdminSettingsView has no test coverage, so extracting instead was the higher-risk option and was deliberately not taken here."
   ],
   "lint": {
     "_scope": "eslint src vitest.config.ts, ESLINT_USE_FLAT_CONFIG=true, flat config eslint.config.mjs",
@@ -60,7 +62,7 @@
     "src/components/DataManagementPage.tsx": 5026,
     "src/components/RoadAnalysisWorkspace.tsx": 4558,
     "src/App.tsx": 4645,
-    "src/components/AdminSettingsView.tsx": 3487,
+    "src/components/AdminSettingsView.tsx": 3489,
     "src/components/roadAnalysis/RoadAnalysisMap.tsx": 3021,
     "src/components/boundary/districtMetadata.ts": 2896,
     "src/components/QAQCWorkbench.tsx": 2875,
@@ -73,7 +75,7 @@
     "src/components/production/hub/BucketPublicationGate.tsx": 1611,
     "src/components/ProjectOnboarding.tsx": 1488,
     "src/components/production/hub/IntakePairingStation.tsx": 1299,
-    "src/share/SharedMapPage.tsx": 1297,
+    "src/share/SharedMapPage.tsx": 1298,
     "src/components/AdministrationWorkspace.tsx": 1260,
     "src/utils/roadNetworkTrace.ts": 1139,
     "src/components/DeletionSelectionMap.tsx": 1115,
@@ -93,7 +95,7 @@
     "src/components/console/panels/ConsoleMembersPanel.tsx": 534,
     "src/components/console/SellerPartnerConsole.tsx": 558,
     "src/components/console/panels/ConsoleCompaniesPanel.tsx": 409,
-    "src/components/console/panels/OrganizationFormModal.tsx": 525,
+    "src/components/console/panels/OrganizationFormModal.tsx": 546,
     "src/components/console/panels/consoleUi.tsx": 285,
     "src/components/console/panels/ConsoleSeatsPanel.tsx": 210,
     "src/components/console/panels/ConsoleDatabasePanel.tsx": 246,

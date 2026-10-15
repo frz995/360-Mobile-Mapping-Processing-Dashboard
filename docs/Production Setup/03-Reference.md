@@ -161,7 +161,7 @@ failures are therefore **silent** — the table marks those.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Blank iframe where the WebGIS map should be | `VITE_MAP_URL` unset | Set it on Pages, then **rebuild** (`01` §7.3) |
+| Blank iframe where the WebGIS map should be | The resolved WebGIS host is wrong or unreachable — **not** an unset `VITE_MAP_URL`, which now falls back to `https://map.geosphere.my`. Check the activated company's console override first | Set `VITE_MAP_URL` on Pages and **rebuild** (`01` §7.3), or clear the company override |
 | "Worker proxy is not configured" | `NAS_API_URL` / `NAS_WORKER_TOKEN` absent in dev `.env` | Add both, restart the dev server (`01` §7.6) |
 | Pages returns **503** from `/api/*` | Runtime secrets missing | Set `NAS_API_URL` + `NAS_WORKER_TOKEN` (`01` §7.4) |
 | Pages returns **401** on a private route | Session missing/expired | Sign in again; confirm `SUPABASE_URL` + `SUPABASE_ANON_KEY` are set |
@@ -203,13 +203,13 @@ application.
 
 ### 3.1 Build-time — browser (`VITE_*`)
 
-Only these three are required. All are compiled into the shipped bundle.
+Only the first two are required. All are compiled into the shipped bundle.
 
 | Variable | Required | Default | Purpose |
 | --- | :--- | --- | --- |
 | `VITE_SUPABASE_URL` | **Yes** | — | Project REST base. Warns if absent |
 | `VITE_SUPABASE_ANON_KEY` | **Yes** | — | Public anon / publishable key |
-| `VITE_MAP_URL` | **Yes** | — | WebGIS app base. **No fallback** |
+| `VITE_MAP_URL` | No | `https://map.geosphere.my` | WebGIS app base. A Seller Console tenant override outranks it; the resolved value is never empty |
 | `VITE_SUPABASE_KEY` | No | falls back to anon key | Legacy alias for the anon key |
 | `VITE_WORKER_API_MODE` | No | `proxy` | `proxy` or `direct` — how the browser reaches the worker |
 | `VITE_STATION_AGENT_MODE` | No | `proxy` in prod, `direct` in dev | How the browser reaches the agents |
@@ -378,7 +378,7 @@ database wins — so a reseller can correct them on first run without rebuilding
 
 ### 4.3 NAS Worker HTTP surface
 
-Full contract: [`docs/production_worker_api.md`](../production_worker_api.md).
+Full contract: [`docs/Product Dashboard/production_worker_api.md`](../Product Dashboard/production_worker_api.md).
 
 | Method | Route | Auth | Purpose |
 | --- | --- | :---: | --- |
