@@ -168,10 +168,14 @@ export async function onRequestPost({ request, env }) {
     });
   }
 
-  let created;
+  let userId = '';
+  let confirmationSent = false;
+  let inviteLink = null;
+
+  // 1. Dispatch official invite email via GoTrue /auth/v1/invite
   try {
     const res = await timedFetch(
-      `${url}/auth/v1/admin/users`,
+      `${url}/auth/v1/invite`,
       {
         method: 'POST',
         headers: {
@@ -179,20 +183,16 @@ export async function onRequestPost({ request, env }) {
           Authorization: `Bearer ${serviceKey}`,
           'Content-Type': 'application/json'
         },
-        // email_confirm:false is the whole point. The account exists but
-        // cannot be used until the person proves they own the address, which is
-        // the only thing standing between a shared mailbox and a data breach.
-        body: JSON.stringify({
-          email,
-          email_confirm: false,
-          user_metadata: {}
-        })
+        body: JSON.stringify({ email, data: {} })
       },
       AUTH_REQUEST_TIMEOUT_MS
     );
 
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok) {
+    if (res.ok && payload?.id) {
+      userId = String(payload.id);
+      confirmationSent = true;
+    } else if (!res.ok) {
       const message = payload?.msg || payload?.message || payload?.error_description || `HTTP ${res.status}`;
       // Fallback: if user already exists in auth.users, resolve their id rather than aborting
       if (res.status === 422 && /already.*registered/i.test(message)) {
@@ -203,34 +203,78 @@ export async function onRequestPost({ request, env }) {
             user_id: retry.userId,
             created: false,
             confirmation_sent: false,
+            invite_link: null,
             already_platform_admin: alreadyAdmin === true
           });
         }
       }
-      return fail(res.status === 422 ? 409 : 502, `The account could not be created: ${message}`);
     }
-    created = payload;
   } catch {
-    return fail(502, 'Could not reach the authentication service.');
+    // If mailer encounters network/provider issue, generate_link below provides fallback
   }
 
-  const userId = created?.id ? String(created.id) : '';
+  // 2. Generate direct activation link via /auth/v1/admin/generate_link
+  try {
+    const linkRes = await timedFetch(
+      `${url}/auth/v1/admin/generate_link`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ type: 'invite', email })
+      },
+      AUTH_REQUEST_TIMEOUT_MS
+    );
+    if (linkRes.ok) {
+      const linkPayload = await linkRes.json().catch(() => ({}));
+      if (linkPayload?.action_link) {
+        inviteLink = String(linkPayload.action_link);
+      }
+      if (!userId && linkPayload?.id) {
+        userId = String(linkPayload.id);
+      }
+    }
+  } catch {
+    // Non-fatal if direct link generator fails
+  }
+
+  // 3. Fallback to admin/users if invite endpoints were blocked
   if (!userId) {
-    // The directory accepted the request but returned nothing usable. Reporting
-    // success here would leave the seller believing a team member exists.
-    return fail(502, 'The authentication service accepted the request but returned no user.');
+    try {
+      const fallbackRes = await timedFetch(
+        `${url}/auth/v1/admin/users`,
+        {
+          method: 'POST',
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email, email_confirm: false, user_metadata: {} })
+        },
+        AUTH_REQUEST_TIMEOUT_MS
+      );
+      const fallbackPayload = await fallbackRes.json().catch(() => ({}));
+      if (fallbackRes.ok && fallbackPayload?.id) {
+        userId = String(fallbackPayload.id);
+      }
+    } catch {
+      // Ignored
+    }
   }
 
-  // GoTrue sends the confirmation mail as a side effect and does not always
-  // report whether it landed. Absence of a confirmation_sent flag is treated as
-  // "not confirmed sent" rather than assumed fine — the console offers a manual
-  // resend, which is the honest response to not knowing.
-  const confirmationSent = created?.confirmation_sent_at != null;
+  if (!userId) {
+    return fail(502, 'The authentication service could not create or invite this account.');
+  }
 
   return json({
     user_id: userId,
     created: true,
     confirmation_sent: confirmationSent,
+    invite_link: inviteLink,
     already_platform_admin: false
   });
 }

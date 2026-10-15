@@ -104,6 +104,8 @@ export interface InviteOutcome {
   confirmationSent: boolean;
   /** The account already sees every tenant, so a tenant role would be a no-op. */
   alreadyPlatformAdmin: boolean;
+  /** Direct activation link generated via GoTrue for immediate manual sharing. */
+  inviteLink?: string | null;
 }
 
 /** Narrow an unknown thrown value to a message without asserting its type. */
@@ -279,7 +281,8 @@ export async function resolveInviteeAccount(
       userId,
       created: body?.created === true,
       confirmationSent: body?.confirmation_sent === true,
-      alreadyPlatformAdmin: body?.already_platform_admin === true
+      alreadyPlatformAdmin: body?.already_platform_admin === true,
+      inviteLink: typeof body?.invite_link === 'string' ? body.invite_link : null
     }
   };
 }
@@ -487,6 +490,7 @@ interface InviteResponseShape {
   created?: unknown;
   confirmation_sent?: unknown;
   already_platform_admin?: unknown;
+  invite_link?: unknown;
   error?: unknown;
 }
 

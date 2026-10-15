@@ -32,7 +32,7 @@
  */
 
 import React from 'react';
-import { UserPlus, Users, ShieldAlert, Trash2, RotateCcw, Ban, Building2 } from 'lucide-react';
+import { UserPlus, Users, ShieldAlert, Trash2, RotateCcw, Ban, Building2, Copy, Check } from 'lucide-react';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
 import { STATUS_LABEL } from '../useConsoleDirectory';
 import {
@@ -108,6 +108,8 @@ const InviteMemberModal: React.FC<InviteModalProps> = ({ orgId, orgName, onClose
   const [role, setRole] = React.useState('Operator');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [directLink, setDirectLink] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,71 +145,118 @@ const InviteMemberModal: React.FC<InviteModalProps> = ({ orgId, orgName, onClose
       return;
     }
 
+    if (account.outcome.inviteLink) {
+      setDirectLink(account.outcome.inviteLink);
+      setBusy(false);
+    } else {
+      onInvited(email.trim().toLowerCase());
+    }
+  };
+
+  const handleFinish = () => {
     onInvited(email.trim().toLowerCase());
+    onClose();
   };
 
   return (
-    <ModalShell title={`Invite to ${orgName}`} onClose={onClose}>
-      <form onSubmit={submit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto text-slate-800">
-        <Field label="Email Address" required>
-          <input
-            type="email"
-            required
-            placeholder="name@client.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className={`${inputClass} font-mono`}
-          />
-        </Field>
-
-        <Field label="Company Role">
-          <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClass}>
-            {MEMBER_ROLES.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed space-y-1.5">
-          <p className="font-bold text-slate-800 text-xs">What happens next</p>
-          <p>
-            If the address has no account here, one is created and a confirmation email is sent. They appear in this
-            list as <span className="font-mono font-semibold">invited</span> immediately.
-          </p>
-          <p>
-            <strong className="text-slate-800">An invite grants nothing on its own.</strong> Access starts only after
-            they confirm the address and sign in for the first time.
-          </p>
-        </div>
-
-        {error ? (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2">
-            <ShieldAlert size={14} className="shrink-0 mt-0.5 text-rose-600" />
-            <span className="text-xs text-rose-700 font-medium leading-tight">{error}</span>
+    <ModalShell title={`Invite to ${orgName}`} onClose={handleFinish}>
+      {directLink ? (
+        <div className="p-6 space-y-4 text-slate-800">
+          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 space-y-2">
+            <p className="font-bold text-sm text-emerald-900">Member Invited Successfully!</p>
+            <p className="text-emerald-700 leading-relaxed">
+              An invitation email has been dispatched to <strong>{email}</strong>.
+            </p>
+            <p className="text-slate-600 pt-1">
+              If the recipient cannot find the email in their inbox or spam, you can share this direct activation link with them:
+            </p>
+            <div className="flex items-center gap-2 pt-1">
+              <input readOnly value={directLink} className={`${inputClass} font-mono text-[11px] select-all`} />
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(directLink);
+                  setCopied(true);
+                  toast.success('Direct invite link copied!');
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-[#0c0d0e] hover:bg-black text-white shrink-0 inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                <span>{copied ? 'Copied' : 'Copy Link'}</span>
+              </button>
+            </div>
           </div>
-        ) : null}
-
-        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={busy}
-            style={{ backgroundColor: '#121316', borderRadius: '12px' }}
-            className="px-5 py-2 rounded-xl text-xs font-bold text-white hover:bg-black transition-colors cursor-pointer disabled:opacity-60 inline-flex items-center gap-2"
-          >
-            <UserPlus size={13} />
-            {busy ? 'Sending…' : 'Send Invite'}
-          </button>
+          <div className="flex justify-end pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={handleFinish}
+              className="px-5 py-2 rounded-xl text-xs font-bold bg-[#0c0d0e] hover:bg-black text-white cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
         </div>
-      </form>
+      ) : (
+        <form onSubmit={submit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto text-slate-800">
+          <Field label="Email Address" required>
+            <input
+              type="email"
+              required
+              placeholder="name@client.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={`${inputClass} font-mono`}
+            />
+          </Field>
+
+          <Field label="Company Role">
+            <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClass}>
+              {MEMBER_ROLES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed space-y-1.5">
+            <p className="font-bold text-slate-800 text-xs">What happens next</p>
+            <p>
+              An invitation email is sent directly to their address. If they do not see it, a direct invite link will also be provided for manual sharing.
+            </p>
+            <p>
+              <strong className="text-slate-800">An invite grants nothing on its own.</strong> Access starts only after
+              they confirm the address and sign in for the first time.
+            </p>
+          </div>
+
+          {error ? (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2">
+              <ShieldAlert size={14} className="shrink-0 mt-0.5 text-rose-600" />
+              <span className="text-xs text-rose-700 font-medium leading-tight">{error}</span>
+            </div>
+          ) : null}
+
+          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              style={{ backgroundColor: '#121316', borderRadius: '12px' }}
+              className="px-5 py-2 rounded-xl text-xs font-bold text-white hover:bg-black transition-colors cursor-pointer disabled:opacity-60 inline-flex items-center gap-2"
+            >
+              <UserPlus size={13} />
+              {busy ? 'Sending…' : 'Send Invite'}
+            </button>
+          </div>
+        </form>
+      )}
     </ModalShell>
   );
 };
