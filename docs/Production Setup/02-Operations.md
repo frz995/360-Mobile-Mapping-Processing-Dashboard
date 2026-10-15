@@ -422,6 +422,10 @@ The Cloudflare Tunnel is outbound-only and needs no inbound rule.
 `dedicated_external` company, use **Check Reachability** to confirm the stored
 credentials answer.
 
+> For a complete walkthrough on provisioning external cloud or physical on-premise
+> Supabase instances and HTTPS credentials, see
+> [Dedicated Client Database Setup Guide](dedicated_client_db_guide.md).
+
 > A company marked `dedicated_external` currently behaves like a shared one: the
 > credentials are stored and readable in the console, but the client application
 > does not yet connect to that instance. Route new companies to `cloud_shared`
