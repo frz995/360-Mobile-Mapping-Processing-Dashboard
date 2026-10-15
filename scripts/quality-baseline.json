@@ -28,7 +28,8 @@
     "Updated for Task 4 Option A: mapShares.ts +2 for 'missing' status in share payload, projectExplorerGeometry.ts +2 for MeshFrameBreakdown missing frames.",
     "v34 repin, after extraction and before this raise: App.tsx carried the console gate inline (+80 over budget). `useConsoleAccessGate` and `ConsoleRouteGate` took it out to two small modules with their own rationale; the residual +24 is the irreducible call-site cost of one gate mount, one route branch and one awaiting-assignment branch, which is the same shape v32 repinned for the console mount. consoleAccess.ts moved 510 -> 557 for the three explicit PostgREST row shapes (MemberRowShape, SeatSummaryRowShape, InviteResponseShape) that replaced `any`. SellerPartnerConsole.tsx moved 420 -> 421 for the create-intent comment. All three repinned so regrowth fails again.",
     "Updated for v34: the Seller Partner Console was decomposed from one 1532-line SellerPartnerConsole.tsx into a shell plus six panels under src/components/console/panels/, a shared directory hook and a local primitive set. That monolith was absent from this table, and the ratchet only iterates keys that ARE here, so it escaped the budget entirely - the decomposition is what makes the pins below meaningful. Every console file is now under the 800-line floor, so these entries are deliberate pins rather than overflow allowances: they exist so that regrowth in the console fails the same way it would in any tracked god file.",
-    "Updated for v35: added Parent Database telemetry, Need Action operational report sidebar, license management modal with expiration datepicker and license type tiers, and panel-wide skeleton loaders. SellerPartnerConsole.tsx moved to 558 lines, ConsoleDashboardPanel.tsx to 519, OrganizationFormModal.tsx to 525, ConsoleCompaniesPanel.tsx to 409, ConsoleDatabasePanel.tsx to 242, ConsoleSeatsPanel.tsx to 210, ConsoleMembersPanel.tsx to 486, App.tsx to 4615, and consoleRouter.ts to 201. All 9 budgets repinned so regrowth fails again."
+    "Updated for v35: added Parent Database telemetry, Need Action operational report sidebar, license management modal with expiration datepicker and license type tiers, and panel-wide skeleton loaders. SellerPartnerConsole.tsx moved to 558 lines, ConsoleDashboardPanel.tsx to 519, OrganizationFormModal.tsx to 525, ConsoleCompaniesPanel.tsx to 409, ConsoleDatabasePanel.tsx to 242, ConsoleSeatsPanel.tsx to 210, ConsoleMembersPanel.tsx to 486, App.tsx to 4615, and consoleRouter.ts to 201. All 9 budgets repinned so regrowth fails again.",
+    "Updated for v36: console production hardening for dedicated external databases and license expiration routing. App.tsx moved from 4615 to 4645 lines, ConsoleDatabasePanel.tsx from 242 to 246 lines, and ConsoleDashboardPanel.tsx from 519 to 548 lines. All 3 repinned."
   ],
   "lint": {
     "_scope": "eslint src vitest.config.ts, ESLINT_USE_FLAT_CONFIG=true, flat config eslint.config.mjs",
@@ -57,7 +58,7 @@
     "_why": "Fails on exceedance only. These are physical line counts, which run ~8% higher than PowerShell's Measure-Object -Line because that cmdlet skips blank lines. Covers every file at or above 800 lines, plus any file the team pins deliberately below that floor. Raising a budget is a deliberate act: the diff is the record that the god files are growing. Note the ratchet iterates only the keys present here, so an unbudgeted file escapes it entirely - that is how SellerPartnerConsole.tsx reached 1532 lines unnoticed.",
     "src/components/DataManagementPage.tsx": 5026,
     "src/components/RoadAnalysisWorkspace.tsx": 4558,
-    "src/App.tsx": 4615,
+    "src/App.tsx": 4645,
     "src/components/AdminSettingsView.tsx": 3487,
     "src/components/roadAnalysis/RoadAnalysisMap.tsx": 3021,
     "src/components/boundary/districtMetadata.ts": 2896,
@@ -94,8 +95,8 @@
     "src/components/console/panels/OrganizationFormModal.tsx": 525,
     "src/components/console/panels/consoleUi.tsx": 285,
     "src/components/console/panels/ConsoleSeatsPanel.tsx": 210,
-    "src/components/console/panels/ConsoleDatabasePanel.tsx": 242,
-    "src/components/console/panels/ConsoleDashboardPanel.tsx": 519,
+    "src/components/console/panels/ConsoleDatabasePanel.tsx": 246,
+    "src/components/console/panels/ConsoleDashboardPanel.tsx": 548,
     "src/utils/consoleRouter.ts": 201,
     "src/components/console/ConsoleAccessDenied.tsx": 115,
     "src/components/console/useConsoleDirectory.ts": 108,

@@ -125,8 +125,8 @@ export function setActiveOrganizationId(orgId: string | null): void {
       }
       memoryActiveOrgStorage = null;
     }
-  } catch {
-    // Ignore storage quota errors in sandbox
+  } catch (err) {
+    console.debug('Storage sync ignored:', err);
   }
 }
 
@@ -154,8 +154,8 @@ export function setActiveOrganizationStorage(storage: OrganizationStorageConfig 
       if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
       if (typeof localStorage !== 'undefined') localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
     }
-  } catch {
-    // Ignore storage quota errors in sandbox
+  } catch (err) {
+    console.debug('Storage sync ignored:', err);
   }
 }
 
