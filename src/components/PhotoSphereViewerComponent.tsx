@@ -28,6 +28,39 @@ export interface PhotoSphereViewerProps {
 const DEFAULT_MIN_FOV = 30;
 const DEFAULT_MAX_FOV = 110;
 
+/**
+ * Turn a panorama load failure into something the operator can act on.
+ *
+ * WHY NOT ONE GENERIC MESSAGE
+ *   Every failure previously read "request failed or file missing". That is a
+ *   claim about the filesystem that the browser never checks: a 401 means the
+ *   credentials were refused, a 404/400 means the key is absent, a 502 means
+ *   the image service is down, and a blocked request means the status is
+ *   genuinely unknown. Telling an operator their file is missing when the file
+ *   is fine and the request was merely unauthorised sends them to the wrong
+ *   machine.
+ *
+ * `three` raises `HttpError`, which carries the real `status`; a bare
+ * `Image.onerror` and an opaque CORS rejection carry none, and those are
+ * reported as unknown rather than guessed at.
+ */
+function describePanoramaFailure(err: unknown): string {
+  const status = (err as { status?: unknown } | null)?.status;
+  if (typeof status === 'number' && status > 0) {
+    if (status === 400 || status === 404) {
+      return `Storage has no object at this URL (HTTP ${status}). The panorama key is wrong — check the tenant folder the URL resolves to.`;
+    }
+    if (status === 401 || status === 403) {
+      return `Access refused (HTTP ${status}). The image URL requires credentials an image tag cannot send.`;
+    }
+    if (status >= 500) {
+      return `The image service failed (HTTP ${status}). The file was not checked.`;
+    }
+    return `The image request failed (HTTP ${status}).`;
+  }
+  return 'No response arrived — CORS, network, or mixed-content block. Whether the file exists is unknown.';
+}
+
 // Map a requested FOV (degrees) to PSV's zoom level (0..100). PSV zooms linearly
 // from maxFov (zoom 0) down to minFov (zoom 100).
 function fovToZoomLevel(fov: number, minFov: number, maxFov: number): number {
@@ -187,7 +220,9 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
         };
         preloadImg.onerror = () => {
           if (isMounted) {
-            setLoadError('Unable to load the 360° image (request failed or file missing).');
+            // An `Image` tag exposes no status, so this stays honest about not
+            // knowing rather than asserting the file is missing.
+            setLoadError('No response arrived — CORS, network, or mixed-content block. Whether the file exists is unknown.');
             setIsLoading(false);
           }
         };
@@ -230,16 +265,17 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
                     setProgress(null);
                   }
                 })
-                .catch(() => {
+                .catch((fallbackErr) => {
                   if (isMounted) {
-                    setLoadError('Unable to load the 360° image (request failed or file missing).');
+                    console.warn('Panorama fallback also failed:', fallbackErr);
+                    setLoadError(describePanoramaFailure(fallbackErr));
                     setIsLoading(false);
                   }
                 });
               return;
             }
             if (isMounted) {
-              setLoadError('Unable to load the 360° image (request failed or file missing).');
+              setLoadError(describePanoramaFailure(err));
               setIsLoading(false);
             }
           });
@@ -277,9 +313,13 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
           }
         });
 
-        viewerInstance.addEventListener('panorama-error' as any, () => {
+        viewerInstance.addEventListener('panorama-error' as any, (event: any) => {
           if (isMounted) {
-            setLoadError('Unable to load the 360° image (request failed or file missing).');
+            // PSV carries the underlying loader failure on the event. Without it
+            // the panel claimed "file missing" for every cause.
+            const cause = event?.cause || event?.error || event?.content || event;
+            console.warn('Panorama load failed:', cause);
+            setLoadError(describePanoramaFailure(cause));
             setIsLoading(false);
           }
         });
@@ -416,9 +456,14 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
           </div>
         )}
 
-        {/* Load Failure Placeholder (avoids a silent white canvas) */}
+        {/* Load Failure Placeholder (avoids a silent white canvas)
+
+            Fully opaque on purpose. Photo Sphere Viewer renders its own error
+            template inside the container below; at 80% opacity with a blur the
+            two messages showed through each other and the operator read a single
+            garbled failure. One surface, one reason. */}
         {!isLoading && loadError && (
-          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm transition-opacity duration-200 pointer-events-none select-none animate-in fade-in">
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950">
             <div className="flex flex-col items-center gap-3 p-5 rounded-2xl bg-card/90 border border-rose-500/30 shadow-2xl min-w-[240px] max-w-[300px] text-center">
               <div className="w-11 h-11 rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center">
                 <span className="text-rose-400 font-bold text-lg leading-none">!</span>

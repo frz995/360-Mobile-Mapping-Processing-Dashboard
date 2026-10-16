@@ -36,7 +36,8 @@ import {
   testDatabaseHealth,
   resolvePanoramaUrl,
   resolvePanoramaConfigUrl,
-  testCloudflareStorageHealth
+  testCloudflareStorageHealth,
+  testStorageObjectHealth
 } from '../services/supabase';
 import { persistProjectBoundary } from '../services/projects';
 import {
@@ -61,6 +62,7 @@ import {
 } from './boundary/malaysiaDistricts';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { WorkstationNetworkEditor } from './settings/WorkstationNetworkEditor';
+import { StorageProbeResultCard } from './settings/StorageProbeResultCard';
 import { isGuestEmail } from '../lib/authz';
 import { usePermission } from '../hooks/usePermission';
 
@@ -176,6 +178,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     ok: boolean;
     /** The endpoint answered. Distinct from "the probed object exists". */
     reachable?: boolean;
+    /** Whether the probed key exists; null when that was never established. */
+    objectFound?: boolean | null;
     status: number;
     statusText: string;
     latencyMs: number;
@@ -184,6 +188,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     corsOk: boolean;
     contentType?: string;
     error?: string;
+    /** Latency of the DATABASE query, never of the image. Null when not read. */
+    dbLatencyMs?: number | null;
+    /** Bucket list() outcome, independent of the object probe. */
+    bucketStatus?: string | null;
+    /** null when the inventory was not enumerated — never 0. */
+    indexedFiles?: number | null;
   } | null>(null);
   // Empty by default: prefilling a made-up filename makes the connectivity
   // test appear to target a real frame when nothing has been chosen.
@@ -2073,39 +2083,63 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                 const res = await testCloudflareStorageHealth(domain, testFilename, projectSettings);
                                 setCfTestResult(res);
                                 if (res.ok) {
-                                  showToast(`Storage probe OK &bull; ${res.latencyMs}ms latency &bull; HTTP ${res.status}`);
+                                  showToast(`Storage probe OK · ${res.latencyMs}ms latency · HTTP ${res.status}`);
                                 } else if (res.reachable) {
                                   showToast(`Bucket reachable (${res.latencyMs}ms), but "${testFilename}" is not published there (HTTP ${res.status}).`, 'error');
                                 } else {
                                   showToast(`Storage probe failed: ${res.error || res.statusText}`, 'error');
                                 }
                               } else {
-                                const res = await testDatabaseHealth();
-                                setCfTestResult({
-                                  ok: res.storageStatus === 'operational',
-                                  reachable: res.storageStatus !== 'offline',
-                                  status: res.storageStatus === 'operational' ? 200 : 503,
-                                  statusText: res.storageStatus === 'operational' ? 'Operational' : 'Degraded',
-                                  latencyMs: res.postgisLatencyMs,
-                                  imageUrl: testFilename ? resolvePanoramaUrl(testFilename, projectSettings) : '',
-                                  corsOk: true
-                                });
-                                showToast(
-                                  res.storageStatus === 'operational'
-                                    ? `Bucket reachable: ${projectSettings.supabaseBucket || STORAGE_BUCKET_DEFAULT}${res.storageTotalFiles !== null ? ` (${res.storageTotalFiles.toLocaleString()} files indexed)` : ' (inventory not enumerated)'}`
-                                    : `Storage reported ${res.storageStatus}.`
-                                );
+                                // The object verdict comes from actually requesting
+                                // the object. It used to be synthesised from
+                                // `testDatabaseHealth()` — a synthesised 200, a PostGIS
+                                // latency wearing an image label, and a hardcoded
+                                // `corsOk: true` — so this panel reported storage
+                                // healthy while every panorama 400'd in production.
+                                const res = await testStorageObjectHealth(testFilename, projectSettings);
+
+                                // Database and bucket liveness are separate facts and are
+                                // reported as their own row. They are never merged into
+                                // the object's verdict, and their latency is never shown
+                                // as the image's.
+                                let dbLatencyMs: number | null = null;
+                                let bucketStatus: string | null = null;
+                                let indexedFiles: number | null = null;
+                                try {
+                                  const health = await testDatabaseHealth();
+                                  dbLatencyMs = health.postgisLatencyMs;
+                                  bucketStatus = health.storageStatus;
+                                  indexedFiles = health.storageTotalFiles;
+                                } catch {
+                                  // A failed DB read leaves these null — unknown, not zero.
+                                }
+
+                                setCfTestResult({ ...res, dbLatencyMs, bucketStatus, indexedFiles });
+
+                                if (res.objectFound === true) {
+                                  showToast(`Object served · HTTP ${res.status} · ${res.latencyMs}ms`);
+                                } else if (res.objectFound === false && res.reachable) {
+                                  showToast(`Storage answered, but "${testFilename}" is not at that URL (HTTP ${res.status}).`, 'error');
+                                } else if (!res.reachable) {
+                                  showToast(`Storage probe failed: ${res.error || res.statusText}`, 'error');
+                                } else {
+                                  showToast('Storage reachable — but no object was probed, so the file was never checked.', 'error');
+                                }
                               }
-                            } catch (err: any) {
+                            } catch (err: unknown) {
+                              const message = (err as { message?: unknown } | null)?.message;
                               setCfTestResult({
                                 ok: false,
                                 reachable: false,
+                                // The probe threw, so whether the object exists was never
+                                // established. null, not false.
+                                objectFound: null,
                                 status: 0,
                                 statusText: 'Probe Failed',
                                 latencyMs: 0,
                                 imageUrl: testFilename ? resolvePanoramaUrl(testFilename, projectSettings) : '',
                                 corsOk: false,
-                                error: err?.message || 'Failed to ping storage provider'
+                                error: typeof message === 'string' && message ? message : 'Failed to reach storage'
                               });
                               showToast('Storage probe exception', 'error');
                             } finally {
@@ -2167,86 +2201,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       )}
                     </div>
 
-                    {/* PROBE RESULT CARD */}
-                    {cfTestResult && (
-                      <div className={`p-3.5 rounded-xl border animate-in fade-in slide-in-from-top-2 ${cfTestResult.ok
-                        ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-200'
-                        : cfTestResult.status === 404
-                          ? 'bg-amber-950/30 border-amber-800/60 text-amber-200'
-                          : 'bg-rose-950/30 border-rose-800/60 text-rose-200'
-                        }`}>
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="space-y-1.5 flex-1 min-w-[240px]">
-                            <div className="flex items-center gap-2">
-                              {cfTestResult.ok ? (
-                                <CheckCircle size={16} className="text-text-muted shrink-0" />
-                              ) : cfTestResult.status === 404 ? (
-                                <AlertTriangle size={16} className="text-text-muted shrink-0" />
-                              ) : (
-                                <XCircle size={16} className="text-text-muted shrink-0" />
-                              )}
-                              <span className="font-bold text-xs">
-                                {cfTestResult.ok
-                                  ? `Storage Reachable &bull; HTTP ${cfTestResult.status} ${cfTestResult.statusText}`
-                                  : cfTestResult.status === 404
-                                    ? `Storage Connected &bull; HTTP 404 File Not Found`
-                                    : `Connection Failed &bull; ${cfTestResult.statusText || 'Error'}`}
-                              </span>
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-sans bg-inner border border-subtle text-text-base">
-                                {cfTestResult.latencyMs}ms Latency
-                              </span>
-                              {cfTestResult.corsOk && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-text-muted border border-subtle">
-                                  CORS OK
-                                </span>
-                              )}
-                            </div>
-
-                            {cfTestResult.error && (
-                              <p className="text-[11px] text-text-muted leading-relaxed font-sans">
-                                {cfTestResult.error}
-                              </p>
-                            )}
-
-                            {cfTestResult.status === 404 && (
-                              <p className="text-[11px] text-text-muted leading-relaxed font-sans">
-                                Tip: The Cloudflare domain is active and CORS is valid, but `{testFilename}` does not exist in the bucket. Check your folder path or verify filename spelling.
-                              </p>
-                            )}
-
-                            {cfTestResult.contentType && (
-                              <div className="text-[10px] text-text-muted font-sans">
-                                Content-Type: <span className="text-text-base">{cfTestResult.contentType}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* THUMBNAIL PREVIEW IF ACCESSIBLE */}
-                          <div className="shrink-0 flex flex-col items-center gap-1">
-                            <a
-                              href={cfTestResult.imageUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="group relative block rounded-lg overflow-hidden border border-subtle bg-black/40 hover:border-sky-400 transition-all shadow-md"
-                              title="Click to open image in new tab"
-                            >
-                              <img
-                                src={cfTestResult.imageUrl}
-                                alt="360 Preview"
-                                className="h-16 w-28 object-cover group-hover:scale-105 transition-transform"
-                                onError={(e: any) => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
-                              />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                <ExternalLink size={14} className="text-white" />
-                              </div>
-                            </a>
-                            <span className="text-[9px] text-text-muted">360° Preview</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    {/* PROBE RESULT CARD — extracted so the verdict logic lives in one
+                        testable place and `AdminSettingsView` stays inside its budget. */}
+                    {cfTestResult && <StorageProbeResultCard result={cfTestResult} />}
                   </div>
                 </div>
 

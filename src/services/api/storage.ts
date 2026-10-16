@@ -7,7 +7,8 @@ import {
   resolvePanoramaConfigUrl,
   applyTenantObjectPrefix,
   StorageProviderType,
-  ResolveUrlOptions
+  ResolveUrlOptions,
+  type StorageResolveSettings
 } from '../storageUrls';
 import {
   buildManifestUrl,
@@ -486,6 +487,185 @@ export async function testCloudflareStorageHealth(
       error: isCors
         ? 'Cross-Origin (CORS) check failed. Please ensure CORS headers (Access-Control-Allow-Origin: *) are configured in your Cloudflare R2 bucket.'
         : (err?.message || 'Network request failed')
+    };
+  }
+}
+
+/**
+ * Result of probing ONE real object URL.
+ *
+ * `objectFound` is deliberately `boolean | null`. The previous diagnostics
+ * panel reported a synthesised `HTTP 200` and a `CORS OK` badge for Supabase
+ * and NAS providers without issuing a single request, so an operator was told
+ * storage was healthy while every panorama 400'd. `null` is the only honest
+ * value for "the probe never got far enough to know".
+ */
+export interface StorageObjectProbe {
+  /** The probed object was served (2xx). */
+  ok: boolean;
+  /** The endpoint answered at all. Distinct from the object existing. */
+  reachable: boolean;
+  /** Whether the probed key exists. null when that was never established. */
+  objectFound: boolean | null;
+  status: number;
+  statusText: string;
+  /** Round-trip for the object request. Never a database or bucket-list time. */
+  latencyMs: number;
+  imageUrl: string;
+  configUrl?: string;
+  /** True only when a CORS-mode response actually arrived. */
+  corsOk: boolean;
+  contentType?: string;
+  error?: string;
+}
+
+/**
+ * Supabase Storage's public object endpoint answers a missing key with
+ * **HTTP 400** and an `InvalidRequest / Object not found` body, not 404. A probe
+ * that only recognises 404 renders every missing panorama as a connection
+ * failure, which is the opposite of the operator's next action.
+ */
+function isMissingObjectResponse(status: number, contentType: string, body: string): boolean {
+  if (status === 404) return true;
+  if (status !== 400) return false;
+  // A 400 carrying an image body is a genuine bad request, not a lookup miss.
+  if (contentType.toLowerCase().startsWith('image/')) return false;
+  return /object not found|not_found|invalidrequest|no such file|does not exist/i.test(body);
+}
+
+/**
+ * Fetch the exact URL the 360 viewer will fetch.
+ *
+ * WHY THIS IS SEPARATE FROM `testCloudflareStorageHealth`
+ *   That function pins `storageProvider: 'cloudflare_r2'` and overrides the
+ *   domain, because its caller is probing an R2/Custom-CDN endpoint. Probing
+ *   Supabase or NAS through it would measure a URL the app never uses. This one
+ *   resolves with the caller's REAL settings and no provider override, so the
+ *   panel and the viewer cannot drift apart again.
+ */
+export async function testStorageObjectHealth(
+  sampleFilename: string | undefined,
+  settings?: StorageResolveSettings
+): Promise<StorageObjectProbe> {
+  const fn = (sampleFilename || '').trim();
+  if (!fn) {
+    return {
+      ok: false,
+      reachable: false,
+      objectFound: null,
+      status: 0,
+      statusText: 'Not Probed',
+      latencyMs: 0,
+      imageUrl: '',
+      corsOk: false,
+      error: 'No filename supplied, so nothing was probed. A made-up name would report a healthy bucket as broken.'
+    };
+  }
+
+  const imageUrl = resolvePanoramaUrl(fn, settings);
+  if (!imageUrl) {
+    return {
+      ok: false,
+      reachable: false,
+      objectFound: null,
+      status: 0,
+      statusText: 'Not Probed',
+      latencyMs: 0,
+      imageUrl: '',
+      corsOk: false,
+      error: `"${fn}" did not resolve to a URL. The storage provider or base URL is not configured.`
+    };
+  }
+
+  // A multi-res deployment is viewed through a tile config, and a single
+  // equirectangular panorama is the image itself. Probing the wrong artifact
+  // reports a healthy deployment as broken, so the strategy decides which.
+  const isMulti = settings?.imageStorageStrategy !== 'single_equirectangular';
+  const configUrl = isMulti ? resolvePanoramaConfigUrl(fn, settings) || '' : '';
+  const targetUrl = configUrl || imageUrl;
+  const startTime = performance.now();
+
+  try {
+    const response = await fetch(targetUrl, { method: 'GET', mode: 'cors', cache: 'no-cache' });
+    const latencyMs = Math.round(performance.now() - startTime);
+    const contentType = response.headers.get('content-type') || '';
+
+    // Only error responses are read, and those bodies are small JSON. An image
+    // body is deliberately never consumed: a panorama is tens of megabytes.
+    let body = '';
+    if (!response.ok && !contentType.toLowerCase().startsWith('image/')) {
+      body = await response.text().catch(() => '');
+    }
+
+    if (response.ok) {
+      return {
+        ok: true,
+        reachable: true,
+        objectFound: true,
+        status: response.status,
+        statusText: response.statusText || 'OK',
+        latencyMs,
+        imageUrl,
+        configUrl: configUrl || undefined,
+        corsOk: true,
+        contentType
+      };
+    }
+
+    // Reaching a response at all proves CORS permitted it: `mode: 'cors'`
+    // makes the browser block the response outright otherwise.
+    const corsOk = true;
+    const missing = isMissingObjectResponse(response.status, contentType, body);
+    const detail = body.slice(0, 300);
+
+    if (missing) {
+      return {
+        ok: false,
+        reachable: true,
+        objectFound: false,
+        status: response.status,
+        statusText: `Object Not Found (HTTP ${response.status})`,
+        latencyMs,
+        imageUrl,
+        configUrl: configUrl || undefined,
+        corsOk,
+        contentType: contentType || undefined,
+        error: `Storage answered, but no object exists at this key. The filename "${fn}" may be wrong, or the object may sit under a different tenant folder than the URL resolves to.${detail ? ` Server said: ${detail}` : ''}`
+      };
+    }
+
+    return {
+      ok: false,
+      reachable: true,
+      objectFound: false,
+      status: response.status,
+      statusText: response.statusText || `HTTP ${response.status}`,
+      latencyMs,
+      imageUrl,
+      configUrl: configUrl || undefined,
+      corsOk,
+      contentType: contentType || undefined,
+      error: `Storage rejected the request (HTTP ${response.status}).${detail ? ` Server said: ${detail}` : ''}`
+    };
+  } catch (err: unknown) {
+    const latencyMs = Math.round(performance.now() - startTime);
+    const name = (err as { name?: unknown } | null)?.name;
+    const message = (err as { message?: unknown } | null)?.message;
+    const isBlocked =
+      name === 'TypeError' || (typeof message === 'string' && /failed to fetch|failed to load/i.test(message));
+    return {
+      ok: false,
+      reachable: false,
+      objectFound: null,
+      status: 0,
+      statusText: isBlocked ? 'Blocked Before Response' : 'Connection Failed',
+      latencyMs,
+      imageUrl,
+      configUrl: configUrl || undefined,
+      corsOk: false,
+      error: isBlocked
+        ? 'No response arrived. This is a CORS rejection, a network/DNS failure, or a mixed-content block — the request was stopped before a status could be read, so whether the file exists is still unknown.'
+        : (typeof message === 'string' && message ? message : 'Network request failed')
     };
   }
 }
