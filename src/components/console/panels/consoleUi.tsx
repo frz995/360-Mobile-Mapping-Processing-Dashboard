@@ -18,6 +18,7 @@
  */
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, AlertTriangle } from 'lucide-react';
 import { useDialogEscape } from '../../common/dialog';
 
@@ -153,16 +154,32 @@ export const ConfirmDialog: React.FC<{
 }> = ({ open, title, body, confirmLabel = 'Confirm', destructive, busy, onConfirm, onCancel }) => {
   useDialogEscape(onCancel);
 
+  React.useEffect(() => {
+    if (!open || typeof document === 'undefined') return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open]);
+
   if (!open) return null;
 
-  return (
+  const dialog = (
     <div
-      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs overflow-y-auto p-4 sm:p-6 flex min-h-full items-center justify-center"
       onClick={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
     >
-      <div role="dialog" aria-modal="true" aria-label={title} className="bg-white border border-slate-200 rounded-2xl max-w-md w-full shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        data-console-modal="true"
+        style={{ colorScheme: 'light' }}
+        className="bg-white border border-slate-200 rounded-2xl max-w-md w-full shadow-2xl my-auto shrink-0 relative"
+      >
         <div className="p-6 space-y-4">
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
@@ -195,6 +212,9 @@ export const ConfirmDialog: React.FC<{
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return dialog;
+  return createPortal(dialog, document.body);
 };
 
 /**
@@ -237,9 +257,18 @@ export const ModalShell: React.FC<{
 }> = ({ title, onClose, children }) => {
   useDialogEscape(onClose);
 
-  return (
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
+
+  const modal = (
     <div
-      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs overflow-y-auto p-4 sm:p-6 flex min-h-full items-center justify-center"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -248,9 +277,11 @@ export const ModalShell: React.FC<{
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="bg-white border border-slate-200 rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl"
+        data-console-modal="true"
+        style={{ colorScheme: 'light' }}
+        className="bg-white border border-slate-200 rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl my-auto shrink-0 relative"
       >
-        <div className="px-6 py-4.5 bg-[#121316] text-white flex items-center justify-between">
+        <div className="px-6 py-4.5 bg-[#121316] text-white flex items-center justify-between shrink-0">
           <h3 className="font-bold text-sm flex items-center gap-2">{title}</h3>
           <button
             type="button"
@@ -265,6 +296,9 @@ export const ModalShell: React.FC<{
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return modal;
+  return createPortal(modal, document.body);
 };
 
 export const Field: React.FC<{ label: string; children: React.ReactNode; required?: boolean }> = ({
@@ -282,4 +316,7 @@ export const Field: React.FC<{ label: string; children: React.ReactNode; require
 );
 
 export const inputClass =
-  'w-full px-3.5 py-2 rounded-xl text-xs bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-black transition-colors';
+  'w-full px-3.5 py-2 rounded-xl text-xs bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-black transition-colors [color-scheme:light]';
+
+export const selectClass =
+  'w-full px-3.5 py-2 rounded-xl text-xs bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-black transition-colors [color-scheme:light]';

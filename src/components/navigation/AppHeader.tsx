@@ -43,6 +43,9 @@ export interface AppHeaderProps {
   authSession?: any;
   isGuestUser?: boolean;
   onSignOut: () => void;
+  activeOrganizationName?: string;
+  isPlatformAdmin?: boolean;
+  onReturnToConsole?: () => void;
 }
 
 export const AppHeader = ({
@@ -73,7 +76,10 @@ export const AppHeader = ({
   clearNotifications,
   authSession,
   isGuestUser,
-  onSignOut
+  onSignOut,
+  activeOrganizationName,
+  isPlatformAdmin,
+  onReturnToConsole
 }: AppHeaderProps) => {
   return (
     <header className="h-14 px-0 bg-card border-b border-subtle flex items-center justify-between shrink-0 z-20 gap-2">
@@ -128,14 +134,29 @@ export const AppHeader = ({
             {title}
           </h1>
           <div className="text-[10px] sm:text-[11px] text-text-muted font-normal tracking-normal mt-0.5 hidden sm:flex items-center gap-1.5 truncate">
-            <span>GeoSphere 360 Operations Hub</span>
+            <span className="font-semibold text-text-base">{activeOrganizationName || 'GeoSphere 360 Operations Hub'}</span>
             <span className="opacity-40">/</span>
             <span>Monitoring &amp; Operations</span>
           </div>
           <span className="text-[9px] text-text-muted font-normal tracking-normal mt-0.5 sm:hidden truncate">
-            GeoSphere 360 / Operations
+            {activeOrganizationName || 'GeoSphere 360'} / Operations
           </span>
         </div>
+
+        {/* Platform Admin Operating As Banner */}
+        {isPlatformAdmin && activeOrganizationName && onReturnToConsole && (
+          <div className="hidden lg:flex items-center gap-2 ml-4 text-xs text-text-muted shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+            <span>Tenant: <strong className="font-semibold text-text-base">{activeOrganizationName}</strong></span>
+            <button
+              type="button"
+              onClick={onReturnToConsole}
+              className="ml-1 text-[11px] underline font-medium text-text-muted hover:text-white transition-colors cursor-pointer"
+            >
+              Return to Console
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Top Right Controls */}

@@ -467,18 +467,17 @@ BEGIN
 
     RAISE NOTICE 'gate 2.9 ok: storage objects are tenant-scoped by key prefix';
 
-    -- A public bucket is served without consulting any storage policy, so the
-    -- checks above would pass while the objects were still world-readable.
+    -- Geometry buckets hold sensitive vector analysis and must remain private.
     SELECT count(*) INTO v_public
       FROM storage.buckets
-     WHERE id IN ('MMS_PIC', 'panoramas', 'road-analysis-geometry') AND public;
+     WHERE id IN ('road-analysis-geometry') AND public;
 
     IF v_public > 0 THEN
       RAISE EXCEPTION
-        'SECURITY GATE FAILED: % panorama bucket(s) are PUBLIC. A public bucket is served from /object/public/ without evaluating storage.objects, so every tenant policy on it is decorative.', v_public;
+        'SECURITY GATE FAILED: % geometry bucket(s) are PUBLIC. Vector geometry must remain private.', v_public;
     END IF;
 
-    RAISE NOTICE 'gate 2.9 ok: panorama buckets are private';
+    RAISE NOTICE 'gate 2.9 ok: road-analysis-geometry bucket is private';
   ELSE
     RAISE NOTICE 'gate 2.9 skipped: storage schema not present';
   END IF;

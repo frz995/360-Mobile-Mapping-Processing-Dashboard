@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getActiveProjectId } from '../projectContext';
+import { getActiveOrganizationId } from '../tenantStorage';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
@@ -149,13 +150,18 @@ export function toQueryResult<T>(response: { data: T | null; error: { message: s
 }
 
 /** Append a `project_id = <active>` equality filter when a project is active. */
-export function scoped(query: any): any {
+export function scoped(query: any, options?: { organizationId?: string | null }): any {
+  if (!query) return query;
   const id = getServiceProjectId();
-  if (!id || !query) return query;
-  if (typeof query.eq === 'function') {
-    return query.eq('project_id', id);
+  const orgId = options?.organizationId !== undefined ? options.organizationId : getActiveOrganizationId();
+  let q = query;
+  if (orgId && typeof q.eq === 'function') {
+    q = q.eq('organization_id', orgId);
   }
-  return query;
+  if (id && typeof q.eq === 'function') {
+    q = q.eq('project_id', id);
+  }
+  return q;
 }
 
 /**
@@ -169,13 +175,19 @@ export function scoped(query: any): any {
  * it. Uses `.or()` rather than `.eq()` because combining both would require
  * `project_id = id AND project_id IS NULL`, which can never match.
  */
-export function scopedIncludingUnassigned(query: any): any {
+export function scopedIncludingUnassigned(query: any, options?: { organizationId?: string | null }): any {
+  if (!query) return query;
   const id = getServiceProjectId();
-  if (!id || !query) return query;
-  if (typeof query.or === 'function') {
-    return query.or(`project_id.eq.${id},project_id.is.null`);
+  const orgId = options?.organizationId !== undefined ? options.organizationId : getActiveOrganizationId();
+  let q = query;
+  if (orgId && typeof q.eq === 'function') {
+    q = q.eq('organization_id', orgId);
   }
-  return query;
+  if (!id) return q;
+  if (typeof q.or === 'function') {
+    return q.or(`project_id.eq.${id},project_id.is.null`);
+  }
+  return q;
 }
 
 const MAX_SAFE_HEADER_LENGTH = 1500;

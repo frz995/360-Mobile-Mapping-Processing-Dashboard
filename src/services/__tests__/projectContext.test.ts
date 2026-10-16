@@ -82,4 +82,17 @@ describe('projectContext active-project state', () => {
     const nonFilterQuery = { select: () => {} };
     expect(scoped(nonFilterQuery)).toBe(nonFilterQuery);
   });
+
+  it('partitions active project by organization id so tenants do not leak', () => {
+    saveActiveProjectId('admin-1', 'proj-geosphere-dev', 'org-dev');
+    saveActiveProjectId('admin-1', 'proj-geosphere-test2', 'org-test2');
+
+    expect(loadActiveProjectId('admin-1', 'org-dev')).toBe('proj-geosphere-dev');
+    expect(loadActiveProjectId('admin-1', 'org-test2')).toBe('proj-geosphere-test2');
+    expect(loadActiveProjectId('admin-1', 'org-empty')).toBeNull();
+
+    clearActiveProjectId('admin-1', 'org-dev');
+    expect(loadActiveProjectId('admin-1', 'org-dev')).toBeNull();
+    expect(loadActiveProjectId('admin-1', 'org-test2')).toBe('proj-geosphere-test2');
+  });
 });

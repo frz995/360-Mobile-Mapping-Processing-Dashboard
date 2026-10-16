@@ -10,8 +10,9 @@
 
 export const ACTIVE_PROJECT_KEY_PREFIX = 'geosphere360_active_project_';
 
-function activeProjectStorageKey(userKey: string): string {
-  return `${ACTIVE_PROJECT_KEY_PREFIX}${userKey}`;
+function activeProjectStorageKey(userKey: string, orgId?: string | null): string {
+  const orgSuffix = orgId && orgId.trim() ? `_${orgId.trim()}` : '';
+  return `${ACTIVE_PROJECT_KEY_PREFIX}${userKey}${orgSuffix}`;
 }
 
 /** In-memory override, written by the app when a project is loaded/created. */
@@ -44,37 +45,50 @@ export function setActiveProjectId(projectId: string | null): void {
   memoryProjectId = projectId;
 }
 
-export function getActiveProjectId(): string | null {
+export function getActiveProjectId(orgId?: string | null): string | null {
   if (memoryProjectId) return memoryProjectId;
   try {
-    return localStorage.getItem(activeProjectStorageKey(computeUserKey()));
+    const userKey = computeUserKey();
+    const scopedVal = localStorage.getItem(activeProjectStorageKey(userKey, orgId));
+    if (scopedVal) return scopedVal;
+    if (!orgId) {
+      return localStorage.getItem(activeProjectStorageKey(userKey));
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-export function saveActiveProjectId(userKey: string, projectId: string): void {
+export function saveActiveProjectId(userKey: string, projectId: string, orgId?: string | null): void {
   memoryProjectId = projectId;
   try {
-    localStorage.setItem(activeProjectStorageKey(userKey), projectId);
+    localStorage.setItem(activeProjectStorageKey(userKey, orgId), projectId);
   } catch {
     // storage unavailable (private mode / quota) — non-fatal
   }
 }
 
-export function loadActiveProjectId(userKey: string): string | null {
-  // Prefer storage (truth per user) over memory.
+export function loadActiveProjectId(userKey: string, orgId?: string | null): string | null {
   try {
-    return localStorage.getItem(activeProjectStorageKey(userKey)) || null;
+    const scopedVal = localStorage.getItem(activeProjectStorageKey(userKey, orgId));
+    if (scopedVal) return scopedVal;
+    if (!orgId) {
+      return localStorage.getItem(activeProjectStorageKey(userKey)) || null;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-export function clearActiveProjectId(userKey: string): void {
+export function clearActiveProjectId(userKey: string, orgId?: string | null): void {
   if (memoryProjectId && computeUserKey() === userKey) memoryProjectId = null;
   try {
-    localStorage.removeItem(activeProjectStorageKey(userKey));
+    localStorage.removeItem(activeProjectStorageKey(userKey, orgId));
+    if (!orgId) {
+      localStorage.removeItem(activeProjectStorageKey(userKey));
+    }
   } catch {
     // ignore
   }

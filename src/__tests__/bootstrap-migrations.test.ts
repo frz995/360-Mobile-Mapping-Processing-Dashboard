@@ -48,8 +48,10 @@ describe('migration files load and parse', () => {
     // 0041 storage policies, 0042 inventory attribution, 0043 organization
     // workers. v34 adds 0044 console access and membership lifecycle (42).
     // v35 adds 0045 console storage metrics, parent DB stats and licensing (44 bundled).
+    // v38 adds 0046 panoramas_view refresh with organization_id (45 bundled).
+    // v39 adds 0047 public panorama buckets for WebGIS 360 viewer streaming (46 bundled).
     // The count below is the bundled total after 0011 is excluded.
-    expect(migrations).toHaveLength(44)
+    expect(migrations).toHaveLength(46)
     expect(migrations.some((m) => m.name.startsWith('0011'))).toBe(false)
   })
 

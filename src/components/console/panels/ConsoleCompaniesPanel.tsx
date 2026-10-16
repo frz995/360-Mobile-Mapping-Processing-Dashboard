@@ -318,7 +318,16 @@ export const ConsoleCompaniesPanel: React.FC<Props> = ({
                     <td className="px-6 py-4 text-slate-600">
                       {/* `?? 0` rather than `|| 0` — same reason as the form. */}
                       <span className="font-bold text-slate-900">{org.settings?.allowedUserSeats ?? 0}</span> seats ·{' '}
-                      <span className="font-bold text-slate-900">{org.settings?.storageQuotaGb ?? 0}</span> GB
+                      <span className="font-bold text-slate-900">{org.settings?.storageQuotaGb ?? 0}</span> GB Platform
+                      {org.settings?.storage?.provider && org.settings.storage.provider !== 'supabase' ? (
+                        <div className="text-[10px] text-emerald-700 font-semibold mt-0.5 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                          <span className="truncate">
+                            {org.settings.storage.provider === 'cloudflare_r2' ? 'Cloudflare R2' : 'BYOS'}: {org.settings.storage.bucketName || 'External Bucket'}
+                            {org.settings.storage.byosQuotaGb ? ` (${org.settings.storage.byosQuotaGb} GB Plan)` : ' (Zero Egress)'}
+                          </span>
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`text-xs font-bold ${STATUS_TONE[org.status]}`}>{STATUS_LABEL[org.status]}</span>

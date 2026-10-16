@@ -1107,6 +1107,11 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {projectSettings.clientName && (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-sans bg-sky-500/10 text-sky-400 border border-sky-500/25 font-bold">
+                          Tenant: {projectSettings.clientName}
+                        </span>
+                      )}
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-sans bg-inner text-text-muted border border-subtle font-bold flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                         PostGIS 3.3 &bull; Connected
@@ -1550,9 +1555,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         <p className="text-[11px] text-text-muted mt-0.5">Configure 360° panoramic image storage providers, CDN paths, filename patterns, StreetView pre-fetch cache, and player calibration.</p>
                       </div>
                     </div>
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-sans bg-inner border border-subtle text-text-base font-semibold">
+                    <div className="flex items-center gap-2">
+                      {projectSettings.clientName && (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-sans bg-sky-500/10 text-sky-400 border border-sky-500/25 font-bold">
+                          Tenant: {projectSettings.clientName}
+                        </span>
+                      )}
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-sans bg-inner border border-subtle text-text-base font-semibold">
                       Storage: {projectSettings.storageProvider ? projectSettings.storageProvider.toUpperCase() : 'SUPABASE'}
-                    </span>
+                      </span>
+                    </div>
                   </div>
 
                   {/* SUB-CARD A: STORAGE INFRASTRUCTURE PROVIDER & CLOUD BACKEND */}

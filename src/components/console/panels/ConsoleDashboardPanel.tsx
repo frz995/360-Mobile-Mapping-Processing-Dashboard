@@ -374,6 +374,12 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
                     allocatedGb && allocatedGb > 0
                       ? (consumedBytes / (allocatedGb * 1024 * 1024 * 1024)) * 100
                       : null;
+                  const byosQuotaGb = org.settings?.storage?.byosQuotaGb ?? null;
+                  const byosConsumedBytes = org.settings?.storage?.byosConsumedBytes ?? null;
+                  const byosPercent =
+                    byosQuotaGb && byosQuotaGb > 0 && byosConsumedBytes != null
+                      ? (byosConsumedBytes / (byosQuotaGb * 1024 * 1024 * 1024)) * 100
+                      : null;
 
                   return (
                     <tr key={org.id} className="hover:bg-slate-50/70 transition-colors">
@@ -428,30 +434,95 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
                       </td>
 
                       <td className="px-5 py-3.5">
-                        <div>
-                          <div className="font-bold text-slate-900 font-mono">
-                            {formatBytes(consumedBytes)}
-                            {allocatedGb != null ? ` / ${allocatedGb} GB` : ''}
-                          </div>
-                          <div className="text-[11px] text-slate-500 font-medium">
-                            {consumedFiles.toLocaleString()} files
-                            {percentUsed != null ? ` · ${formatPercent(percentUsed)} used` : ''}
-                          </div>
-                          {percentUsed != null ? (
-                            <div className="w-24 bg-slate-100 rounded-full h-1.5 mt-1 overflow-hidden">
-                              <div
-                                className={`h-1.5 rounded-full ${
-                                  percentUsed > 90
-                                    ? 'bg-rose-500'
-                                    : percentUsed > 75
-                                    ? 'bg-amber-500'
-                                    : 'bg-emerald-600'
-                                }`}
-                                style={{ width: `${Math.min(100, Math.max(3, percentUsed))}%` }}
-                              />
+                        {isExternalStorage ? (
+                          <div className="space-y-2">
+                            {/* BYOS Cloud Storage Card */}
+                            <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200/90 text-[11px] space-y-1 max-w-[230px]">
+                              <div className="flex items-center justify-between gap-1.5">
+                                <span className="font-bold text-emerald-950 flex items-center gap-1.5 truncate">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                                  <span className="truncate">
+                                    {org.settings?.storage?.provider === 'cloudflare_r2' ? 'Cloudflare R2' : 'BYOS Cloud'}
+                                  </span>
+                                </span>
+                                <span className="text-[9px] font-bold text-emerald-700 bg-white px-1.5 py-0.5 rounded border border-emerald-200 uppercase tracking-wider shrink-0">
+                                  Zero Egress
+                                </span>
+                              </div>
+                              <div className="font-mono text-emerald-900 text-[10px] font-medium truncate" title={org.settings?.storage?.bucketName}>
+                                {org.settings?.storage?.bucketName || 'External Bucket'}
+                              </div>
+
+                              <div className="pt-1 border-t border-emerald-200/60 text-[10px] space-y-0.5">
+                                <div className="flex items-center justify-between font-mono">
+                                  <span className="text-emerald-900 font-bold">
+                                    {byosConsumedBytes != null ? formatBytes(byosConsumedBytes) : '—'}
+                                  </span>
+                                  <span className="text-emerald-700 font-medium">
+                                    {byosQuotaGb != null ? `Plan: ${byosQuotaGb} GB` : 'Uncapped'}
+                                  </span>
+                                </div>
+                                {byosPercent != null ? (
+                                  <div className="w-full bg-emerald-200/70 rounded-full h-1.5 overflow-hidden">
+                                    <div
+                                      className={`h-1.5 rounded-full ${
+                                        byosPercent >= 90
+                                          ? 'bg-rose-500'
+                                          : byosPercent >= 80
+                                          ? 'bg-amber-500'
+                                          : 'bg-emerald-600'
+                                      }`}
+                                      style={{ width: `${Math.min(100, Math.max(4, byosPercent))}%` }}
+                                    />
+                                  </div>
+                                ) : null}
+                                {byosPercent != null && byosPercent >= 80 ? (
+                                  <div className={`font-bold text-[9px] ${byosPercent >= 90 ? 'text-rose-600' : 'text-amber-700'}`}>
+                                    {byosPercent >= 90 ? '🚨 90% Plan Used · Upgrade Needed' : '⚠️ 80% Capacity Warning'}
+                                  </div>
+                                ) : null}
+                              </div>
                             </div>
-                          ) : null}
-                        </div>
+
+                            {/* Platform Supabase DB Storage */}
+                            <div className="text-[10px] text-slate-500 px-0.5 space-y-0.5">
+                              <div>
+                                <span className="font-semibold text-slate-700">Platform DB:</span>{' '}
+                                <span className="font-bold text-slate-900 font-mono">{formatBytes(consumedBytes)}</span>
+                                {allocatedGb != null ? ` / ${allocatedGb} GB` : ''}
+                              </div>
+                              <div className="text-[9px] text-slate-400">
+                                {consumedFiles.toLocaleString()} internal files
+                                {percentUsed != null ? ` · ${formatPercent(percentUsed)} quota` : ''}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="font-bold text-slate-900 font-mono">
+                              {formatBytes(consumedBytes)}
+                              {allocatedGb != null ? ` / ${allocatedGb} GB` : ''}
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-medium">
+                              {consumedFiles.toLocaleString()} files
+                              {percentUsed != null ? ` · ${formatPercent(percentUsed)} used` : ''}
+                            </div>
+                            {percentUsed != null ? (
+                              <div className="w-24 bg-slate-100 rounded-full h-1.5 mt-1 overflow-hidden">
+                                <div
+                                  className={`h-1.5 rounded-full ${
+                                    percentUsed > 90
+                                      ? 'bg-rose-500'
+                                      : percentUsed > 75
+                                      ? 'bg-amber-500'
+                                      : 'bg-emerald-600'
+                                  }`}
+                                  style={{ width: `${Math.min(100, Math.max(3, percentUsed))}%` }}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
                       </td>
 
                       <td className="px-5 py-3.5">
@@ -462,6 +533,22 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
                           </div>
                         ) : (
                           <div className="flex flex-wrap gap-1.5">
+                            {/* BYOS Active Indicator */}
+                            {isExternalStorage ? (
+                              <span
+                                title={`External BYOS Bucket: ${org.settings?.storage?.bucketName || 'External'}`}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] border border-emerald-200"
+                              >
+                                <span className="font-semibold">
+                                  {org.settings?.storage?.provider === 'cloudflare_r2' ? 'R2:' : 'BYOS:'}
+                                </span>
+                                <span className="font-mono font-bold text-emerald-950 truncate max-w-[100px]">
+                                  {org.settings?.storage?.bucketName || 'External'}
+                                </span>
+                                <span className="text-emerald-600 text-[10px] font-bold">(Active 360°)</span>
+                              </span>
+                            ) : null}
+
                             {/* MMS_PIC */}
                             <span
                               title="MMS_PIC Bucket (Road Survey Images)"

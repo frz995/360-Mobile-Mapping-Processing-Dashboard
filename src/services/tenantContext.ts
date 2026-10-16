@@ -33,13 +33,9 @@ interface OrganizationDatabaseRow {
   anon_key: string;
 }
 
-export interface OrganizationStorageConfig {
-  provider?: 'supabase' | 'cloudflare_r2' | 'aws_s3' | 'wasabi' | 'gcs' | 'azure_blob' | 'nas_local' | 'custom_cdn';
-  bucketName?: string;
-  cdnUrl?: string;
-  region?: string;
-  isPrivateBucket?: boolean;
-}
+import type { OrganizationStorageConfig } from './tenantStorage';
+import type { ExtendedProjectSettings } from '../types/admin';
+export * from './tenantStorage';
 
 export interface OrganizationSettings {
   nasApiUrl?: string;
@@ -90,107 +86,6 @@ export interface OrganizationDraft {
   licenseType?: LicenseType;
   licenseExpiresAt?: string | null;
   settings?: OrganizationSettings;
-}
-
-export const ACTIVE_ORGANIZATION_KEY = 'geosphere360_active_org_id';
-export const ACTIVE_ORGANIZATION_STORAGE_KEY = 'geosphere360_active_org_storage';
-
-let memoryActiveOrgId: string | null = null;
-let memoryActiveOrgStorage: OrganizationStorageConfig | null = null;
-
-export function getActiveOrganizationId(): string | null {
-  if (memoryActiveOrgId) return memoryActiveOrgId;
-  try {
-    const session = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(ACTIVE_ORGANIZATION_KEY) : null;
-    if (session) return session;
-    return typeof localStorage !== 'undefined' ? localStorage.getItem(ACTIVE_ORGANIZATION_KEY) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function setActiveOrganizationId(orgId: string | null): void {
-  memoryActiveOrgId = orgId;
-  try {
-    if (orgId) {
-      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(ACTIVE_ORGANIZATION_KEY, orgId);
-      if (typeof localStorage !== 'undefined') localStorage.setItem(ACTIVE_ORGANIZATION_KEY, orgId);
-    } else {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
-        sessionStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
-        sessionStorage.removeItem(ACTIVE_ORGANIZATION_WEBGIS_KEY);
-      }
-      if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem(ACTIVE_ORGANIZATION_KEY);
-        localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
-        localStorage.removeItem(ACTIVE_ORGANIZATION_WEBGIS_KEY);
-      }
-      memoryActiveOrgStorage = null;
-      memoryActiveOrgWebgis = null;
-    }
-  } catch (err) {
-    console.debug('Storage sync ignored:', err);
-  }
-}
-
-export function getActiveOrganizationStorage(): OrganizationStorageConfig | null {
-  if (memoryActiveOrgStorage) return memoryActiveOrgStorage;
-  try {
-    const raw =
-      (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY) : null) ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY) : null);
-    if (!raw) return null;
-    return JSON.parse(raw) as OrganizationStorageConfig;
-  } catch {
-    return null;
-  }
-}
-
-export function setActiveOrganizationStorage(storage: OrganizationStorageConfig | null): void {
-  memoryActiveOrgStorage = storage;
-  try {
-    if (storage) {
-      const serialized = JSON.stringify(storage);
-      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, serialized);
-      if (typeof localStorage !== 'undefined') localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, serialized);
-    } else {
-      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
-      if (typeof localStorage !== 'undefined') localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
-    }
-  } catch (err) {
-    console.debug('Storage sync ignored:', err);
-  }
-}
-
-export const ACTIVE_ORGANIZATION_WEBGIS_KEY = 'geosphere360_active_org_webgis';
-let memoryActiveOrgWebgis: string | null = null;
-
-export function getActiveOrganizationWebgis(): string | null {
-  if (memoryActiveOrgWebgis) return memoryActiveOrgWebgis;
-  try {
-    const raw =
-      (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(ACTIVE_ORGANIZATION_WEBGIS_KEY) : null) ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem(ACTIVE_ORGANIZATION_WEBGIS_KEY) : null);
-    return raw || null;
-  } catch {
-    return null;
-  }
-}
-
-export function setActiveOrganizationWebgis(url: string | null): void {
-  memoryActiveOrgWebgis = url;
-  try {
-    if (url) {
-      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(ACTIVE_ORGANIZATION_WEBGIS_KEY, url);
-      if (typeof localStorage !== 'undefined') localStorage.setItem(ACTIVE_ORGANIZATION_WEBGIS_KEY, url);
-    } else {
-      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(ACTIVE_ORGANIZATION_WEBGIS_KEY);
-      if (typeof localStorage !== 'undefined') localStorage.removeItem(ACTIVE_ORGANIZATION_WEBGIS_KEY);
-    }
-  } catch (err) {
-    console.debug('Webgis sync ignored:', err);
-  }
 }
 
 /**
@@ -693,4 +588,107 @@ export async function testDedicatedDatabaseConnection(
     return { success: false, message: errorMessage(err, 'Failed to reach external database') };
   }
 }
+
+/**
+ * Derives operational database routing, 360° image storage engine, and metadata
+ * from the active company/tenant provisioned in the Seller Console.
+ *
+ * Ensures switching companies in the dashboard instantly adopts the company's
+ * specific architecture (e.g. Cloud Shared RLS vs Dedicated Client DB,
+ * Supabase Platform Storage vs Cloudflare R2 / AWS S3 / Wasabi / NAS).
+ */
+export function applyTenantScope(
+  settings: ExtendedProjectSettings | undefined,
+  org: Organization | null | undefined
+): ExtendedProjectSettings {
+  const base: Record<string, unknown> = settings ? { ...settings } : {};
+  if (!org) return base as ExtendedProjectSettings;
+
+  base.clientName = org.name;
+  base.companyName = org.name;
+  if (org.clientCode) base.clientCode = org.clientCode;
+
+  // 1. Database Routing Architecture
+  if (org.databaseType === 'dedicated_external') {
+    base.databaseProvider = 'standalone_server';
+    if (org.databaseConfig?.url) {
+      base.supabaseUrl = org.databaseConfig.url;
+    }
+    if (org.databaseConfig?.anonKey) {
+      base.supabaseKey = org.databaseConfig.anonKey;
+      base.databaseAnonKey = org.databaseConfig.anonKey;
+    }
+  } else {
+    // Cloud Shared (RLS) - default SaaS multi-tenant isolation
+    base.databaseProvider = 'supabase_cloud';
+    const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
+    const envKey = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY;
+    if (envUrl) base.supabaseUrl = envUrl;
+    if (envKey) {
+      base.supabaseKey = envKey;
+      base.databaseAnonKey = envKey;
+    }
+  }
+
+  // 2. 360° Imagery & MMS Storage Engine
+  const storage = org.settings?.storage;
+  if (storage?.provider) {
+    base.storageProvider = storage.provider;
+    if (storage.provider === 'supabase') {
+      base.supabaseBucket = storage.bucketName || (base.supabaseBucket as string) || 'panoramas';
+    } else if (storage.provider === 'supabase_self_hosted') {
+      const endpoint = storage.cdnUrl || org.databaseConfig?.url || (base.supabaseUrl as string) || '';
+      const bucket = storage.bucketName || (base.supabaseBucket as string) || (base.selfHostedBucket as string) || 'MMS_PIC';
+      base.selfHostedStorageUrl = endpoint;
+      base.selfHostedBucket = bucket;
+      base.supabaseBucket = bucket;
+      base.cloudStorageBaseUrl = endpoint;
+      if (bucket) {
+        base.imageStoragePath = `/storage/v1/object/public/${bucket}/`;
+      }
+    } else if (storage.bucketName) {
+      base.s3Bucket = storage.bucketName;
+      base.wasabiBucket = storage.bucketName;
+      base.gcsBucket = storage.bucketName;
+      base.azureContainer = storage.bucketName;
+    }
+    if (storage.cdnUrl) {
+      base.r2Domain = storage.cdnUrl;
+      base.cloudStorageBaseUrl = storage.cdnUrl;
+      base.nasServerUrl = storage.cdnUrl;
+      base.customCdnUrl = storage.cdnUrl;
+    }
+    if (storage.region) {
+      base.s3Region = storage.region;
+      base.wasabiRegion = storage.region;
+    }
+  } else {
+    // Platform default shared storage
+    base.storageProvider = 'supabase';
+    if (!base.supabaseBucket) base.supabaseBucket = 'panoramas';
+  }
+
+  // 3. WebGIS Host & NAS API
+  if (org.settings?.webgisUrl) base.webgisHost = org.settings.webgisUrl;
+  if (org.settings?.nasApiUrl) base.nasApiUrl = org.settings.nasApiUrl;
+
+  return base as ExtendedProjectSettings;
+}
+
+/**
+ * Resolves the active project for a tenant from scoped savedId, legacyId fallback,
+ * or auto-selecting the tenant's first active project.
+ */
+export function resolveActiveTenantProject<T extends { id: string; status?: string }>(
+  projects: T[],
+  savedId?: string | null,
+  legacyId?: string | null
+): T | null {
+  if (!projects || projects.length === 0) return null;
+  return (savedId ? projects.find((x) => x.id === savedId && x.status !== 'archived') : null)
+    || (legacyId ? projects.find((x) => x.id === legacyId && x.status !== 'archived') : null)
+    || (projects.find((x) => x.status !== 'archived') || projects[0] || null);
+}
+
+
 

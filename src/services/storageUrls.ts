@@ -88,6 +88,14 @@ export interface StorageResolveSettings {
    */
   tenantOrganizationId?: string;
   /**
+   * Human-readable client code assigned to the organization (e.g. 'DevTest', 'TNB-LV').
+   * Used as the primary folder namespace in storage buckets: `MMS_PIC/{clientCode}/{filename}`.
+   */
+  clientCode?: string;
+  /** Organization slug (e.g. 'geosphere-devtest'). Fallback if clientCode is not set. */
+  organizationSlug?: string;
+  companyCode?: string;
+  /**
    * Dynamic BYOS (Bring Your Own Storage) configuration for the active tenant.
    * Overrides platform defaults when a company configures external Cloudflare R2,
    * S3, Wasabi or custom CDN hosting in the Seller Console.
@@ -98,6 +106,8 @@ export interface StorageResolveSettings {
     cdnUrl?: string;
     region?: string;
     isPrivateBucket?: boolean;
+    folderPrefix?: string;
+    clientCode?: string;
   } | null;
 }
 
@@ -115,48 +125,87 @@ export function sanitizeBucketName(raw?: string): string {
   return b.replace(/\s+/g, '_') || STORAGE_BUCKET_DEFAULT;
 }
 
+export function sanitizeFolderSegment(raw?: string | null): string {
+  if (!raw) return '';
+  return raw
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 // ---------------------------------------------------------------------------
 // Tenant object-key namespacing
 //
 // A single storage bucket holding several companies' panoramas is only safe
-// if object keys carry the owning company, because `storage.objects` RLS is
-// evaluated per object key and a flat key carries no company to compare
-// against. The convention is:
-//
-//     orgs/{organization_id}/{existing path}
-//
-// This module stays pure — it takes the organization id as an argument and
-// never reads localStorage — so the URL formatters below remain testable and
-// side-effect free, as their header promises.
+// if object keys carry the owning company.
+// Priority:
+// 1. Explicit folderPrefix on settings.tenantStorage
+// 2. settings.clientCode (e.g. 'DevTest', 'TNB-LV')
+// 3. settings.organizationSlug (e.g. 'geosphere-devtest')
+// 4. settings.tenantOrganizationId (UUID -> 'orgs/{uuid}')
 // ---------------------------------------------------------------------------
 
-/** Root segment of the tenant namespace. Kept in one place so the migration's storage policies and the URL builders cannot disagree on it. */
+/** Root segment of the legacy tenant namespace. */
 export const TENANT_OBJECT_ROOT = 'orgs';
+
+export function resolveTenantFolderPrefix(settings?: StorageResolveSettings): string {
+  if (!settings) return '';
+  if (settings.tenantStorage?.folderPrefix) {
+    const clean = sanitizeFolderSegment(settings.tenantStorage.folderPrefix);
+    if (clean) return clean;
+  }
+  if (settings.tenantStorage?.clientCode) {
+    const clean = sanitizeFolderSegment(settings.tenantStorage.clientCode);
+    if (clean) return clean;
+  }
+  if (settings.clientCode) {
+    const clean = sanitizeFolderSegment(settings.clientCode);
+    if (clean) return clean;
+  }
+  if (settings.companyCode) {
+    const clean = sanitizeFolderSegment(settings.companyCode);
+    if (clean) return clean;
+  }
+  if (settings.organizationSlug) {
+    const clean = sanitizeFolderSegment(settings.organizationSlug);
+    if (clean) return clean;
+  }
+  if (settings.tenantOrganizationId) {
+    return buildTenantObjectPrefix(settings.tenantOrganizationId);
+  }
+  return '';
+}
 
 export function buildTenantObjectPrefix(organizationId?: string | null): string {
   const id = (organizationId || '').trim();
   if (!id) return '';
-  // Only a real uuid earns a prefix. Anything else is a configuration error,
-  // and emitting a malformed prefix would scatter objects across keys that the
-  // storage policies do not recognise — silently invisible rather than loudly
-  // wrong.
+  // Only a real uuid earns an orgs/ prefix. Anything else is handled as a plain folder segment.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return '';
   return `${TENANT_OBJECT_ROOT}/${id}`;
 }
 
 /**
- * Prepend the tenant prefix to an object key, unless it already carries one.
- *
- * Idempotent on purpose: `panoramas` rows store their key as written, and
- * re-prefixing an already-prefixed key would produce `orgs/{a}/orgs/{a}/...`
- * on every read, which resolves to nothing. A path that already starts with
- * `orgs/{uuid}/` is returned untouched.
+ * Prepend the tenant prefix or company clientCode folder to an object key, unless it already carries one.
+ * Idempotent on purpose: paths already starting with the folder or `orgs/{uuid}/` are returned untouched.
  */
-export function applyTenantObjectPrefix(path: string, organizationId?: string | null): string {
+export function applyTenantObjectPrefix(path: string, organizationIdOrFolder?: string | null): string {
   const raw = (path || '').replace(/^\/+/, '');
-  const prefix = buildTenantObjectPrefix(organizationId);
-  if (!prefix || !raw) return raw;
+  if (!raw || !organizationIdOrFolder) return raw;
+
+  let prefix = '';
+  const trimmed = organizationIdOrFolder.trim();
+  if (trimmed.startsWith(`${TENANT_OBJECT_ROOT}/`)) {
+    prefix = trimmed;
+  } else if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+    prefix = buildTenantObjectPrefix(trimmed);
+  } else {
+    prefix = sanitizeFolderSegment(trimmed);
+  }
+
+  if (!prefix) return raw;
   if (new RegExp(`^${TENANT_OBJECT_ROOT}/[0-9a-f-]{36}/`, 'i').test(raw)) return raw;
+  if (raw.toLowerCase().startsWith(`${prefix.toLowerCase()}/`)) return raw;
+
   return `${prefix}/${raw}`;
 }
 
@@ -346,9 +395,15 @@ export function resolvePanoramaUrl(
         'http://localhost:8000'
       ).trim();
       const baseSupabaseUrl = rawSbUrl.replace(/\/+$/, '');
-      const bucket = sanitizeBucketName(settings?.selfHostedBucket || settings?.supabaseBucket);
-      const isPrivate = Boolean(settings?.isPrivateBucket || settings?.useSignedUrls);
+      const bucket = sanitizeBucketName(
+        tenantStorage?.bucketName ||
+        settings?.selfHostedBucket ||
+        settings?.supabaseBucket ||
+        'MMS_PIC'
+      );
+      const isPrivate = Boolean(tenantStorage?.isPrivateBucket ?? (settings?.isPrivateBucket || settings?.useSignedUrls));
       const objectEndpoint = isPrivate ? 'authenticated' : 'public';
+      const folder = resolveTenantFolderPrefix(settings) || settings?.tenantOrganizationId;
 
       const pattern = settings?.singleImagePathPattern;
       if (
@@ -362,7 +417,7 @@ export function resolvePanoramaUrl(
             .replace('{pointFolder}', nameWithoutExt)
             .replace('{filename}', cleanFn)
             .replace(/^\/+/, ''),
-          settings?.tenantOrganizationId
+          folder
         );
         return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${path}`;
       }
@@ -370,7 +425,7 @@ export function resolvePanoramaUrl(
       // If cleanFn already includes a folder or if files are at root
       return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${applyTenantObjectPrefix(
         cleanFn,
-        settings?.tenantOrganizationId
+        folder
       )}`;
     }
 
@@ -383,9 +438,15 @@ export function resolvePanoramaUrl(
           ? rawSbUrl
           : defaultSupabaseUrl
       ).replace(/\/+$/, '');
-      const bucket = sanitizeBucketName(tenantStorage?.bucketName || settings?.supabaseBucket);
+      const bucket = sanitizeBucketName(
+        tenantStorage?.bucketName ||
+        settings?.supabaseBucket ||
+        settings?.selfHostedBucket ||
+        'MMS_PIC'
+      );
       const isPrivate = Boolean(tenantStorage?.isPrivateBucket ?? (settings?.isPrivateBucket || settings?.useSignedUrls));
       const objectEndpoint = isPrivate ? 'authenticated' : 'public';
+      const folder = resolveTenantFolderPrefix(settings) || settings?.tenantOrganizationId;
 
       const pattern = settings?.singleImagePathPattern;
       if (
@@ -399,7 +460,7 @@ export function resolvePanoramaUrl(
             .replace('{pointFolder}', nameWithoutExt)
             .replace('{filename}', cleanFn)
             .replace(/^\/+/, ''),
-          settings?.tenantOrganizationId
+          folder
         );
         return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${path}`;
       }
@@ -407,7 +468,7 @@ export function resolvePanoramaUrl(
       // If cleanFn already includes a folder or if files are at root
       return `${baseSupabaseUrl}/storage/v1/object/${objectEndpoint}/${bucket}/${applyTenantObjectPrefix(
         cleanFn,
-        settings?.tenantOrganizationId
+        folder
       )}`;
     }
   }
@@ -467,14 +528,23 @@ export function resolvePanoramaConfigUrl(
   // 3. Dynamic template pattern with pointFolder nested path
   const pattern = settings?.multiResTilePattern || settings?.tilePathPattern || 'tiles/{subgrid}/{pointFolder}/config.json';
 
-  const relativePath = applyTenantObjectPrefix(
-    pattern
-      .replace('{subgrid}', sg)
-      .replace('{pointFolder}', pointFolder)
-      .replace('{filename}', cleanFilename)
-      .replace(/^\/+/, ''),
-    settings?.tenantOrganizationId
-  );
+  const rawTilePath = pattern
+    .replace('{subgrid}', sg)
+    .replace('{pointFolder}', pointFolder)
+    .replace('{filename}', cleanFilename)
+    .replace(/^\/+/, '');
+
+  // For external dedicated CDN/R2/S3 storage without an explicit custom folder prefix,
+  // multi-res tiles are stored directly under tiles/{subgrid}/... (standard pyramid layout).
+  // In shared multi-tenant buckets (e.g. Supabase storage), the tenant folder prefix is applied.
+  const isDedicatedExternalBucket = provider === 'cloudflare_r2' || provider === 'r2' || provider === 'custom_cdn' || Boolean(tenantStorage?.cdnUrl);
+  const explicitFolderPrefix = tenantStorage?.folderPrefix?.trim();
+
+  const prefix = explicitFolderPrefix
+    ? explicitFolderPrefix
+    : (isDedicatedExternalBucket ? '' : (resolveTenantFolderPrefix(settings) || settings?.tenantOrganizationId));
+
+  const relativePath = prefix ? applyTenantObjectPrefix(rawTilePath, prefix) : rawTilePath;
 
   const cachedSigned = getCachedSignedPanoramaUrl(relativePath);
   if (cachedSigned) {

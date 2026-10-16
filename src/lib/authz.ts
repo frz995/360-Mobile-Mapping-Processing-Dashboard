@@ -300,9 +300,18 @@ export const LEGACY_CAPABILITY_ALIASES: Record<string, AuthzCapability[]> = {
 
 export function normalizeRole(role?: string | null): UserRole {
   const r = (role || '').trim();
-  if (r === 'Administrator' || r === 'admin' || r === 'Admin') return ROLE_ADMINISTRATOR;
+  if (
+    r === 'Administrator' ||
+    r === 'admin' ||
+    r === 'Admin' ||
+    r === 'CompanyAdmin' ||
+    r === 'Company Admin' ||
+    r === 'companyadmin'
+  ) {
+    return ROLE_ADMINISTRATOR;
+  }
   if (r === 'Survey Operator' || r === 'operator' || r === 'Operator') return ROLE_OPERATOR;
-  if (r === 'QA Inspector' || r === 'inspector' || r === 'QA Officer') return ROLE_QA_INSPECTOR;
+  if (r === 'QA Inspector' || r === 'inspector' || r === 'QA Officer' || r === 'Inspector') return ROLE_QA_INSPECTOR;
   return ROLE_VIEWER;
 }
 

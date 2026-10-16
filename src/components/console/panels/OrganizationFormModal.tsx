@@ -24,6 +24,7 @@ import {
   type LicenseType
 } from '../../../services/tenantContext';
 import { ModalShell, Field, inputClass } from './consoleUi';
+import { fetchR2BucketUsage } from '../../../services/tenantStorage';
 
 export const LICENSE_TYPES: { key: LicenseType; label: string }[] = [
   { key: 'cloud_saas', label: 'Cloud SaaS' },
@@ -43,12 +44,14 @@ const EMPTY_SETTINGS = {
     provider: 'supabase' as const,
     bucketName: '',
     cdnUrl: '',
-    region: ''
+    region: '',
+    imageStorageStrategy: 'multires_tiles' as const
   }
 };
 
 export const STORAGE_PROVIDERS = [
   { key: 'supabase', label: 'Supabase Platform Storage (Default Shared)' },
+  { key: 'supabase_self_hosted', label: 'Self-Hosted Supabase Storage (Local / Docker / On-Premise)' },
   { key: 'cloudflare_r2', label: 'Cloudflare R2 (Recommended BYOS - Zero Egress Fees)' },
   { key: 'aws_s3', label: 'Amazon S3' },
   { key: 'wasabi', label: 'Wasabi Hot Cloud Storage' },
@@ -86,11 +89,13 @@ function draftFrom(org: Organization | null): OrganizationDraft {
       contactEmail: org.settings?.contactEmail || '',
       webgisUrl: org.settings?.webgisUrl || '',
       nasApiUrl: org.settings?.nasApiUrl || '',
-      storage: org.settings?.storage || {
+      storage: {
         provider: 'supabase',
         bucketName: '',
         cdnUrl: '',
-        region: ''
+        region: '',
+        imageStorageStrategy: 'multires_tiles',
+        ...org.settings?.storage
       }
     }
   };
@@ -117,6 +122,64 @@ export const OrganizationFormModal: React.FC<Props> = ({
   const [isSaving, setIsSaving] = React.useState(false);
   const [isTestingDb, setIsTestingDb] = React.useState(false);
   const [dbTestResult, setDbTestResult] = React.useState<{ success: boolean; message: string } | null>(null);
+  const [isSyncingR2, setIsSyncingR2] = React.useState(false);
+  const [r2SyncResult, setR2SyncResult] = React.useState<{ success: boolean; message: string } | null>(null);
+
+  const handleSyncR2 = async () => {
+    const storage = formData.settings?.storage;
+    if (!storage?.accountId || !storage?.bucketName || !storage?.readMetricsToken) {
+      setR2SyncResult({
+        success: false,
+        message: 'Please provide Account ID, Bucket Name, and Read-Only Metrics Token.'
+      });
+      return;
+    }
+    setIsSyncingR2(true);
+    setR2SyncResult(null);
+    try {
+      const res = await fetchR2BucketUsage(storage.accountId, storage.bucketName, storage.readMetricsToken);
+      if (res.success) {
+        setFormData((prev) => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            storage: {
+              ...prev.settings?.storage,
+              byosConsumedBytes: res.storageSizeBytes,
+              byosObjectCount: res.objectCount,
+              byosLastCheckedAt: new Date().toISOString()
+            }
+          }
+        }));
+        const sizeGb = (res.storageSizeBytes / (1024 * 1024 * 1024)).toFixed(2);
+        setR2SyncResult({
+          success: true,
+          message: `Synced: ${sizeGb} GB (${res.objectCount.toLocaleString()} files)`
+        });
+      } else {
+        setR2SyncResult({
+          success: false,
+          message: res.error || 'Failed to sync R2 usage'
+        });
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setR2SyncResult({
+        success: false,
+        message: errMsg || 'Error querying Cloudflare R2'
+      });
+    } finally {
+      setIsSyncingR2(false);
+    }
+  };
+
+  const formRef = React.useRef<HTMLFormElement>(null);
+
+  React.useEffect(() => {
+    if (formRef.current) {
+      formRef.current.scrollTop = 0;
+    }
+  }, [editing]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,7 +234,7 @@ export const OrganizationFormModal: React.FC<Props> = ({
       title={editing ? `Edit Client: ${editing.name}` : 'Register New Client Company'}
       onClose={onClose}
     >
-      <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto text-slate-800">
+      <form ref={formRef} onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto text-slate-800">
         <Field label="Company Name" required>
           <input
             type="text"
@@ -335,6 +398,7 @@ export const OrganizationFormModal: React.FC<Props> = ({
                 value={formData.licenseType || 'cloud_saas'}
                 onChange={(e) => setFormData({ ...formData, licenseType: e.target.value as LicenseType })}
                 className={inputClass}
+                style={{ colorScheme: 'light' }}
               >
                 {LICENSE_TYPES.map((lt) => (
                   <option key={lt.key} value={lt.key}>
@@ -378,81 +442,231 @@ export const OrganizationFormModal: React.FC<Props> = ({
         {/* Dynamic Bucket & 360 Image Storage */}
         <div className="space-y-3 pt-2 border-t border-slate-100">
           <label className="block text-xs font-bold text-slate-700">360 Image Storage & Dynamic Bucket Hosting</label>
-          <Field label="Storage Provider">
-            <select
-              value={formData.settings?.storage?.provider || 'supabase'}
-              onChange={(e) => {
-                const prov = e.target.value as any;
-                setFormData({
-                  ...formData,
-                  settings: {
-                    ...formData.settings,
-                    storage: {
-                      ...formData.settings?.storage,
-                      provider: prov
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Storage Provider">
+              <select
+                value={formData.settings?.storage?.provider || 'supabase'}
+                onChange={(e) => {
+                  const prov = e.target.value as any;
+                  setFormData({
+                    ...formData,
+                    settings: {
+                      ...formData.settings,
+                      storage: {
+                        ...formData.settings?.storage,
+                        provider: prov
+                      }
                     }
-                  }
-                });
-              }}
-              className={inputClass}
-            >
-              {STORAGE_PROVIDERS.map((sp) => (
-                <option key={sp.key} value={sp.key}>
-                  {sp.label}
-                </option>
-              ))}
-            </select>
-          </Field>
+                  });
+                }}
+                className={inputClass}
+                style={{ colorScheme: 'light' }}
+              >
+                {STORAGE_PROVIDERS.map((sp) => (
+                  <option key={sp.key} value={sp.key}>
+                    {sp.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="360° Storage & Slicing Strategy">
+              <select
+                value={formData.settings?.storage?.imageStorageStrategy || 'multires_tiles'}
+                onChange={(e) => {
+                  const strategy = e.target.value as 'multires_tiles' | 'single_equirectangular';
+                  setFormData({
+                    ...formData,
+                    settings: {
+                      ...formData.settings,
+                      storage: {
+                        ...formData.settings?.storage,
+                        imageStorageStrategy: strategy
+                      }
+                    }
+                  });
+                }}
+                className={inputClass}
+                style={{ colorScheme: 'light' }}
+              >
+                <option value="multires_tiles">Multi-Resolution Tile Pyramid (Deep Zoom 60FPS / Zero Blur)</option>
+                <option value="single_equirectangular">Single Equirectangular Full Image (Standard)</option>
+              </select>
+            </Field>
+          </div>
 
           {formData.settings?.storage?.provider && formData.settings.storage.provider !== 'supabase' ? (
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
               <div className="text-[11px] font-bold text-slate-900">
-                Dynamic External Bucket Parameters (BYOS)
+                {formData.settings.storage.provider === 'supabase_self_hosted'
+                  ? 'Self-Hosted Supabase Storage Configuration'
+                  : 'Dynamic External Bucket Parameters (BYOS)'}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Bucket Name">
                   <input
                     type="text"
-                    placeholder="e.g. tnb-panoramas-2026"
+                    placeholder={formData.settings.storage.provider === 'supabase_self_hosted' ? 'e.g. MMS_PIC or panoramas' : 'e.g. tnb-panoramas-2026'}
                     value={formData.settings?.storage?.bucketName || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        settings: {
-                          ...formData.settings,
-                          storage: {
-                            ...formData.settings?.storage,
-                            bucketName: e.target.value
-                          }
-                        }
-                      })
-                    }
+                    onChange={(e) => setFormData({ ...formData, settings: { ...formData.settings, storage: { ...formData.settings?.storage, bucketName: e.target.value } } })}
                     className={`${inputClass} font-mono`}
                   />
                 </Field>
-                <Field label="Public CDN / Base URL">
+                <Field label={formData.settings.storage.provider === 'supabase_self_hosted' ? 'Self-Hosted Storage / API URL' : 'Public CDN / Base URL'}>
                   <input
                     type="url"
-                    placeholder="https://pub-xxxxxx.r2.dev or https://cdn.client.com"
+                    placeholder={formData.settings.storage.provider === 'supabase_self_hosted' ? 'http://localhost:8000 or http://192.168.1.100:8000' : 'https://pub-xxxxxx.r2.dev or https://cdn.client.com'}
                     value={formData.settings?.storage?.cdnUrl || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        settings: {
-                          ...formData.settings,
-                          storage: {
-                            ...formData.settings?.storage,
-                            cdnUrl: e.target.value
-                          }
-                        }
-                      })
-                    }
+                    onChange={(e) => setFormData({ ...formData, settings: { ...formData.settings, storage: { ...formData.settings?.storage, cdnUrl: e.target.value } } })}
                     className={`${inputClass} font-mono`}
                   />
                 </Field>
               </div>
+
+              {formData.settings.storage.provider !== 'supabase_self_hosted' ? (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200/60">
+                    <Field label="Contracted BYOS Quota (GB)">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="e.g. 500, 1000, 5000"
+                        value={formData.settings?.storage?.byosQuotaGb ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? Number(e.target.value) : undefined;
+                          setFormData({
+                            ...formData,
+                            settings: {
+                              ...formData.settings,
+                              storage: { ...formData.settings?.storage, byosQuotaGb: val }
+                            }
+                          });
+                        }}
+                        className={inputClass}
+                      />
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Client contract limit. Triggers capacity warnings at 80% and 90%.
+                      </p>
+                    </Field>
+
+                    <Field label="Tracked Consumed BYOS Size (GB)">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="e.g. 67.5"
+                        value={
+                          formData.settings?.storage?.byosConsumedBytes != null
+                            ? Number((formData.settings.storage.byosConsumedBytes / (1024 ** 3)).toFixed(2))
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value ? Number(e.target.value) : undefined;
+                          setFormData({
+                            ...formData,
+                            settings: {
+                              ...formData.settings,
+                              storage: {
+                                ...formData.settings?.storage,
+                                byosConsumedBytes: val != null ? Math.round(val * 1024 * 1024 * 1024) : undefined,
+                                byosLastCheckedAt: new Date().toISOString()
+                              }
+                            }
+                          });
+                        }}
+                        className={inputClass}
+                      />
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Manual override or synced from Cloudflare metrics.
+                      </p>
+                    </Field>
+                  </div>
+
+                  {formData.settings.storage.provider === 'cloudflare_r2' ? (
+                    <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-2.5">
+                      <div className="text-[11px] font-bold text-slate-900 flex items-center justify-between">
+                        <span>Cloudflare R2 Live Metrics Sync (Option 1)</span>
+                        {formData.settings?.storage?.byosLastCheckedAt ? (
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            Checked {new Date(formData.settings.storage.byosLastCheckedAt).toLocaleDateString()}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
+                            Cloudflare Account ID
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. d2a8b9f1... (from R2 dashboard)"
+                            value={formData.settings?.storage?.accountId || ''}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                settings: {
+                                  ...formData.settings,
+                                  storage: { ...formData.settings?.storage, accountId: e.target.value }
+                                }
+                              })
+                            }
+                            className={`${inputClass} text-[11px] font-mono`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
+                            Read-Only Metrics API Token
+                          </label>
+                          <input
+                            type="password"
+                            placeholder="Token with R2:Read permission"
+                            value={formData.settings?.storage?.readMetricsToken || ''}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                settings: {
+                                  ...formData.settings,
+                                  storage: { ...formData.settings?.storage, readMetricsToken: e.target.value }
+                                }
+                              })
+                            }
+                            className={`${inputClass} text-[11px] font-mono`}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <span className="text-[10px] text-slate-400">
+                          Calls Cloudflare R2 bucket usage endpoint without Class A file listing costs.
+                        </span>
+                        <button
+                          type="button"
+                          disabled={isSyncingR2}
+                          onClick={handleSyncR2}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0c0d0e] hover:bg-black text-white transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                        >
+                          {isSyncingR2 ? 'Querying R2…' : 'Sync R2 Usage'}
+                        </button>
+                      </div>
+                      {r2SyncResult ? (
+                        <div
+                          className={`text-[11px] p-2 rounded-lg ${
+                            r2SyncResult.success
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          {r2SyncResult.message}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
               <p className="text-[10px] text-slate-600 leading-relaxed">
-                Images served from this dynamic bucket bypass parent Supabase storage quota. Base URL overrides default storage for viewer tiles and panoramas. Ensure objects follow the standard subgrid/tile structure.
+                {formData.settings.storage.provider === 'supabase_self_hosted'
+                  ? 'Connects to a dedicated/on-premise Supabase Storage API endpoint. If URL is left empty, the company’s dedicated database URL is automatically inherited.'
+                  : 'Images served from this dynamic bucket bypass parent Supabase storage quota. Base URL overrides default storage for viewer tiles and panoramas. Ensure objects follow the standard subgrid/tile structure.'}
               </p>
             </div>
           ) : (

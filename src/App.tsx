@@ -129,6 +129,8 @@ import {
   useTenantLicenseGate,
   needsLicenseLockout
 } from './hooks/useConsoleAccessGate';
+import { useTenantActiveOrg, resetTenantSession } from './hooks/useTenantActiveOrg';
+import { applyTenantScope, resolveActiveTenantProject } from './services/tenantContext';
 import type { WorkspaceKey, WorkspacePathQuery } from './utils/urlRouter';
 import {
   getStoredWorkspaceKey,
@@ -706,27 +708,19 @@ export default function App() {
     try {
       const userKey = resolveUserStorageKey(authSession, authSession?.isGuest);
       clearActiveProjectId(userKey);
+      resetTenantSession();
     } catch (projectScopeErr) {
-      // Best-effort local pointer to the last active project. The project
-      // itself lives in the database and is unaffected, so a failure here costs
-      // a re-selection on next sign-in and nothing durable.
       console.warn('Active project pointer not cleared:', projectScopeErr);
     }
     try {
       sessionStorage.removeItem('geosphere360_guest_session');
     } catch (guestSessionErr) {
-      // Best-effort: clearing a stale guest-session blob. The in-memory session
-      // is nulled regardless, so the user is signed out either way.
       console.warn('Guest session cache not cleared:', guestSessionErr);
     }
     gateTriggeredRef.current = null;
     try {
       await supabase.auth.signOut();
     } catch (signOutErr) {
-      // Sign-out is idempotent and the local session is cleared immediately
-      // below regardless. A network failure here means the remote session may
-      // survive, but that is the sign-in flow's problem to recover, and this
-      // user is explicitly leaving. Not worth blocking the transition.
       console.warn('Remote sign-out did not complete:', signOutErr);
     }
     setAuthSession(null);
@@ -871,12 +865,21 @@ export default function App() {
     sessionUserKeyRef.current = resolveUserStorageKey(authSession, isGuestUser);
   }, [authSession, isGuestUser]);
 
+  // Tenant membership & console gate (details in useConsoleAccessGate).
+  const sessionUserId = authSession?.user?.id || '';
+  const { access: consoleAccess, refresh: refreshConsoleAccess } = useConsoleAccessGate(sessionUserId, isGuestUser);
+  useActivatePendingMemberships(sessionUserId, isGuestUser);
+  const tenantLicense = useTenantLicenseGate(sessionUserId, isGuestUser);
+  const isPlatformAdmin = Boolean(consoleAccess?.verified && consoleAccess?.allowed);
+  const { activeOrgId, activeOrg } = useTenantActiveOrg(sessionUserId, isPlatformAdmin);
+
   const effectiveUserRole =
+    (isPlatformAdmin ? 'Administrator' : null) ||
     authSession?.user?.user_metadata?.role ||
     authSession?.user?.raw_user_meta_data?.role ||
-    authSession?.user?.role ||
     authSession?.user?.app_metadata?.role ||
-    authSession?.user?.raw_app_meta_data?.role;
+    authSession?.user?.raw_app_meta_data?.role ||
+    (authSession?.user?.role !== 'authenticated' ? authSession?.user?.role : null);
 
   // The admin-editable role → capability matrix. Loaded once and re-read whenever
   // an administrator saves it from Administration › Roles, so every gate below
@@ -890,16 +893,6 @@ export default function App() {
 
   const canHandleApprovals = !isGuestUser && can(effectiveUserRole, 'approveDeletions', roleMatrix);
 
-  // Tenant membership and the console's platform-admin gate. The rule and its
-  // rationale live in `useConsoleAccessGate`; in short, `null` means the
-  // question is UNANSWERED, which is neither allowed nor refused, and the gate
-  // refuses to mount a console in that state. Previously this gate checked
-  // `authSession` alone, so any signed-in Viewer could open `/console`.
-  const sessionUserId = authSession?.user?.id || '';
-  const { access: consoleAccess, refresh: refreshConsoleAccess } = useConsoleAccessGate(sessionUserId, isGuestUser);
-  useActivatePendingMemberships(sessionUserId, isGuestUser);
-  const tenantLicense = useTenantLicenseGate(sessionUserId, isGuestUser);
-
   // Admin-visible pending deletion-request badge on the Administration icon.
   useEffect(() => {
     if (!canHandleApprovals) {
@@ -912,9 +905,7 @@ export default function App() {
         const reqs = await fetchDeletionRequestsFromSupabase();
         if (!disposed) setPendingApprovalCount(reqs.filter((r) => r.status === 'Pending').length);
       } catch (badgeErr) {
-        // Best-effort: this only drives the pending-approval badge count, which
-        // the approvals workspace re-reads on open. A failure here must not
-        // break the effect's subscription lifecycle.
+        // Best-effort badge refresh; failures must not break interval.
         console.warn('Deletion approval count not refreshed:', badgeErr);
       }
     };
@@ -1021,11 +1012,11 @@ export default function App() {
   }, [authSession, isGuestUser, goToWorkspace, setProjectSettings]);
 
   const handleGateCreateProject = useCallback(async (draft: ProjectDraft) => {
-    const res = await createProjectService(draft);
+    const res = await createProjectService({ ...draft, organizationId: activeOrgId });
     if (!res.success) return { success: false as const, message: res.message };
     setProjectList((prev) => [res.value, ...prev.filter((p) => p.id !== res.value.id)]);
     return { success: true as const, value: res.value };
-  }, []);
+  }, [activeOrgId]);
 
   // Show the picker/welcome gate after auth resolves (covers page refresh with
   // a persisted session, and the explicit sign-in path — both funnel here).
@@ -1052,37 +1043,30 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [projectGate]);
 
-  const refreshProjects = useCallback(async () => {
-    const projects = await fetchProjects();
+  const refreshProjects = useCallback(async (orgId?: string | null) => {
+    const targetOrgId = orgId !== undefined ? orgId : activeOrgId;
+    const projects = await fetchProjects(targetOrgId);
     setProjectList(projects);
     setProjectsLoaded(true);
     return projects;
-  }, []);
+  }, [activeOrgId]);
 
-  // v14 carry-forward — register the pre-v14 "current production project"
-  // (from projectSettings) into the registry once per user + no active project.
+  // v14 carry-forward: register pre-v14 project once per user without active project.
   const ensureSeedProject = useCallback(
     async (settings: Record<string, unknown> | undefined) => {
       const userKey = resolveUserStorageKey(authSession, isGuestUser);
       const draft = buildSeedProjectFromSettings(settings);
       if (!draft) return null;
-      const res = await createProjectService(draft);
+      const res = await createProjectService({ ...draft, organizationId: activeOrgId });
       if (!res.success) {
-        // Do NOT pin a local-only stub as active: a `local-*` id matches zero
-        // rows in every scoped query (everything goes blank). A failed DB
-        // insert just leaves the picker empty so the user can create a real
-        // project, and the seed flag stays reusable on retry.
-        clearActiveProjectId(userKey);
+        clearActiveProjectId(userKey, activeOrgId);
         return null;
       }
       const project = res.value;
       markProjectSeeded(userKey);
-      saveActiveProjectId(userKey, project.id);
+      saveActiveProjectId(userKey, project.id, activeOrgId);
       setActiveProject(project);
       setProjectList((prev) => [project, ...prev.filter((p) => p.id !== project.id)]);
-      // v15: adoption moves every legacy (project_id IS NULL) row onto this
-      // carried-forward production project so nothing already in the database
-      // is lost or hidden. Fresh projects never run this RPC.
       try {
         await supabase.rpc('projects_adopt_legacy_rows', { p_project_id: project.id });
       } catch {
@@ -1090,40 +1074,25 @@ export default function App() {
       }
       return project;
     },
-    [authSession, isGuestUser]
+    [authSession, isGuestUser, activeOrgId]
   );
 
-  // Run the seed once after the project list has loaded (so an existing
-  // registry/active project short-circuits it) and settings are present.
+  // Run the seed once after the project list has loaded and settings are present.
   const seedProjectRef = useRef(false);
   useEffect(() => {
     if (authLoading || !authSession || isGuestUser) return;
     if (seedProjectRef.current) return;
     if (!projectsLoaded) return;
     const userKey = resolveUserStorageKey(authSession, isGuestUser);
-    const savedId = loadActiveProjectId(userKey);
-    if (savedId && !savedId.startsWith('local-')) {
-      seedProjectRef.current = true;
-      return;
-    }
-    // A deleted/no-longer-active project must NOT resurrect: the seed flag is
-    // set only after a successful DB insert, so once the user has intentionally
-    // deleted their seeded project the app falls through to an empty picker.
-    if (hasSeededProject(userKey)) {
-      seedProjectRef.current = true;
-      return;
-    }
-    // A `local-*` stub (left by a failed v14 seed) is not a real project —
-    // clear it and re-seed so the carried-forward production project actually
-    // gets a real DB row (otherwise every scoped query returns 0 rows).
-    if (savedId) clearActiveProjectId(userKey);
-    if (projectList.length > 0) {
+    const savedId = loadActiveProjectId(userKey, activeOrgId);
+    if ((savedId && !savedId.startsWith('local-')) || hasSeededProject(userKey) || projectList.length > 0 || activeOrgId) {
+      if (savedId && savedId.startsWith('local-')) clearActiveProjectId(userKey, activeOrgId);
       seedProjectRef.current = true;
       return;
     }
     seedProjectRef.current = true;
     ensureSeedProject(projectSettings as Record<string, unknown> | undefined);
-  }, [authLoading, authSession, isGuestUser, projectsLoaded, projectList, projectSettings, ensureSeedProject]);
+  }, [authLoading, authSession, isGuestUser, projectsLoaded, projectList, projectSettings, ensureSeedProject, activeOrgId]);
 
   // Restore the persisted active project for the current user once logged in.
   useEffect(() => {
@@ -1136,49 +1105,56 @@ export default function App() {
       return;
     }
     const userKey = resolveUserStorageKey(authSession, isGuestUser);
-    const savedId = loadActiveProjectId(userKey);
+    const savedId = loadActiveProjectId(userKey, activeOrgId);
     (async () => {
-      const projects = await refreshProjects();
-      if (savedId && projects.length > 0) {
-        const found = projects.find((p) => p.id === savedId && p.status !== 'archived');
-        if (found) {
-          setActiveProject(found);
-          setActiveProjectId(found.id);
-        }
+      const projects = await refreshProjects(activeOrgId);
+      const legacyId = loadActiveProjectId(userKey, null);
+      const found = resolveActiveTenantProject(projects, savedId, legacyId);
+      if (found) {
+        setActiveProject(found);
+        setActiveProjectId(found.id);
       }
     })();
-  }, [authSession, authLoading, isGuestUser, refreshProjects]);
+  }, [authSession, authLoading, isGuestUser, refreshProjects, activeOrgId]);
 
-  // Apply the active project's GIS scope and theme into projectSettings whenever it changes.
+  // Apply the active project's GIS scope, tenant storage, and theme into projectSettings.
   useEffect(() => {
-    if (!activeProject) return;
-    setProjectSettings((prev: any) => applyProjectScope(prev, activeProject));
-    if (activeProject.scope?.theme) {
+    if (!activeProject && !activeOrg) return;
+    setProjectSettings((prev: any) => {
+      let next = activeProject ? applyProjectScope(prev, activeProject) : { ...prev };
+      if (activeOrg) {
+        const st = activeOrg.settings?.storage;
+        next = { ...next, tenantStorage: st || next.tenantStorage, clientCode: activeOrg.clientCode || next.clientCode };
+        if (st?.provider) next.storageProvider = st.provider;
+        if (st?.bucketName) next.supabaseBucket = st.bucketName;
+        if (st?.imageStorageStrategy) next.imageStorageStrategy = st.imageStorageStrategy;
+        if (st?.cdnUrl) {
+          next.r2Domain = st.cdnUrl;
+          next.cloudStorageBaseUrl = st.cdnUrl;
+          next.customCdnUrl = st.cdnUrl;
+        }
+      }
+      return next;
+    });
+    if (activeProject?.scope?.theme) {
       const projectTheme = resolveThemeKey(activeProject.scope.theme);
       document.documentElement.setAttribute('data-theme', projectTheme);
       document.documentElement.classList.toggle('light-mode', isLightTheme(projectTheme));
       try {
         localStorage.setItem('app_dashboard_theme', projectTheme);
       } catch (projectThemeErr) {
-        // Best-effort; the DOM is already themed and the project's stored
-        // scope is authoritative, same as the manual theme toggle above.
         console.warn('Project theme cache not written:', projectThemeErr);
       }
       window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: projectTheme }));
     }
-  }, [activeProject, setProjectSettings]);
+  }, [activeProject, activeOrg, setProjectSettings]);
 
   const handleLoadProject = useCallback(async (project: UserProject) => {
     setActiveProject(project);
-    // Live-project scoping must change immediately, otherwise every subsequent
-    // fetch (and the map's staged data) still targets the previous project until
-    // a full page refresh.
     setActiveProjectId(project.id);
     const userKey = resolveUserStorageKey(authSession, isGuestUser);
-    saveActiveProjectId(userKey, project.id);
+    saveActiveProjectId(userKey, project.id, activeOrgId);
     setProjectSettings((prev: any) => applyProjectScope(prev, project));
-    // Drop the previous session project's in-memory data (data of project B must
-    // never bleed into project A's map), then refetch for the freshly active one.
     setDailyData([]);
     setBatchLogs([]);
     setQaqcAuditRuns({});
@@ -1190,26 +1166,24 @@ export default function App() {
     touchProjectOpened(project.id);
     goToWorkspace('dashboard');
     addNotification({ category: 'SYSTEM', title: 'Project Loaded', message: `Now working under ${project.name}` });
-  }, [authSession, isGuestUser, addNotification, goToWorkspace, setProjectSettings, refreshData, setBatchLogs, setDailyData, setQaSubgridRecords, setQaqcAuditRuns]);
+  }, [authSession, isGuestUser, addNotification, goToWorkspace, setProjectSettings, refreshData, setBatchLogs, setDailyData, setQaSubgridRecords, setQaqcAuditRuns, activeOrgId]);
 
   const handleCreateProject = useCallback(async (draft: ProjectDraft) => {
-    const res = await createProjectService(draft);
+    const res = await createProjectService({ ...draft, organizationId: activeOrgId });
     if (!res.success) {
       addNotification({ category: 'ERROR', title: 'Project Error', message: res.message });
       return { success: false as const, message: res.message };
     }
-    // A freshly created project is the "current" project (same rule as
-    // onboarding: current project => active card, no Load button needed).
     setActiveProject(res.value);
     setActiveProjectId(res.value.id);
     const userKey = resolveUserStorageKey(authSession, isGuestUser);
-    saveActiveProjectId(userKey, res.value.id);
+    saveActiveProjectId(userKey, res.value.id, activeOrgId);
     touchProjectOpened(res.value.id);
     setProjectSettings((prev: any) => applyProjectScope(prev, res.value));
     setProjectList((prev) => [res.value, ...prev.filter((p) => p.id !== res.value.id)]);
     addNotification({ category: 'SYSTEM', title: 'Project Created', message: res.value.name });
     return { success: true as const, value: res.value };
-  }, [addNotification, authSession, isGuestUser, setProjectSettings]);
+  }, [addNotification, authSession, isGuestUser, setProjectSettings, activeOrgId]);
 
   const handleUpdateProject = useCallback(async (id: string, patch: Partial<ProjectDraft>) => {
     const res = await updateProjectService(id, patch);
@@ -1235,13 +1209,13 @@ export default function App() {
     setProjectList((prev) => prev.filter((p) => p.id !== project.id));
     if (activeProject?.id === project.id) {
       const userKey = resolveUserStorageKey(authSession, isGuestUser);
-      clearActiveProjectId(userKey);
+      clearActiveProjectId(userKey, activeOrgId);
       setActiveProjectId(null);
       setActiveProject(null);
     }
     addNotification({ category: 'SYSTEM', title: 'Project Deleted', message: project.name });
     goToWorkspace('project');
-  }, [activeProject, authSession, isGuestUser, addNotification, goToWorkspace]);
+  }, [activeProject, authSession, isGuestUser, addNotification, goToWorkspace, activeOrgId]);
 
   // One place to record that the first-run tour has been seen or dismissed.
   // `tourFirstRunSeen` gates the auto-suggest only; a failed write means the
@@ -1909,19 +1883,51 @@ export default function App() {
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   // Dashboard Processing Control & Admin column filter state
   const [isDashFilterOpen, setIsDashFilterOpen] = useState(false);
-  const [dashDailyFilters, setDashDailyFilters] = useState<{
-    grid: string;
-    subgrid: string;
-    pic: string;
-    equipment: string;
-  }>({
-    grid: '',
-    subgrid: '',
-    pic: '',
-    equipment: ''
+  const [dashDailyFilters, setDashDailyFilters] = useState<{ grid: string; subgrid: string; pic: string; equipment: string }>({
+    grid: '', subgrid: '', pic: '', equipment: ''
   });
 
   const hasActiveDashFilters = Object.values(dashDailyFilters).some(Boolean);
+
+  // Sync tenant config & reload operational state on tenant switch or activeOrg update
+  const prevActiveOrgRef = useRef<string | null>(null);
+  useEffect(() => {
+    const orgKey = `${activeOrgId || ''}_${activeOrg?.updatedAt || activeOrg?.id || ''}`;
+    if (prevActiveOrgRef.current === orgKey) return;
+    prevActiveOrgRef.current = orgKey;
+
+    if (activeOrg) {
+      setProjectSettings((prev: ExtendedProjectSettings) => applyTenantScope(prev, activeOrg));
+      setSettingsDraft((prev) => applyTenantScope(prev, activeOrg));
+      setSettingsDraftTouched(false);
+    }
+    setDailyData([]);
+    setBatchLogs([]);
+    setQaqcAuditRuns({});
+    setQaSubgridRecords({});
+    setSelectedSubgridFilter(null);
+    setSelectedDailyRunId(null);
+
+    if (authSession && !isGuestUser) {
+      const userKey = resolveUserStorageKey(authSession, isGuestUser);
+      void (async () => {
+        const projects = await refreshProjects(activeOrgId);
+        const savedId = loadActiveProjectId(userKey, activeOrgId);
+        const legacyId = loadActiveProjectId(userKey, null);
+        const p = resolveActiveTenantProject(projects, savedId, legacyId);
+        if (p) {
+          setActiveProject(p);
+          setActiveProjectId(p.id);
+          saveActiveProjectId(userKey, p.id, activeOrgId);
+          setProjectSettings((prev: ExtendedProjectSettings) => applyProjectScope(applyTenantScope(prev, activeOrg), p));
+        } else {
+          setActiveProject(null);
+          setActiveProjectId(null);
+        }
+        refreshData();
+      })();
+    }
+  }, [activeOrgId, activeOrg, authSession, isGuestUser, refreshProjects, refreshData, setDailyData, setBatchLogs, setQaqcAuditRuns, setQaSubgridRecords, setSelectedSubgridFilter, setSelectedDailyRunId, setProjectSettings]);
 
   const filteredDailyData = useMemo(() => {
     return [...dailyData]
@@ -3222,6 +3228,9 @@ subgrid: nextSubgrid,
       {/* TOP GLOBAL NAVBAR */}
       <AppHeader
         title={t('appTitle')}
+        activeOrganizationName={activeOrg?.name}
+        isPlatformAdmin={Boolean(consoleAccess?.verified && consoleAccess?.allowed)}
+        onReturnToConsole={() => goToWorkspace('console')}
         isSidebarExpanded={isSidebarExpanded}
         mobileNavOpen={mobileNavOpen}
         onToggleMobileNav={() => setMobileNavOpen((prev) => !prev)}
@@ -3660,6 +3669,7 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
 
                         <MapComponent
                           layerCatalog={layerCatalog}
+                          activeOrganizationName={activeOrg?.name}
                           refreshKey={mapRefreshKey}
                           prepareKey={mapPrepareKey}
                           onManualRefresh={handleRefreshMap}
@@ -3933,23 +3943,10 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
                                   const targetSubgrid = inspectorSubgrid || selectedSubgridFilter || '';
                                   const targetFilename = activePanoramaFilename || '';
 
-                                  const provider = projectSettings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase';
-                                  const isMultiResStrategy = projectSettings?.imageStorageStrategy === 'multires_tiles' ||
-                                    projectSettings?.imageStorageStrategy === 'multi_resolution' ||
-                                    projectSettings?.panoramaMode === 'multi_res';
-                                  const hasCdnDomain = Boolean(
-                                    projectSettings?.r2Domain || import.meta.env.VITE_R2_DOMAIN || projectSettings?.customCdnUrl
-                                  );
-
-                                  const shouldUseMultiRes = isMultiResStrategy && hasCdnDomain && (
-                                    provider === 'cloudflare_r2' ||
-                                    provider === 'custom_cdn' ||
-                                    provider === 'aws_s3' ||
-                                    provider === 'wasabi' ||
-                                    provider === 'gcs' ||
-                                    provider === 'azure_blob' ||
-                                    provider === 'nas_local'
-                                  );
+                                  const provider = projectSettings?.tenantStorage?.provider || projectSettings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase';
+                                  const cdnUrl = projectSettings?.tenantStorage?.cdnUrl || projectSettings?.r2Domain || projectSettings?.customCdnUrl || import.meta.env.VITE_R2_DOMAIN;
+                                  const isMultiResStrategy = projectSettings?.imageStorageStrategy !== 'single_equirectangular';
+                                  const shouldUseMultiRes = isMultiResStrategy && Boolean(cdnUrl || provider === 'supabase' || provider === 'supabase_self_hosted');
 
                                   const dynamicConfigUrl = shouldUseMultiRes && targetFilename
                                     ? resolvePanoramaConfigUrl(targetFilename, projectSettings, targetSubgrid)

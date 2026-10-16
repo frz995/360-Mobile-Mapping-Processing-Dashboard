@@ -104,6 +104,97 @@ function buildCubemapPanorama(configUrl: string) {
   };
 }
 
+function deriveAlternatePanoramaUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const clean = url.trim();
+  if (clean.includes('/storage/v1/object/public/')) {
+    const [baseUrl, rest] = clean.split('/storage/v1/object/public/');
+    const parts = rest.split('/');
+    if (parts.length > 2) {
+      // If path has a subfolder (e.g. MMS_PIC/DevTest/N93E70-0001.jpg), fallback to root MMS_PIC/N93E70-0001.jpg
+      const bucket = parts[0];
+      const filename = parts[parts.length - 1];
+      return `${baseUrl}/storage/v1/object/public/${bucket}/${filename}`;
+    }
+  } else {
+    try {
+      const u = new URL(clean);
+      const segments = u.pathname.split('/').filter(Boolean);
+      if (segments.length > 1) {
+        u.pathname = `/${segments[segments.length - 1]}`;
+        return u.toString();
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function deriveAlternateConfigUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const clean = url.trim();
+  try {
+    const u = new URL(clean);
+    const prefixedMatch = u.pathname.match(/^\/[^/]+(\/tiles\/.+)$/i);
+    if (prefixedMatch) {
+      u.pathname = prefixedMatch[1];
+      return u.toString();
+    }
+  } catch {}
+  return null;
+}
+
+const configProbeCache = new Map<string, boolean>();
+
+async function probeConfigUrl(url?: string | null): Promise<string | null> {
+  if (!url) return null;
+  const clean = url.trim();
+  if (configProbeCache.get(clean) === true) return clean;
+
+  const alt = deriveAlternateConfigUrl(clean);
+  if (configProbeCache.get(clean) === false && alt && configProbeCache.get(alt) === true) {
+    return alt;
+  }
+
+  try {
+    const res = await fetch(clean, { method: 'HEAD' });
+    if (res.ok) {
+      configProbeCache.set(clean, true);
+      return clean;
+    }
+  } catch {
+    try {
+      const res = await fetch(clean, { method: 'GET' });
+      if (res.ok) {
+        configProbeCache.set(clean, true);
+        return clean;
+      }
+    } catch {}
+  }
+  configProbeCache.set(clean, false);
+
+  if (alt && alt !== clean) {
+    if (configProbeCache.get(alt) === true) return alt;
+    try {
+      const res = await fetch(alt, { method: 'HEAD' });
+      if (res.ok) {
+        configProbeCache.set(alt, true);
+        return alt;
+      }
+    } catch {
+      try {
+        const res = await fetch(alt, { method: 'GET' });
+        if (res.ok) {
+          configProbeCache.set(alt, true);
+          return alt;
+        }
+      } catch {}
+    }
+    configProbeCache.set(alt, false);
+  }
+
+  return null;
+}
+
 export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, PhotoSphereViewerProps>(
   ({ panoramaUrl, configUrl, caption, className = 'w-full h-full min-h-[260px]', initialYaw = 0, initialFov, onPositionChange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -117,22 +208,16 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
       onPositionChangeRef.current = onPositionChange;
     }, [onPositionChange]);
 
-    // Keep the latest initial heading without re-running the (heavy) panorama effect
-    // on every change — prevents the viewer from hot-swapping texture while rotating.
     const initialYawRef = useRef(initialYaw);
     useEffect(() => {
       initialYawRef.current = initialYaw;
     }, [initialYaw]);
 
-    // Keep the latest desired FOV without re-running the (heavy) panorama effect.
     const initialFovRef = useRef(initialFov);
     useEffect(() => {
       initialFovRef.current = initialFov;
     }, [initialFov]);
 
-    // rAF-batched onPositionChange: the host posts CAMERA_ROTATED to the map
-    // iframe; coalesce per-frame position events into a single callback (max one
-    // per animation frame) to avoid saturating the main thread with map updates.
     const throttleAccumRef = useRef<{ has: boolean; yaw: number; pitch: number; fov?: number }>({ has: false, yaw: 0, pitch: 0 });
     const throttleFrameRef = useRef<number | null>(null);
 
@@ -196,186 +281,226 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
     useEffect(() => {
       if (!containerRef.current) return;
       let isMounted = true;
+      let stallTimer: ReturnType<typeof setTimeout> | undefined;
 
-      const hasValidConfigUrl = Boolean(configUrl && (configUrl.startsWith('http://') || configUrl.startsWith('https://')));
-      const targetPanorama = hasValidConfigUrl ? buildCubemapPanorama(configUrl!) : (panoramaUrl ? panoramaUrl.trim() : null);
-      if (!targetPanorama) {
-        setIsLoading(false);
-        return;
-      }
+      const loadViewer = async () => {
+        setIsLoading(true);
+        setProgress(null);
+        setLoadError(null);
 
-      setIsLoading(true);
-      setProgress(null);
-      setLoadError(null);
+        let validConfig: string | null = null;
+        if (configUrl && (configUrl.startsWith('http://') || configUrl.startsWith('https://'))) {
+          validConfig = await probeConfigUrl(configUrl);
+        }
 
-      // Instant preloader listener for single equirectangular images
-      if (panoramaUrl && !hasValidConfigUrl) {
-        const preloadImg = new Image();
-        preloadImg.crossOrigin = 'anonymous';
-        preloadImg.onload = () => {
-          if (isMounted) {
-            setIsLoading(false);
-            setProgress(null);
+        if (!isMounted) return;
+
+        const hasValidConfigUrl = Boolean(validConfig);
+        const targetPanorama = hasValidConfigUrl
+          ? buildCubemapPanorama(validConfig!)
+          : (panoramaUrl ? panoramaUrl.trim() : null);
+
+        if (!targetPanorama) {
+          setIsLoading(false);
+          return;
+        }
+
+        const alternatePanorama = !hasValidConfigUrl && typeof targetPanorama === 'string'
+          ? deriveAlternatePanoramaUrl(targetPanorama)
+          : null;
+
+        // Instant preloader listener for single equirectangular images with fallback resilience
+        if (panoramaUrl && !hasValidConfigUrl) {
+          const tryPreload = (src: string, isFallback = false) => {
+            const preloadImg = new Image();
+            preloadImg.crossOrigin = 'anonymous';
+            preloadImg.onload = () => {
+              if (isMounted) {
+                setIsLoading(false);
+                setProgress(null);
+                setLoadError(null);
+                if (isFallback && viewerRef.current) {
+                  viewerRef.current.setPanorama(src, { transition: false, showLoader: false }).catch(() => {});
+                }
+              }
+            };
+            preloadImg.onerror = () => {
+              if (!isMounted) return;
+              if (!isFallback && alternatePanorama && alternatePanorama !== src) {
+                tryPreload(alternatePanorama, true);
+                return;
+              }
+              setLoadError('No response arrived — CORS, network, or mixed-content block. Whether the file exists is unknown.');
+              setIsLoading(false);
+            };
+            preloadImg.src = src;
+          };
+
+          tryPreload(panoramaUrl.trim());
+        }
+
+        // If existing viewer needs an adapter change (cubemap tiles vs equirectangular), recreate instance cleanly
+        if (viewerRef.current) {
+          const hasAdapter = Boolean((viewerRef.current as any).adapter);
+          if (hasAdapter !== hasValidConfigUrl) {
+            try {
+              viewerRef.current.destroy();
+            } catch (_) {}
+            viewerRef.current = null;
           }
-        };
-        preloadImg.onerror = () => {
-          if (isMounted) {
-            // An `Image` tag exposes no status, so this stays honest about not
-            // knowing rather than asserting the file is missing.
-            setLoadError('No response arrived — CORS, network, or mixed-content block. Whether the file exists is unknown.');
-            setIsLoading(false);
-          }
-        };
-        preloadImg.src = panoramaUrl.trim();
-      }
+        }
 
-      if (viewerRef.current) {
-        // Hot-swap texture on existing GPU canvas
-        viewerRef.current.setPanorama(targetPanorama, {
-          transition: false,
-          showLoader: false,
-        })
-          .then(() => {
+        if (viewerRef.current) {
+          // Hot-swap texture on existing GPU canvas
+          viewerRef.current.setPanorama(targetPanorama, {
+            transition: false,
+            showLoader: false,
+          })
+            .then(() => {
+              if (isMounted) {
+                setLoadError(null);
+                setIsLoading(false);
+                setProgress(null);
+                const iy = initialYawRef.current;
+                if (typeof iy === 'number' && isFinite(iy)) {
+                  const curPos = viewerRef.current?.getPosition();
+                  try {
+                    viewerRef.current?.rotate({
+                      yaw: (iy * Math.PI) / 180,
+                      pitch: curPos?.pitch ?? 0,
+                    });
+                  } catch (_) { }
+                }
+              }
+            })
+            .catch((err) => {
+              console.warn('Fast panorama swap notice:', err);
+              if (alternatePanorama && alternatePanorama !== targetPanorama) {
+                viewerRef.current?.setPanorama(alternatePanorama, { transition: false, showLoader: false })
+                  .then(() => {
+                    if (isMounted) {
+                      setLoadError(null);
+                      setIsLoading(false);
+                      setProgress(null);
+                    }
+                  })
+                  .catch((altErr) => {
+                    if (isMounted) {
+                      setLoadError(describePanoramaFailure(altErr));
+                      setIsLoading(false);
+                    }
+                  });
+                return;
+              }
+              if (isMounted) {
+                setLoadError(describePanoramaFailure(err));
+                setIsLoading(false);
+              }
+            });
+          return;
+        }
+
+        // Initial Mount: Build viewer instance once
+        try {
+          const viewerInstance = new Viewer({
+            container: containerRef.current!,
+            adapter: hasValidConfigUrl ? CubemapTilesAdapter : undefined,
+            sphereCorrection: { pan: '180deg' },
+            navbar: false,
+            panorama: targetPanorama,
+            caption: caption || '360° Panorama Inspection',
+            defaultYaw: `${initialYawRef.current ?? 0}deg`,
+            defaultPitch: '0deg',
+            defaultZoomLvl: initialFovRef.current
+              ? fovToZoomLevel(initialFovRef.current, DEFAULT_MIN_FOV, DEFAULT_MAX_FOV)
+              : 0,
+            minFov: DEFAULT_MIN_FOV,
+            maxFov: DEFAULT_MAX_FOV,
+            moveSpeed: 1,
+            touchmoveTwoFingers: false,
+            mousewheel: true,
+            mousewheelCtrlKey: false,
+            loadingImg: undefined,
+            loadingTxt: '',
+          });
+
+          viewerInstance.addEventListener('panorama-loaded', () => {
             if (isMounted) {
               setLoadError(null);
               setIsLoading(false);
-              setProgress(null);
-              // Orient the first frame to the new point's heading (bearing).
-              const iy = initialYawRef.current;
-              if (typeof iy === 'number' && isFinite(iy)) {
-                const curPos = viewerRef.current?.getPosition();
-                try {
-                  viewerRef.current?.rotate({
-                    yaw: (iy * Math.PI) / 180,
-                    pitch: curPos?.pitch ?? 0,
+            }
+          });
+
+          viewerInstance.addEventListener('panorama-error' as any, (event: any) => {
+            if (isMounted) {
+              if (alternatePanorama && alternatePanorama !== targetPanorama) {
+                viewerInstance.setPanorama(alternatePanorama, { transition: false, showLoader: false })
+                  .catch(() => {
+                    const cause = event?.cause || event?.error || event?.content || event;
+                    setLoadError(describePanoramaFailure(cause));
+                    setIsLoading(false);
                   });
-                } catch (_) { }
+                return;
+              }
+              const cause = event?.cause || event?.error || event?.content || event;
+              console.warn('Panorama load failed:', cause);
+              setLoadError(describePanoramaFailure(cause));
+              setIsLoading(false);
+            }
+          });
+
+          viewerInstance.addEventListener('load-progress' as any, ({ progress: p }: any) => {
+            if (isMounted && typeof p === 'number') {
+              setProgress(Math.round(p));
+              if (p >= 100) {
+                setLoadError(null);
+                setIsLoading(false);
               }
             }
-          })
-          .catch((err) => {
-            console.warn('Fast panorama swap notice:', err);
-            if (panoramaUrl && hasValidConfigUrl) {
-              // Fall back to flat equirectangular image if multi-res tiles fail
-              viewerRef.current?.setPanorama(panoramaUrl.trim(), { transition: false, showLoader: false })
-                .then(() => {
-                  if (isMounted) {
-                    setLoadError(null);
-                    setIsLoading(false);
-                    setProgress(null);
-                  }
-                })
-                .catch((fallbackErr) => {
-                  if (isMounted) {
-                    console.warn('Panorama fallback also failed:', fallbackErr);
-                    setLoadError(describePanoramaFailure(fallbackErr));
-                    setIsLoading(false);
-                  }
-                });
-              return;
-            }
-            if (isMounted) {
-              setLoadError(describePanoramaFailure(err));
-              setIsLoading(false);
-            }
           });
-        return;
-      }
 
-      // Initial Mount: Build viewer instance once
-      try {
-        const viewerInstance = new Viewer({
-          container: containerRef.current,
-          adapter: hasValidConfigUrl ? CubemapTilesAdapter : undefined,
-          sphereCorrection: { pan: '180deg' },
-          navbar: false,
-          panorama: targetPanorama,
-          caption: caption || '360° Panorama Inspection',
-          defaultYaw: `${initialYawRef.current ?? 0}deg`,
-          defaultPitch: '0deg',
-          defaultZoomLvl: initialFovRef.current
-            ? fovToZoomLevel(initialFovRef.current, DEFAULT_MIN_FOV, DEFAULT_MAX_FOV)
-            : 0,
-          minFov: DEFAULT_MIN_FOV,
-          maxFov: DEFAULT_MAX_FOV,
-          moveSpeed: 1,
-          touchmoveTwoFingers: false,
-          mousewheel: true,
-          mousewheelCtrlKey: false,
-          loadingImg: undefined,
-          loadingTxt: '',
-        });
-
-        viewerInstance.addEventListener('panorama-loaded', () => {
-          if (isMounted) {
-            setLoadError(null);
-            setIsLoading(false);
-          }
-        });
-
-        viewerInstance.addEventListener('panorama-error' as any, (event: any) => {
-          if (isMounted) {
-            // PSV carries the underlying loader failure on the event. Without it
-            // the panel claimed "file missing" for every cause.
-            const cause = event?.cause || event?.error || event?.content || event;
-            console.warn('Panorama load failed:', cause);
-            setLoadError(describePanoramaFailure(cause));
-            setIsLoading(false);
-          }
-        });
-
-        viewerInstance.addEventListener('load-progress' as any, ({ progress: p }: any) => {
-          if (isMounted && typeof p === 'number') {
-            setProgress(Math.round(p));
-            if (p >= 100) {
-              setLoadError(null);
-              setIsLoading(false);
-            }
-          }
-        });
-
-        viewerInstance.addEventListener('position-updated', ({ position }) => {
-          setHeading((position.yaw * 180) / Math.PI);
-          queuePositionChange({
-            yaw: (position.yaw * 180) / Math.PI,
-            pitch: (position.pitch * 180) / Math.PI,
-            fov: viewerInstance?.getZoomLevel() ?? 50,
-          });
-        });
-
-        viewerInstance.addEventListener('zoom-updated', ({ zoomLevel }) => {
-          const pos = viewerInstance?.getPosition();
-          if (pos) {
-            setHeading((pos.yaw * 180) / Math.PI);
+          viewerInstance.addEventListener('position-updated', ({ position }) => {
+            setHeading((position.yaw * 180) / Math.PI);
             queuePositionChange({
-              yaw: (pos.yaw * 180) / Math.PI,
-              pitch: (pos.pitch * 180) / Math.PI,
-              fov: zoomLevel,
+              yaw: (position.yaw * 180) / Math.PI,
+              pitch: (position.pitch * 180) / Math.PI,
+              fov: viewerInstance?.getZoomLevel() ?? 50,
             });
+          });
+
+          viewerInstance.addEventListener('zoom-updated', ({ zoomLevel }) => {
+            const pos = viewerInstance?.getPosition();
+            if (pos) {
+              setHeading((pos.yaw * 180) / Math.PI);
+              queuePositionChange({
+                yaw: (pos.yaw * 180) / Math.PI,
+                pitch: (pos.pitch * 180) / Math.PI,
+                fov: zoomLevel,
+              });
+            }
+          });
+
+          viewerRef.current = viewerInstance;
+        } catch (err) {
+          console.error('Failed to initialize PhotoSphereViewer:', err);
+          if (isMounted) {
+            setLoadError('Failed to initialize the 360° viewer.');
+            setIsLoading(false);
           }
-        });
-
-        viewerRef.current = viewerInstance;
-      } catch (err) {
-        console.error('Failed to initialize PhotoSphereViewer:', err);
-        if (isMounted) {
-          setLoadError('Failed to initialize the 360° viewer.');
-          setIsLoading(false);
         }
-      }
+      };
 
-      // Last-resort timeout for loads that neither complete nor error (e.g. stalled
-      // cubemap tile fetch). Dismisses the spinner so the canvas isn't stuck forever.
-      // Genuine failures are caught earlier by panorama-error and show the placeholder.
-      const stallTimer = setTimeout(() => {
+      void loadViewer();
+
+      stallTimer = setTimeout(() => {
         if (isMounted) setIsLoading(false);
       }, 6000);
 
       return () => {
         isMounted = false;
-        clearTimeout(stallTimer);
+        if (stallTimer) clearTimeout(stallTimer);
       };
-    }, [panoramaUrl, configUrl, caption]);
+    }, [panoramaUrl, configUrl, caption, queuePositionChange]);
 
     // Unmount cleanup
     useEffect(() => {

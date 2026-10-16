@@ -25,10 +25,13 @@ describe('normalizeRole', () => {
   it('normalises display and short role values', () => {
     expect(normalizeRole('Administrator')).toBe(ROLE_ADMINISTRATOR);
     expect(normalizeRole('admin')).toBe(ROLE_ADMINISTRATOR);
+    expect(normalizeRole('CompanyAdmin')).toBe(ROLE_ADMINISTRATOR);
+    expect(normalizeRole('Company Admin')).toBe(ROLE_ADMINISTRATOR);
     expect(normalizeRole('Survey Operator')).toBe(ROLE_OPERATOR);
     expect(normalizeRole('operator')).toBe(ROLE_OPERATOR);
     expect(normalizeRole('QA Inspector')).toBe(ROLE_QA_INSPECTOR);
     expect(normalizeRole('inspector')).toBe(ROLE_QA_INSPECTOR);
+    expect(normalizeRole('Inspector')).toBe(ROLE_QA_INSPECTOR);
     expect(normalizeRole('Viewer')).toBe(ROLE_VIEWER);
     expect(normalizeRole('')).toBe(ROLE_VIEWER);
     expect(normalizeRole(undefined)).toBe(ROLE_VIEWER);

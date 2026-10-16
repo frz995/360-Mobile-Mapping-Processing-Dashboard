@@ -101,40 +101,17 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
   try {
     // Try fetching from panoramas_view or fallback to panoramas table
     let data: any[] | null = null;
-    let error: any = null;
-    const viewResult = await withRetry(
-      async () => {
-        const res = await scoped(supabase.from('panoramas_view').select('*'));
-        if (res.error) throw new Error(res.error.message);
-        return res;
-      },
-      { retries: 2 }
-    );
-    data = viewResult.data;
-    error = viewResult.error;
-
-    // The view is queried strictly-scoped first. If that yields nothing, retry
-    // tolerating unassigned rows: panoramas_view may only expose rows that carry a
-    // project_id, which would otherwise hide freshly imported data on refresh.
-    // Any error from the tolerant form falls back to the strict query so a view
-    // that does not expose project_id can never reduce us to zero rows.
-    if (!error && (!data || data.length === 0)) {
+    const viewRes = await scoped(supabase.from('panoramas_view').select('*'));
+    if (!viewRes.error && viewRes.data && viewRes.data.length > 0) {
+      data = viewRes.data;
+    } else {
       const tolerant = await scopedIncludingUnassigned(supabase.from('panoramas_view').select('*'));
       if (!tolerant.error && tolerant.data && tolerant.data.length > 0) {
         data = tolerant.data;
+      } else {
+        const baseRes = await scopedIncludingUnassigned(supabase.from('panoramas').select('*'));
+        data = baseRes.data;
       }
-    }
-
-    if (error || !data || data.length === 0) {
-      const res = await scopedIncludingUnassigned(supabase
-        .from('panoramas')
-        .select('*'));
-      data = res.data;
-      error = res.error;
-    }
-
-    if (error) {
-      throw new Error(error.message);
     }
 
     // Query subgrids metadata table dynamically if available

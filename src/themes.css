@@ -1934,3 +1934,28 @@ html.showcase-active[data-theme] aside {
    a value is written rather than on what it means is a trap for the next
    editor, and it was already superseded by the class rules above. */
 
+/* ==========================================================================
+   CONSOLE & MODAL SELECT STYLING ISOLATION
+   Prevents Windows Chromium from applying dark-mode OS popup styles
+   (white text on white background) on light-themed selects & modals.
+   ========================================================================== */
+#seller-console-root select,
+.console-modal-shell select,
+[data-console-modal] select,
+select.console-select,
+select.console-input {
+    color-scheme: light !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+}
+
+#seller-console-root select option,
+.console-modal-shell select option,
+[data-console-modal] select option,
+select.console-select option,
+select.console-input option {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+}
+
+

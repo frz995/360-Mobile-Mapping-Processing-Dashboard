@@ -10,6 +10,7 @@ import {
   loadActiveProjectId,
   clearActiveProjectId
 } from './projectContext';
+import { getActiveOrganizationId } from './tenantContext';
 
 /** localStorage cache key for the project list (schema-bumped, persisted across sessions). */
 export const PROJECTS_CACHE_KEY = 'geosphere360_projects_v1';
@@ -24,8 +25,9 @@ export {
 };
 
 /** Per-user localStorage key for the currently active project id. */
-export function getActiveProjectStorageKey(userKey: string): string {
-  return `${ACTIVE_PROJECT_KEY_PREFIX}${userKey}`;
+export function getActiveProjectStorageKey(userKey: string, orgId?: string | null): string {
+  const orgSuffix = orgId && orgId.trim() ? `_${orgId.trim()}` : '';
+  return `${ACTIVE_PROJECT_KEY_PREFIX}${userKey}${orgSuffix}`;
 }
 
 export type ProjectStatus = 'planning' | 'active' | 'paused' | 'completed' | 'archived';
@@ -50,6 +52,7 @@ export interface ProjectScope {
 export interface UserProject {
   id: string;
   name: string;
+  organizationId?: string | null;
   description: string;
   contractCode: string;
   clientName: string;
@@ -64,6 +67,7 @@ export interface UserProject {
 
 export interface ProjectDraft {
   name: string;
+  organizationId?: string | null;
   description?: string;
   contractCode?: string;
   clientName?: string;
@@ -77,6 +81,7 @@ export type ProjectResult<T> = { success: true; value: T } | { success: false; m
 interface ProjectRow {
   id: string;
   name: string;
+  organization_id?: string | null;
   description?: string;
   contract_code?: string;
   client_name?: string;
@@ -93,6 +98,7 @@ function toUserProject(row: ProjectRow): UserProject {
   return {
     id: row.id,
     name: row.name || 'Untitled Project',
+    organizationId: row.organization_id ?? null,
     description: row.description || '',
     contractCode: row.contract_code || '',
     clientName: row.client_name || '',
@@ -110,9 +116,11 @@ function toUserProject(row: ProjectRow): UserProject {
 // localStorage cache helpers (mirror the project_settings / roadAnalysis pattern)
 // ---------------------------------------------------------------------------
 
-export function loadProjectsCache(): UserProject[] {
+export function loadProjectsCache(orgId?: string | null): UserProject[] {
   try {
-    const raw = localStorage.getItem(PROJECTS_CACHE_KEY);
+    const targetOrg = orgId !== undefined ? orgId : getActiveOrganizationId();
+    const key = targetOrg ? `${PROJECTS_CACHE_KEY}_${targetOrg}` : PROJECTS_CACHE_KEY;
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter(p => p && typeof p.id === 'string') : [];
@@ -121,9 +129,11 @@ export function loadProjectsCache(): UserProject[] {
   }
 }
 
-export function saveProjectsCache(projects: UserProject[]): void {
+export function saveProjectsCache(projects: UserProject[], orgId?: string | null): void {
   try {
-    localStorage.setItem(PROJECTS_CACHE_KEY, JSON.stringify(projects));
+    const targetOrg = orgId !== undefined ? orgId : getActiveOrganizationId();
+    const key = targetOrg ? `${PROJECTS_CACHE_KEY}_${targetOrg}` : PROJECTS_CACHE_KEY;
+    localStorage.setItem(key, JSON.stringify(projects));
   } catch {
     // storage unavailable (private mode / quota) — non-fatal
   }
@@ -235,44 +245,57 @@ export function createLocalProjectSnapshot(draft: ProjectDraft): UserProject {
 // Supabase-backed CRUD (guarded: any failure falls back to the local cache)
 // ---------------------------------------------------------------------------
 
-export async function fetchProjects(): Promise<UserProject[]> {
+export async function fetchProjects(orgId?: string | null): Promise<UserProject[]> {
+  const targetOrgId = orgId !== undefined ? orgId : getActiveOrganizationId();
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('projects')
       .select('*')
       .order('last_opened_at', { ascending: false, nullsFirst: false })
       .order('updated_at', { ascending: false });
+
+    if (targetOrgId) {
+      query = query.eq('organization_id', targetOrgId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(error.message);
     }
     const projects = Array.isArray(data) ? data.map(toUserProject) : [];
     if (projects.length > 0 || data) {
-      saveProjectsCache(projects);
+      saveProjectsCache(projects, targetOrgId);
     }
     return projects;
   } catch (err) {
     console.warn('[projects] fetchProjects fell back to local cache:', err);
-    return loadProjectsCache();
+    return loadProjectsCache(targetOrgId);
   }
 }
 
 export async function createProject(draft: ProjectDraft): Promise<ProjectResult<UserProject>> {
   try {
     const now = new Date().toISOString();
+    const targetOrgId = draft.organizationId !== undefined ? draft.organizationId : getActiveOrganizationId();
+    const insertPayload: Record<string, unknown> = {
+      name: draft.name,
+      description: draft.description || '',
+      contract_code: draft.contractCode || '',
+      client_name: draft.clientName || '',
+      region: draft.region || '',
+      status: draft.status || 'planning',
+      scope: draft.scope || {},
+      last_opened_at: now,
+      updated_at: now
+    };
+    if (targetOrgId) {
+      insertPayload.organization_id = targetOrgId;
+    }
+
     const { data, error } = await supabase
       .from('projects')
-      .insert({
-        name: draft.name,
-        description: draft.description || '',
-        contract_code: draft.contractCode || '',
-        client_name: draft.clientName || '',
-        region: draft.region || '',
-        status: draft.status || 'planning',
-        scope: draft.scope || {},
-        last_opened_at: now,
-        updated_at: now
-      })
+      .insert(insertPayload)
       .select('*')
       .single();
 
@@ -280,7 +303,8 @@ export async function createProject(draft: ProjectDraft): Promise<ProjectResult<
       throw new Error(error.message);
     }
     const project = toUserProject(data as ProjectRow);
-    saveProjectsCache([project, ...loadProjectsCache().filter(p => p.id !== project.id)]);
+    const existing = loadProjectsCache(targetOrgId);
+    saveProjectsCache([project, ...existing.filter(p => p.id !== project.id)], targetOrgId);
     return { success: true, value: project };
   } catch (err) {
     return { success: false, message: (err as Error).message || 'Failed to create project' };

@@ -14,6 +14,7 @@ import { extractSubgridName } from '../utils/subgrid';
 import { getItemId, resolveAuditForRun } from '../utils/items';
 import { resolveRunDefectCount, buildQaqcStatus } from '../utils/defectCounts';
 import { getActiveProjectId } from '../services/projectContext';
+import { getActiveOrganizationId } from '../services/tenantStorage';
 import { buildDefaultProjectBoundary } from '../components/boundary/malaysiaDistricts';
 import { STORAGE_BUCKET_DEFAULT, STORAGE_PATH_PREFIX_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../config/defaults';
 import { branding } from '../config/branding';
@@ -129,25 +130,35 @@ export function useAppData() {
           setProjectSettings((prev: any) => {
             const incoming = { ...dbSettingsRes.value };
             const pid = getActiveProjectId();
+            const orgId = getActiveOrganizationId();
+            const next = { ...prev, ...incoming };
             // Per-project boundary isolation: if a project is active, its boundary
             // is governed by that project's scope, NOT the legacy global project_settings row.
             if (pid) {
-              delete incoming.projectBoundary;
-              const next = { ...prev, ...incoming };
               if (prev?.projectBoundary !== undefined) {
                 next.projectBoundary = prev.projectBoundary;
               } else {
                 delete next.projectBoundary;
               }
-              // Per-project km isolation: the legacy global project_settings row must
-              // never clobber the active project's scope targetKm/targetImages —
-              // applyProjectScope has already seeded prev with the project's own values.
               if (typeof prev?.targetKm === 'number') next.targetKm = prev.targetKm;
               if (typeof prev?.targetImages === 'number') next.targetImages = prev.targetImages;
               if (prev?.targetDeadline) next.targetDeadline = prev.targetDeadline;
-              return next;
             }
-            return { ...prev, ...incoming };
+            // Per-tenant architecture isolation: active tenant database routing & storage
+            // must not be overwritten by the legacy unpartitioned project_settings row.
+            if (orgId) {
+              if (prev?.databaseProvider) next.databaseProvider = prev.databaseProvider;
+              if (prev?.storageProvider) next.storageProvider = prev.storageProvider;
+              if (prev?.supabaseUrl) next.supabaseUrl = prev.supabaseUrl;
+              if (prev?.supabaseKey) next.supabaseKey = prev.supabaseKey;
+              if (prev?.databaseAnonKey) next.databaseAnonKey = prev.databaseAnonKey;
+              if (prev?.supabaseBucket) next.supabaseBucket = prev.supabaseBucket;
+              if (prev?.r2Domain) next.r2Domain = prev.r2Domain;
+              if (prev?.clientName) next.clientName = prev.clientName;
+              if (prev?.companyName) next.companyName = prev.companyName;
+              if (prev?.clientCode) next.clientCode = prev.clientCode;
+            }
+            return next;
           });
         }
 

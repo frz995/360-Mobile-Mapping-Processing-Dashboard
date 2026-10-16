@@ -3,7 +3,7 @@ import { STORAGE_BUCKET_DEFAULT } from '../../config/defaults';
 import type { ExtendedProjectSettings } from '../../types/admin';
 import { getStorageInventoryCacheTotalFiles } from './storage';
 import { isUuid } from '../../utils/userAccountId';
-import { getActiveOrganizationId, getActiveOrganizationStorage } from '../tenantContext';
+import { getActiveOrganizationId, getActiveOrganizationStorage, getActiveOrganizationClientCode } from '../tenantContext';
 
 /**
  * Fetch persisted audit logs from Supabase database.
@@ -658,9 +658,13 @@ function withTenantOrganizationScope(settings: any): any {
   if (!settings || typeof settings !== 'object') return settings;
   const orgId = getActiveOrganizationId();
   const tenantStorage = getActiveOrganizationStorage();
+  const clientCode = getActiveOrganizationClientCode();
   let scoped = settings;
   if (orgId) {
     scoped = { ...scoped, tenantOrganizationId: orgId };
+  }
+  if (clientCode) {
+    scoped = { ...scoped, clientCode };
   }
   if (tenantStorage) {
     scoped = { ...scoped, tenantStorage };

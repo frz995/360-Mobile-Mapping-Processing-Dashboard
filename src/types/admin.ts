@@ -268,6 +268,11 @@ export interface ExtendedProjectSettings {
   defaultDataTab?: 'batches' | 'daily' | 'vector';
   dateFormat?: string;
   unitSystem?: 'metric' | 'imperial';
+  clientName?: string;
+  clientCode?: string;
+  companyName?: string;
+  webgisHost?: string;
+  nasApiUrl?: string;
 }
 
 export interface QADefectRecord {

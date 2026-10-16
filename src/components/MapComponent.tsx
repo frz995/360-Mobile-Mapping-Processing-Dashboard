@@ -26,7 +26,8 @@ export const MapComponent = ({
   selectedPoints,
   isAfterDeletionPreview = false,
   showPanotrackLayer = true,
-  trajectoryStatusFilters
+  trajectoryStatusFilters,
+  activeOrganizationName
 }: {
   dataManagement?: boolean;
   layerCatalog?: (Layer | Folder)[];
@@ -47,6 +48,7 @@ export const MapComponent = ({
   showPanotrackLayer?: boolean;
   /** Per-status trajectory filters owned by App.tsx. */
   trajectoryStatusFilters?: { published: boolean; defect: boolean; stitching: boolean; missingFrames?: boolean };
+  activeOrganizationName?: string;
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -595,7 +597,7 @@ export const MapComponent = ({
           <div className="hidden sm:block">
             <div className="flex items-center gap-2">
               <h2 className="text-text-base font-bold text-xs sm:text-sm tracking-tight">
-                GeoSphere 360 Operations Hub
+                {activeOrganizationName || 'GeoSphere 360 Operations Hub'}
               </h2>
             </div>
             <p className="text-[10px] text-text-muted font-medium mt-0.5">

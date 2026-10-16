@@ -210,7 +210,7 @@ const InviteMemberModal: React.FC<InviteModalProps> = ({ orgId, orgName, onClose
           </Field>
 
           <Field label="Company Role">
-            <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClass}>
+            <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClass} style={{ colorScheme: 'light' }}>
               {MEMBER_ROLES.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
@@ -357,6 +357,7 @@ export const ConsoleMembersPanel: React.FC<Props> = ({ directory, selectedOrgId,
               value={selectedOrgId}
               onChange={(e) => onSelectOrg(e.target.value)}
               className={`${inputClass} max-w-sm`}
+              style={{ colorScheme: 'light' }}
             >
               <option value="">Select a company…</option>
               {organizations.map((org) => (

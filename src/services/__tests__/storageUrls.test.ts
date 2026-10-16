@@ -200,4 +200,29 @@ describe('tenantStorage BYOS overrides', () => {
     const url = resolvePanoramaUrl('N93E70-0001.jpg', defaultSettings);
     expect(url).toBe('https://pub-23569d9628d547acb97ec86212ecd51a.r2.dev/N93E70-0001.jpg');
   });
+
+  it('resolves dynamic bucket with clientCode company folder', () => {
+    const settings: StorageResolveSettings = {
+      storageProvider: 'supabase_self_hosted',
+      selfHostedStorageUrl: 'http://127.0.0.1:8000',
+      selfHostedBucket: 'MMS_PIC',
+      clientCode: 'DevTest'
+    };
+    const url = resolvePanoramaUrl('N93E70-0001.jpg', settings);
+    expect(url).toBe('http://127.0.0.1:8000/storage/v1/object/public/MMS_PIC/DevTest/N93E70-0001.jpg');
+  });
+
+  it('resolves custom dynamic BYOS bucket with sanitized clientCode', () => {
+    const settings: StorageResolveSettings = {
+      storageProvider: 'supabase',
+      supabaseUrl: 'https://cloud.supabase.co',
+      tenantStorage: {
+        provider: 'supabase',
+        bucketName: 'custom_mms_bucket',
+        clientCode: 'TNB / Johor'
+      }
+    };
+    const url = resolvePanoramaUrl('N93E70-0001.jpg', settings);
+    expect(url).toBe('https://cloud.supabase.co/storage/v1/object/public/custom_mms_bucket/TNB-Johor/N93E70-0001.jpg');
+  });
 });
