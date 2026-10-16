@@ -172,7 +172,7 @@ try {
   if (!dbUrl) {
     // The loop lives in `db-gate-readiness.mjs` so it can be tested without
     // Docker; its rationale, including the retry bug this replaced, is there.
-    const { armed, lastReadError } = neutraliseEventTriggers(
+    const { armed, lastReadError, restarts, settled } = neutraliseEventTriggers(
       (sql) =>
         run('docker', [
           'exec', CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-tAq', '-c', sql
@@ -180,13 +180,23 @@ try {
       { sleep: () => spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},1500)']) }
     );
 
-    if (armed !== 0) {
+    // `armed === 0` is a reading, not a verdict. `settled` is what says the
+    // reading was confirmed across polls on one postmaster, and an unconfirmed
+    // zero must not pass silently: it is the state that failed 2134267 in CI.
+    if (armed !== 0 || !settled) {
       // Warn and proceed rather than aborting. This check is a heuristic about
       // container readiness, not a property of the schema under test, and a
       // hard stop on it turns a slow machine into a red build. If the triggers
       // do matter, the bundle apply immediately below fails loudly with the
       // actual Postgres error, which is the diagnostic worth having.
-      console.warn(`    warning: could not neutralise every base-image event trigger (armed=${armed}${lastReadError ? `, last read: ${lastReadError}` : ''}).`);
+      //
+      // `restarts` is reported because a non-zero value means the container
+      // swapped its postmaster mid-check, so the loop was reading a database
+      // that no longer existed. That is the signature of the premature zero
+      // that failed commit 2134267 in CI; see `db-gate-readiness.mjs`.
+      const restartNote = restarts ? `, container restarted ${restarts}x mid-check` : '';
+      const settleNote = armed === 0 ? 'zero never confirmed across polls' : '';
+      console.warn(`    warning: could not neutralise every base-image event trigger (armed=${armed}${settleNote ? `, ${settleNote}` : ''}${restartNote}${lastReadError ? `, last read: ${lastReadError}` : ''}).`);
       console.warn('    proceeding — the bundle apply below will fail loudly if those triggers are the cause.');
     }
   }
