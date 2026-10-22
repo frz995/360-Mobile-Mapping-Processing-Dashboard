@@ -34,7 +34,7 @@
 import React from 'react';
 import { UserPlus, Users, ShieldAlert, Trash2, RotateCcw, Ban, Building2, Copy, Check } from 'lucide-react';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
-import { STATUS_LABEL } from '../useConsoleDirectory';
+import { STATUS_LABEL } from '../consoleDirectoryMetrics';
 import {
   fetchOrganizationMembers,
   resolveInviteeAccount,

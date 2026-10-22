@@ -37,6 +37,39 @@ const sampleOrg: Organization = {
   }
 };
 
+const unlimitedOrg: Organization = {
+  ...sampleOrg,
+  settings: {
+    contactEmail: 'fariz.farhan95@gmail.com',
+    storage: {
+      provider: 'cloudflare_r2',
+      bucketName: 'geosphere-panorama',
+      cdnUrl: 'https://pub-23569d9628d547acb97ec86212ecd51a.r2.dev',
+      imageStorageStrategy: 'multires_tiles'
+    }
+  }
+};
+
+/**
+ * The licensed-seats input.
+ *
+ * `Field` renders a `<label>` with no `htmlFor`, so the label is not
+ * associated with the input and `getByLabelText` cannot find it. The field
+ * wrapper is the nearest ancestor div, which holds exactly one input.
+ */
+function seatsFieldInput(): HTMLInputElement {
+  const field = screen.getByText('Licensed Seats').closest('div');
+  const input = field?.querySelector('input') as HTMLInputElement | null;
+  if (!input) throw new Error('The licensed-seats input was not rendered.');
+  return input;
+}
+
+/** The settings exactly as they would reach the database. */
+function writtenSettings(): Record<string, unknown> {
+  const payload = updateOrganizationMock.mock.calls[0][1] as { settings: Record<string, unknown> };
+  return JSON.parse(JSON.stringify(payload.settings)) as Record<string, unknown>;
+}
+
 describe('OrganizationFormModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -111,5 +144,59 @@ describe('OrganizationFormModal', () => {
     // Form inputs at the top are present and rendered
     expect(screen.getByPlaceholderText('e.g. Tenaga Nasional Berhad')).toBeDefined();
     expect(screen.getByPlaceholderText('e.g. TNB-LV-2026')).toBeDefined();
+  });
+
+  it('does not write a limit onto a company that has none on file', async () => {
+    render(
+      <OrganizationFormModal
+        editing={unlimitedOrg}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+        onFailed={vi.fn()}
+      />
+    );
+
+    // The form shows "no limit", not a default of ten.
+    expect(seatsFieldInput().value).toBe('');
+
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes/i }));
+
+    await waitFor(() => expect(updateOrganizationMock).toHaveBeenCalled());
+
+    // The old edit path substituted `?? 10` and `?? 200`, so saving an
+    // unrelated field on an unlimited company silently capped it at ten
+    // seats and 200 GB. Nobody chose those numbers.
+    const written = writtenSettings();
+    expect(written.allowedUserSeats).toBeUndefined();
+    expect(written.storageQuotaGb).toBeUndefined();
+  });
+
+  it('writes the absence of a limit when the box is cleared, not a limit of zero', async () => {
+    render(
+      <OrganizationFormModal
+        editing={sampleOrg}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+        onFailed={vi.fn()}
+      />
+    );
+
+    const seatsInput = seatsFieldInput();
+    expect(seatsInput.value).toBe('2');
+
+    fireEvent.change(seatsInput, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save Changes/i }));
+
+    await waitFor(() => expect(updateOrganizationMock).toHaveBeenCalled());
+
+    // The old input wrote `Number(value) || 0`, so clearing the box saved a
+    // company with no seats — a limit of zero — rather than a company with
+    // no limit. A configured zero is still a zero, but this is not one.
+    const written = writtenSettings();
+    expect(written.allowedUserSeats).toBeUndefined();
+    expect(written.allowedUserSeats).not.toBe(0);
+
+    // The limit the seller did not touch is untouched.
+    expect(written.storageQuotaGb).toBe(1);
   });
 });

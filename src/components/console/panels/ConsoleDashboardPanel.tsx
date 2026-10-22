@@ -10,6 +10,12 @@
  *
  * THE NULL RULE
  *   Every derived figure renders an em dash (—) when the read fails.
+ *
+ * THE REFRESH CONTRACT
+ *   The top-bar "Refresh" re-reads the company directory. The storage
+ *   inventory is re-read with it, because the two sets of numbers have to come
+ *   from the same moment: a quota edited on the Companies tab and a chart
+ *   drawn from the previous read is a number nobody can reconcile.
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -33,38 +39,15 @@ import type { ConsoleDirectory } from '../useConsoleDirectory';
 import {
   fetchCompanyStorageBreakdown,
   formatBytes,
-  formatPercent,
   type CompanyStorageBreakdown
 } from '../../../services/consoleStorage';
 import { KpiCard, PanelCard, PanelHeader, ReadFailure } from './consoleUi';
+import ConsoleCompanyStorageTable from './ConsoleCompanyStorageTable';
 
 interface Props {
   directory: ConsoleDirectory;
   onOpenCompanies: () => void;
   onOpenMembers: () => void;
-}
-
-export function getLicenseExpiryStatus(expiresAt: string | null): {
-  label: string;
-  tone: 'active' | 'warning' | 'expired' | 'neutral';
-} {
-  if (!expiresAt) {
-    return { label: 'Perpetual', tone: 'neutral' };
-  }
-  const expiry = new Date(expiresAt).getTime();
-  if (isNaN(expiry)) {
-    return { label: 'Invalid Date', tone: 'neutral' };
-  }
-  const now = Date.now();
-  const diffDays = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 0) {
-    return { label: `Expired (${Math.abs(diffDays)}d ago)`, tone: 'expired' };
-  }
-  if (diffDays <= 30) {
-    return { label: `Expiring soon (${diffDays}d left)`, tone: 'warning' };
-  }
-  return { label: `Active (${diffDays}d left)`, tone: 'active' };
 }
 
 export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompanies, onOpenMembers }) => {
@@ -82,9 +65,19 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
     setIsStorageLoading(false);
   }, []);
 
+  // The inventory is re-read whenever the directory is. `directory.organizations`
+  // is replaced on every read and only on a read, so its identity IS the
+  // refresh signal — which is what makes the top-bar "Refresh" button re-read
+  // the whole console rather than half of it.
+  //
+  // The read waits for the directory to settle. On mount the directory has
+  // not answered yet, so reading the inventory then would mean reading it
+  // twice: once against an empty company list, and again against the real
+  // one. Waiting costs a moment of skeleton and saves a round trip.
   useEffect(() => {
+    if (directory.isLoading) return;
     void loadStorage();
-  }, [loadStorage]);
+  }, [loadStorage, directory.organizations, directory.isLoading]);
 
   const withContact = organizations.filter((o) => Boolean(o.settings?.contactEmail));
 
@@ -127,7 +120,28 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
     };
   });
 
-  const totalConsumedBytes = breakdown.reduce((acc, b) => acc + b.consumedStorageBytes, 0);
+  // null means "not measured". Summing an empty breakdown would report 0 B
+  // for a portfolio whose storage nobody read, which is the same confident
+  // zero the per-company table used to print for every tenant. An empty
+  // breakdown mid-load is also not a measurement: the read has not answered
+  // yet, so the honest figure there is unknown, not zero.
+  const totalConsumedBytes =
+    storageError || isStorageLoading ? null : breakdown.reduce((acc, b) => acc + b.consumedStorageBytes, 0);
+
+  // The quota figure is the sum of the quotas that ARE configured. Companies
+  // with no quota on file are unlimited, and counting them as zero would
+  // under-report the portfolio — so they are disclosed instead.
+  const unlimitedQuota = metrics.unlimitedQuotaCount;
+  const allocatedCaption =
+    isStorageLoading
+      ? 'Loading…'
+      : metrics.totalQuota === null
+        ? 'Allocation not measured'
+        : `Allocated: ${metric(metrics.totalQuota, ' GB')}${
+            unlimitedQuota !== null && unlimitedQuota > 0
+              ? ` · ${unlimitedQuota} company${unlimitedQuota === 1 ? '' : 'ies'} unlimited`
+              : ''
+          }`;
 
   return (
     <div className="space-y-6">
@@ -135,7 +149,7 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
       <PanelCard>
         <PanelHeader
           title="Portfolio"
-          subtitle="Figures read live from the organization directory and storage catalog on this page load."
+          subtitle="Figures read live from the organization directory and storage catalog on this refresh."
         />
 
         {directoryError ? (
@@ -171,13 +185,19 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
             <KpiCard
               label="Licensed Seats"
               value={metric(metrics.totalSeats)}
-              caption="Allocated across all clients"
+              caption={
+                metrics.totalSeats === null
+                  ? 'unknown'
+                  : metrics.unlimitedSeatCount !== null && metrics.unlimitedSeatCount > 0
+                    ? `Allocated · ${metrics.unlimitedSeatCount} company${metrics.unlimitedSeatCount === 1 ? '' : 'ies'} unlimited`
+                    : 'Allocated across all clients'
+              }
               icon={<Users size={18} />}
             />
             <KpiCard
               label="Storage Consumed"
               value={formatBytes(totalConsumedBytes)}
-              caption={isStorageLoading ? 'Loading…' : `Allocated: ${metric(metrics.totalQuota, ' GB')}`}
+              caption={allocatedCaption}
               icon={<HardDrive size={18} />}
             />
             <KpiCard
@@ -314,7 +334,7 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
       <PanelCard>
         <PanelHeader
           title="Company Directory & Bucket Storage Console"
-          subtitle="Tenants provisioned on this platform with commercial licensing, live storage quota consumption, and per-bucket usage breakdown."
+          subtitle="Every tenant on this platform — plan, seats, live storage usage and per-bucket breakdown."
           actions={
             <button
               type="button"
@@ -347,261 +367,12 @@ export const ConsoleDashboardPanel: React.FC<Props> = ({ directory, onOpenCompan
         ) : null}
 
         {!directoryLoading && !directoryError && organizations.length > 0 ? (
-          <div className="overflow-x-auto rounded-2xl border border-slate-100 mt-5">
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="border-b font-bold uppercase tracking-wider text-[10px]" style={{ backgroundColor: '#f8fafc' }}>
-                <tr>
-                  <th className="px-5 py-3">Company</th>
-                  <th className="px-5 py-3">Database & Storage</th>
-                  <th className="px-5 py-3">License & Expiry</th>
-                  <th className="px-5 py-3">Seats</th>
-                  <th className="px-5 py-3">Storage Consumed / Quota</th>
-                  <th className="px-5 py-3">Bucket Usage Breakdown</th>
-                  <th className="px-5 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {organizations.map((org) => {
-                  const expiry = getLicenseExpiryStatus(org.licenseExpiresAt);
-                  const isExternalStorage = Boolean(
-                    org.settings?.storage?.provider && org.settings.storage.provider !== 'supabase'
-                  );
-                  const b = breakdown.find((item) => item.organizationId === org.id);
-                  const consumedBytes = b ? b.consumedStorageBytes : 0;
-                  const consumedFiles = b ? b.consumedFilesCount : 0;
-                  const allocatedGb = org.settings?.storageQuotaGb ?? null;
-                  const percentUsed =
-                    allocatedGb && allocatedGb > 0
-                      ? (consumedBytes / (allocatedGb * 1024 * 1024 * 1024)) * 100
-                      : null;
-                  const byosQuotaGb = org.settings?.storage?.byosQuotaGb ?? null;
-                  const byosConsumedBytes = org.settings?.storage?.byosConsumedBytes ?? null;
-                  const byosPercent =
-                    byosQuotaGb && byosQuotaGb > 0 && byosConsumedBytes != null
-                      ? (byosConsumedBytes / (byosQuotaGb * 1024 * 1024 * 1024)) * 100
-                      : null;
-
-                  return (
-                    <tr key={org.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-5 py-3.5">
-                        <div className="font-bold text-slate-900">{org.name}</div>
-                        <div className="text-[11px] text-slate-400 font-mono">{org.clientCode || '—'}</div>
-                      </td>
-
-                      <td className="px-5 py-3.5">
-                        <div className="space-y-1">
-                          <span className="font-mono text-[11px] block text-slate-700">
-                            {org.databaseType === 'dedicated_external' ? 'Dedicated DB' : 'Cloud DB (shared)'}
-                          </span>
-                          {isExternalStorage ? (
-                            <span
-                              title={`Dynamic Bucket: ${org.settings?.storage?.bucketName || 'default'}`}
-                              className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-800 border border-slate-200"
-                            >
-                              {org.settings?.storage?.provider?.replace('_', ' ')} BYOS
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 font-medium">Supabase Storage</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-3.5">
-                        <div className="space-y-1">
-                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700">
-                            {org.licenseType ? org.licenseType.replace('_', ' ') : 'Cloud SaaS'}
-                          </span>
-                          <div>
-                            <span
-                              className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                expiry.tone === 'active'
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  : expiry.tone === 'warning'
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  : expiry.tone === 'expired'
-                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                  : 'bg-slate-100 text-slate-600'
-                              }`}
-                            >
-                              {expiry.label}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-3.5 font-mono">
-                        {org.settings?.allowedUserSeats != null ? `${org.settings.allowedUserSeats} seats` : 'No limit'}
-                      </td>
-
-                      <td className="px-5 py-3.5">
-                        {isExternalStorage ? (
-                          <div className="space-y-2">
-                            {/* BYOS Cloud Storage Card */}
-                            <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200/90 text-[11px] space-y-1 max-w-[230px]">
-                              <div className="flex items-center justify-between gap-1.5">
-                                <span className="font-bold text-emerald-950 flex items-center gap-1.5 truncate">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
-                                  <span className="truncate">
-                                    {org.settings?.storage?.provider === 'cloudflare_r2' ? 'Cloudflare R2' : 'BYOS Cloud'}
-                                  </span>
-                                </span>
-                                <span className="text-[9px] font-bold text-emerald-700 bg-white px-1.5 py-0.5 rounded border border-emerald-200 uppercase tracking-wider shrink-0">
-                                  Zero Egress
-                                </span>
-                              </div>
-                              <div className="font-mono text-emerald-900 text-[10px] font-medium truncate" title={org.settings?.storage?.bucketName}>
-                                {org.settings?.storage?.bucketName || 'External Bucket'}
-                              </div>
-
-                              <div className="pt-1 border-t border-emerald-200/60 text-[10px] space-y-0.5">
-                                <div className="flex items-center justify-between font-mono">
-                                  <span className="text-emerald-900 font-bold">
-                                    {byosConsumedBytes != null ? formatBytes(byosConsumedBytes) : '—'}
-                                  </span>
-                                  <span className="text-emerald-700 font-medium">
-                                    {byosQuotaGb != null ? `Plan: ${byosQuotaGb} GB` : 'Uncapped'}
-                                  </span>
-                                </div>
-                                {byosPercent != null ? (
-                                  <div className="w-full bg-emerald-200/70 rounded-full h-1.5 overflow-hidden">
-                                    <div
-                                      className={`h-1.5 rounded-full ${
-                                        byosPercent >= 90
-                                          ? 'bg-rose-500'
-                                          : byosPercent >= 80
-                                          ? 'bg-amber-500'
-                                          : 'bg-emerald-600'
-                                      }`}
-                                      style={{ width: `${Math.min(100, Math.max(4, byosPercent))}%` }}
-                                    />
-                                  </div>
-                                ) : null}
-                                {byosPercent != null && byosPercent >= 80 ? (
-                                  <div className={`font-bold text-[9px] ${byosPercent >= 90 ? 'text-rose-600' : 'text-amber-700'}`}>
-                                    {byosPercent >= 90 ? '🚨 90% Plan Used · Upgrade Needed' : '⚠️ 80% Capacity Warning'}
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            {/* Platform Supabase DB Storage */}
-                            <div className="text-[10px] text-slate-500 px-0.5 space-y-0.5">
-                              <div>
-                                <span className="font-semibold text-slate-700">Platform DB:</span>{' '}
-                                <span className="font-bold text-slate-900 font-mono">{formatBytes(consumedBytes)}</span>
-                                {allocatedGb != null ? ` / ${allocatedGb} GB` : ''}
-                              </div>
-                              <div className="text-[9px] text-slate-400">
-                                {consumedFiles.toLocaleString()} internal files
-                                {percentUsed != null ? ` · ${formatPercent(percentUsed)} quota` : ''}
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <div className="font-bold text-slate-900 font-mono">
-                              {formatBytes(consumedBytes)}
-                              {allocatedGb != null ? ` / ${allocatedGb} GB` : ''}
-                            </div>
-                            <div className="text-[11px] text-slate-500 font-medium">
-                              {consumedFiles.toLocaleString()} files
-                              {percentUsed != null ? ` · ${formatPercent(percentUsed)} used` : ''}
-                            </div>
-                            {percentUsed != null ? (
-                              <div className="w-24 bg-slate-100 rounded-full h-1.5 mt-1 overflow-hidden">
-                                <div
-                                  className={`h-1.5 rounded-full ${
-                                    percentUsed > 90
-                                      ? 'bg-rose-500'
-                                      : percentUsed > 75
-                                      ? 'bg-amber-500'
-                                      : 'bg-emerald-600'
-                                  }`}
-                                  style={{ width: `${Math.min(100, Math.max(3, percentUsed))}%` }}
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="px-5 py-3.5">
-                        {isStorageLoading && !storageError ? (
-                          <div className="flex items-center gap-1.5 animate-pulse">
-                            <div className="h-6 w-16 bg-slate-100 rounded-lg" />
-                            <div className="h-6 w-16 bg-slate-100 rounded-lg" />
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {/* BYOS Active Indicator */}
-                            {isExternalStorage ? (
-                              <span
-                                title={`External BYOS Bucket: ${org.settings?.storage?.bucketName || 'External'}`}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] border border-emerald-200"
-                              >
-                                <span className="font-semibold">
-                                  {org.settings?.storage?.provider === 'cloudflare_r2' ? 'R2:' : 'BYOS:'}
-                                </span>
-                                <span className="font-mono font-bold text-emerald-950 truncate max-w-[100px]">
-                                  {org.settings?.storage?.bucketName || 'External'}
-                                </span>
-                                <span className="text-emerald-600 text-[10px] font-bold">(Active 360°)</span>
-                              </span>
-                            ) : null}
-
-                            {/* MMS_PIC */}
-                            <span
-                              title="MMS_PIC Bucket (Road Survey Images)"
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] border border-slate-200"
-                            >
-                              <span className="font-semibold">MMS:</span>
-                              <span className="font-mono font-bold text-slate-900">{formatBytes(b?.mmsPicBytes || 0)}</span>
-                              <span className="text-slate-500 text-[10px]">({b?.mmsPicFiles || 0})</span>
-                            </span>
-
-                            {/* Panoramas */}
-                            <span
-                              title="panoramas Bucket (360 Equirectangular Frames)"
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] border border-slate-200"
-                            >
-                              <span className="font-semibold">Pano:</span>
-                              <span className="font-mono font-bold text-slate-900">{formatBytes(b?.panoramasBytes || 0)}</span>
-                              <span className="text-slate-500 text-[10px]">({b?.panoramasFiles || 0})</span>
-                            </span>
-
-                            {/* Geometry */}
-                            <span
-                              title="road-analysis-geometry Bucket"
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] border border-slate-200"
-                            >
-                              <span className="font-semibold">Geom:</span>
-                              <span className="font-mono font-bold text-slate-900">{formatBytes(b?.geometryBytes || 0)}</span>
-                              <span className="text-slate-500 text-[10px]">({b?.geometryFiles || 0})</span>
-                            </span>
-
-                            {/* Other / Dynamic */}
-                            {b && b.otherBytes > 0 ? (
-                              <span
-                                title="Other / Dynamic buckets"
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] border border-slate-200"
-                              >
-                                <span className="font-semibold">Other:</span>
-                                <span className="font-mono font-bold text-slate-900">{formatBytes(b.otherBytes)}</span>
-                              </span>
-                            ) : null}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="px-5 py-3.5">
-                        <span className="capitalize font-semibold text-slate-700">{org.status}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <ConsoleCompanyStorageTable
+            organizations={organizations}
+            breakdown={breakdown}
+            storageError={storageError}
+            isStorageLoading={isStorageLoading}
+          />
         ) : null}
       </PanelCard>
 

@@ -46,30 +46,12 @@ vi.mock('../../../services/consoleAccess', async () => {
   };
 });
 
+const fetchCompanyStorageBreakdown = vi.fn();
+const fetchParentDatabaseStats = vi.fn();
+
 vi.mock('../../../services/consoleStorage', () => ({
-  fetchCompanyStorageBreakdown: vi.fn().mockResolvedValue({
-    breakdown: [],
-    error: null
-  }),
-  fetchParentDatabaseStats: vi.fn().mockResolvedValue({
-    stats: {
-      databaseSizeBytes: 25165824,
-      databaseSizePretty: '24 MB',
-      storageBytes: 15728640,
-      storageBytesPretty: '15 MB',
-      storageFiles: 120,
-      totalAllocatedStorageGb: 500,
-      totalAllocatedSeats: 15,
-      totalCompanies: 1,
-      activeCompanies: 1,
-      postgresVersion: 'PostgreSQL 17.6',
-      postgisVersion: '3.4.2',
-      planTier: 'free',
-      planDbLimitBytes: 524288000,
-      planStorageLimitBytes: 1073741824
-    },
-    error: null
-  }),
+  fetchCompanyStorageBreakdown: (...args: unknown[]) => fetchCompanyStorageBreakdown(...args),
+  fetchParentDatabaseStats: (...args: unknown[]) => fetchParentDatabaseStats(...args),
   formatBytes: (bytes: number | null | undefined) => (bytes != null ? `${bytes} B` : '—'),
   formatPercent: (val: number | null | undefined) => (val != null ? `${val}%` : '—')
 }));
@@ -113,6 +95,26 @@ describe('SellerPartnerConsole — failure modes', () => {
     window.history.replaceState({}, '', '/console/dashboard');
     fetchAllOrganizations.mockResolvedValue({ organizations: [TNB], error: null, unverified: false });
     fetchOrganizationMembers.mockResolvedValue({ members: [], error: null });
+    fetchCompanyStorageBreakdown.mockResolvedValue({ breakdown: [], error: null });
+    fetchParentDatabaseStats.mockResolvedValue({
+      stats: {
+        databaseSizeBytes: 25165824,
+        databaseSizePretty: '24 MB',
+        storageBytes: 15728640,
+        storageBytesPretty: '15 MB',
+        storageFiles: 120,
+        totalAllocatedStorageGb: 500,
+        totalAllocatedSeats: 15,
+        totalCompanies: 1,
+        activeCompanies: 1,
+        postgresVersion: 'PostgreSQL 17.6',
+        postgisVersion: '3.4.2',
+        planTier: 'free',
+        planDbLimitBytes: 524288000,
+        planStorageLimitBytes: 1073741824
+      },
+      error: null
+    });
     fetchSeatSummary.mockResolvedValue({
       rows: [
         {
@@ -282,5 +284,86 @@ describe('SellerPartnerConsole — failure modes', () => {
       expect(screen.getByText(/member list could not be verified/i)).toBeInTheDocument();
     });
     expect(screen.queryByText(/Nobody is on this company yet/i)).not.toBeInTheDocument();
+  });
+
+  it('does not report a failed directory read as "All systems nominal"', async () => {
+    // The Need Action report is derived from the company list. A failed read
+    // yields an empty list, so an empty list used to render as a green dot and
+    // "All systems nominal" — a Supabase outage wearing a healthy portfolio.
+    fetchAllOrganizations.mockResolvedValue({
+      organizations: [],
+      error: 'connection reset by peer',
+      unverified: true
+    });
+
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/company status unknown/i).length).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByText(/all systems nominal/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no company issues detected/i)).not.toBeInTheDocument();
+  });
+
+  it('renders storage as unknown when the inventory read fails, never as 0 B', async () => {
+    fetchCompanyStorageBreakdown.mockResolvedValue({
+      breakdown: [],
+      error: 'permission denied for table file_inventory'
+    });
+
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/could not be verified/i).length).toBeGreaterThan(0);
+    });
+
+    // The portfolio KPI.
+    const storageCard = screen.getByText('Storage Consumed').closest('div')?.parentElement;
+    expect(storageCard?.textContent || '').toContain('—');
+    expect(storageCard?.textContent || '').not.toMatch(/0\s*B/);
+
+    // The per-company row. The company is real — the directory read succeeded —
+    // so the row must exist; only its storage columns are unknown.
+    const row = screen.getAllByText('Tenaga Nasional Berhad')[0].closest('tr');
+    const rowText = row?.textContent || '';
+    expect(rowText).toContain('—');
+    expect(rowText).not.toMatch(/0\s*files/);
+    expect(rowText).not.toMatch(/0\s*B/);
+  });
+
+  it('says "No limit configured" for a company with no limit on file', async () => {
+    fetchAllOrganizations.mockResolvedValue({
+      organizations: [{ ...TNB, settings: { contactEmail: 'mms@tnb.com.my' } }],
+      error: null,
+      unverified: false
+    });
+
+    renderConsole();
+    await gotoCompanies();
+
+    // The old cell rendered `allowedUserSeats ?? 0` and `storageQuotaGb ?? 0`,
+    // so this company read as "0 seats · 0 GB Platform" here while the Seats
+    // tab said "No limit configured" — two tabs, one company, two answers.
+    const row = screen.getAllByText('Tenaga Nasional Berhad')[0].closest('tr');
+    const rowText = row?.textContent || '';
+    expect(rowText).toContain('No limit configured');
+    expect(rowText).toContain('Unlimited');
+    expect(rowText).not.toMatch(/0\s*seats/);
+    expect(rowText).not.toMatch(/0\s*GB\s*Platform/);
+  });
+
+  it('re-reads the storage inventory when the top bar Refresh is pressed', async () => {
+    // A button labelled "Refresh" that re-reads only half the console is
+    // worse than no button: the quota on screen and the chart below it come
+    // from different moments, and neither the operator nor the seller can
+    // reconcile them.
+    renderConsole();
+
+    await waitFor(() => expect(fetchCompanyStorageBreakdown).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await waitFor(() => expect(fetchCompanyStorageBreakdown).toHaveBeenCalledTimes(2));
   });
 });

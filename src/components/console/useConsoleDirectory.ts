@@ -13,28 +13,20 @@
  *   read yields an empty array, so a sum over it is a confident zero for a
  *   quantity nobody measured, and a seller would read "you have sold no seats"
  *   off a network blip. `formatMetric` renders `null` as an em dash.
+ *
+ *   The figures themselves are computed in `consoleDirectoryMetrics.ts`, which
+ *   is a pure module and can be tested without React.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchAllOrganizations, type Organization } from '../../services/tenantContext';
 import {
-  fetchAllOrganizations,
-  type Organization,
-  type OrganizationStatus
-} from '../../services/tenantContext';
+  computeConsoleMetrics,
+  formatMetric,
+  type ConsoleDirectoryMetrics
+} from './consoleDirectoryMetrics';
 
-/** Renders an unmeasured figure as unknown. Never substitutes 0. */
-export function formatMetric(value: number | null | undefined, suffix = ''): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  return `${value}${suffix}`;
-}
-
-export interface ConsoleDirectoryMetrics {
-  /** null = not measured (a failed read), not zero. */
-  activeCount: number | null;
-  totalSeats: number | null;
-  totalQuota: number | null;
-  dedicatedCount: number | null;
-}
+export type { ConsoleDirectoryMetrics } from './consoleDirectoryMetrics';
 
 export interface ConsoleDirectory {
   organizations: Organization[];
@@ -74,35 +66,12 @@ export function useConsoleDirectory(): ConsoleDirectory {
     void reload();
   }, [reload]);
 
-  const metrics = useMemo<ConsoleDirectoryMetrics>(() => {
-    // A failed read yields `[]`, which would sum and count to zero. Every
-    // figure therefore inherits `directoryError` rather than the array.
-    if (directoryError) {
-      return { activeCount: null, totalSeats: null, totalQuota: null, dedicatedCount: null };
-    }
-    return {
-      activeCount: organizations.filter((o) => o.status === 'active').length,
-      totalSeats: organizations.reduce((acc, o) => acc + (o.settings?.allowedUserSeats || 0), 0),
-      totalQuota: organizations.reduce((acc, o) => acc + (o.settings?.storageQuotaGb || 0), 0),
-      dedicatedCount: organizations.filter((o) => o.databaseType === 'dedicated_external').length
-    };
-  }, [organizations, directoryError]);
+  const metrics = useMemo<ConsoleDirectoryMetrics>(
+    () => computeConsoleMetrics(organizations, directoryError),
+    [organizations, directoryError]
+  );
 
   const metric = useCallback((value: number | null | undefined, suffix = '') => formatMetric(value, suffix), []);
 
   return { organizations, isLoading, directoryError, reload, metrics, metric };
 }
-
-export const STATUS_LABEL: Record<OrganizationStatus, string> = {
-  active: 'Active',
-  trial: 'Trial / Pilot',
-  suspended: 'Suspended',
-  expired: 'Expired'
-};
-
-export const STATUS_TONE: Record<OrganizationStatus, string> = {
-  active: 'text-emerald-600',
-  trial: 'text-amber-600',
-  suspended: 'text-rose-600',
-  expired: 'text-slate-500'
-};

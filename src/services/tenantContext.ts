@@ -89,62 +89,22 @@ export interface OrganizationDraft {
 }
 
 /**
- * Development fixtures. Never reachable in a production bundle.
+ * There are no development fixtures in this file, and there is no module-level
+ * organization cache.
  *
- * These used to double as the fallback for a failed read, which meant a
- * Supabase outage rendered as a healthy customer list — including a real
- * customer's name. A fabricated organisation is indistinguishable from a real
- * one to the seller reading the screen, so an unverified read must say so
- * rather than substitute something plausible. See `OrganizationListResult`.
+ * `DEV_ONLY_ORGANIZATIONS` used to seed a cache that doubled as the fallback
+ * for a failed directory read. Two things followed from that. In dev the
+ * fallback returned two plausible clients, so a Supabase outage rendered as a
+ * healthy customer list. In a production bundle the same path returned an
+ * empty list with `error: null`, so the outage rendered as "no companies".
+ * Both are the same defect: a customer list the database never confirmed, and
+ * a fabricated organisation is indistinguishable from a real one to the seller
+ * reading the screen.
+ *
+ * The fixtures are gone and so is the cache. A failed read returns an empty
+ * list WITH `error` set and `unverified: true`, and the console renders that
+ * as a failure rather than as a portfolio.
  */
-const DEV_ONLY_ORGANIZATIONS: Organization[] = [
-  {
-    id: 'org-tnb-default',
-    name: 'Tenaga Nasional Berhad (TNB)',
-    slug: 'tnb-distribution',
-    clientCode: 'TNB-LV-2026',
-    logoUrl: '/branding/geosphere-icon-white.png',
-    databaseType: 'cloud_shared',
-    databaseConfig: {},
-    status: 'active',
-    licenseType: 'cloud_saas',
-    licenseExpiresAt: '2027-12-31T23:59:59Z',
-    settings: {
-      allowedUserSeats: 15,
-      storageQuotaGb: 500,
-      contactEmail: 'mms.support@tnb.com.my'
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    userCount: 8,
-    projectCount: 4
-  },
-  {
-    id: 'org-apex-demo',
-    name: 'Apex Geospatial Survey Sdn Bhd',
-    slug: 'apex-survey',
-    clientCode: 'APEX-SURVEY-01',
-    logoUrl: '',
-    databaseType: 'cloud_shared',
-    databaseConfig: {},
-    status: 'trial',
-    licenseType: 'trial',
-    licenseExpiresAt: '2026-11-30T23:59:59Z',
-    settings: {
-      allowedUserSeats: 5,
-      storageQuotaGb: 100,
-      contactEmail: 'admin@apexsurvey.com.my'
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    userCount: 3,
-    projectCount: 1
-  }
-];
-
-const IS_DEV = import.meta.env?.DEV === true;
-
-let localOrganizationsCache: Organization[] = IS_DEV ? [...DEV_ONLY_ORGANIZATIONS] : [];
 
 /**
  * Result of an organization read.
@@ -167,7 +127,9 @@ export interface OrganizationListResult {
 
 function readFailure(message: string): OrganizationListResult {
   return {
-    organizations: IS_DEV ? [...localOrganizationsCache] : [],
+    // An empty list means "nothing was read", never "there are no companies".
+    // `error` and `unverified` are what tell the console the difference.
+    organizations: [],
     error: message,
     unverified: true
   };
@@ -377,7 +339,10 @@ const payload = {
     status: 'active',
     license_type: draft.licenseType || (draft.databaseType === 'dedicated_external' ? 'enterprise_dedicated' : 'cloud_saas'),
     license_expires_at: draft.licenseExpiresAt || null,
-    settings: draft.settings || { allowedUserSeats: 10, storageQuotaGb: 200 }
+    // A company with no limits has no limits. The old fallback wrote 10 seats
+    // and 200 GB for a caller that sent none — a sale nobody agreed to make,
+    // recorded as if it had been.
+    settings: draft.settings || {}
   };
 
   try {
@@ -412,7 +377,6 @@ if (!data) {
       created.databaseConfig = draft.databaseConfig || {};
     }
 
-    if (IS_DEV) localOrganizationsCache.push(created);
     return { success: true, data: created };
   } catch (err: unknown) {
     const message = errorMessage(err, 'Could not reach the organization directory.');
@@ -492,12 +456,6 @@ export async function updateOrganization(id: string, patch: Partial<Organization
       if (!written.success) return written;
     }
 
-    if (IS_DEV) {
-      const idx = localOrganizationsCache.findIndex((o) => o.id === id);
-      if (idx !== -1) {
-        localOrganizationsCache[idx] = { ...localOrganizationsCache[idx], ...patch, updatedAt };
-      }
-    }
     return { success: true };
   } catch (err: unknown) {
     const message = errorMessage(err, 'Could not reach the organization directory.');
@@ -529,9 +487,6 @@ export async function deleteOrganization(id: string): Promise<{ success: boolean
       return { success: false, error: message };
     }
 
-    if (IS_DEV) {
-      localOrganizationsCache = localOrganizationsCache.filter((o) => o.id !== id);
-    }
     return { success: true };
   } catch (err: unknown) {
     const message = errorMessage(err, 'Could not reach the organization directory.');

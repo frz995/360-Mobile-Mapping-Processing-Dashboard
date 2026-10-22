@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, LayoutDashboard, Building2, Users, Database, HardDrive, Settings as SettingsIcon, Plus, Shield, ChevronRight } from 'lucide-react';
+import { LogOut, LayoutDashboard, Building2, Users, Database, HardDrive, Settings as SettingsIcon, Plus, Shield } from 'lucide-react';
 import { CONSOLE_PANELS, CONSOLE_NEW_KEY, getConsolePanelDefinition, parseConsolePanel, pushConsolePanel, replaceConsolePanel, subscribeConsolePanel, getConsoleOrgQuery, type ConsolePanel } from '../../utils/consoleRouter';
 import { useConsoleDirectory } from './useConsoleDirectory';
 import { PrimaryButton, SecondaryButton } from './panels/consoleUi';
@@ -10,6 +10,7 @@ import ConsoleDatabasePanel from './panels/ConsoleDatabasePanel';
 import ConsoleParentDbPanel from './panels/ConsoleParentDbPanel';
 import ConsoleSeatsPanel from './panels/ConsoleSeatsPanel';
 import ConsoleSettingsPanel from './panels/ConsoleSettingsPanel';
+import ConsoleNeedActionRail, { type ActionItem } from './panels/ConsoleNeedActionRail';
 import type { ConsoleAccess } from '../../services/consoleAccess';
 import type { Organization } from '../../services/tenantContext';
 
@@ -156,15 +157,6 @@ export const SellerPartnerConsole: React.FC<SellerPartnerConsoleProps> = ({
     },
     [panel]
   );
-
-interface ActionItem {
-  id: string;
-  orgId: string;
-  title: string;
-  subtitle: string;
-  severity: 'urgent' | 'warning' | 'info';
-  targetPanel: ConsolePanel;
-}
 
   const definition = getConsolePanelDefinition(panel);
   const { organizations } = directory;
@@ -385,70 +377,19 @@ interface ActionItem {
             </div>
           </div>
 
-          {/* Need Action Report Center */}
-          <div className="space-y-3 pt-4 border-t border-slate-100">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-black text-slate-900 tracking-tight">Need Action</span>
-                {actionItems.length > 0 ? (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#0c0d0e] text-white">
-                    {actionItems.length}
-                  </span>
-                ) : (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                    0
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
-              {directory.isLoading ? (
-                <div className="space-y-2 animate-pulse">
-                  <div className="h-10 bg-slate-100 rounded-xl" />
-                  <div className="h-10 bg-slate-100 rounded-xl" />
-                </div>
-              ) : actionItems.length === 0 ? (
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1" />
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-bold text-slate-800">All systems nominal</div>
-                    <div className="text-[10px] text-slate-400">No company issues detected</div>
-                  </div>
-                </div>
-              ) : (
-                actionItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      selectOrg(item.orgId);
-                      go(item.targetPanel, item.orgId);
-                    }}
-                    className="w-full text-left p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-100 transition-colors flex items-start gap-2 group cursor-pointer"
-                    title={`Click to navigate to ${item.targetPanel} and resolve`}
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 mt-1 ${
-                        item.severity === 'urgent'
-                          ? 'bg-rose-500'
-                          : item.severity === 'warning'
-                          ? 'bg-amber-500'
-                          : 'bg-slate-400'
-                      }`}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-bold text-slate-900 truncate group-hover:text-black">
-                        {item.title}
-                      </div>
-                      <div className="text-[10px] text-slate-500 truncate">{item.subtitle}</div>
-                    </div>
-                    <ChevronRight size={12} className="text-slate-400 shrink-0 mt-1 group-hover:text-slate-700" />
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
+          {/* Need Action Report Center.
+              Three states, not two: a failed directory read must never render as
+              "All systems nominal". See `ConsoleNeedActionRail.tsx`. */}
+          <ConsoleNeedActionRail
+            items={actionItems}
+            isLoading={directory.isLoading}
+            error={directory.directoryError}
+            onSelect={(item) => {
+              selectOrg(item.orgId);
+              go(item.targetPanel, item.orgId);
+            }}
+            onRetry={() => void directory.reload()}
+          />
         </div>
       </aside>
 
@@ -475,7 +416,7 @@ interface ActionItem {
               disabled={directory.isLoading}
               style={{ borderRadius: 12, backgroundColor: '#ffffff', color: '#334155' }}
               className="px-3.5 py-1.5 text-xs font-semibold border border-slate-200 hover:bg-slate-50 flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
-              title="Re-read the organization directory"
+              title="Re-read the company directory and the storage inventory"
             >
               Refresh
             </button>

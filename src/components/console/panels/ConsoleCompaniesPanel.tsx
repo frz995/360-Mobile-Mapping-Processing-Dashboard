@@ -14,11 +14,12 @@ import React from 'react';
 import { Building2, Database, Server, Eye, Edit3, Trash2, ExternalLink } from 'lucide-react';
 import { deleteOrganization, setActiveOrganizationId, setActiveOrganizationStorage, setActiveOrganizationWebgis, type Organization } from '../../../services/tenantContext';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
-import { STATUS_LABEL, STATUS_TONE } from '../useConsoleDirectory';
+import { STATUS_LABEL, STATUS_TONE } from '../consoleDirectoryMetrics';
 import { ConfirmDialog, PanelCard, PanelHeader, ReadFailure } from './consoleUi';
 import OrganizationFormModal from './OrganizationFormModal';
 import { wantsConsoleCreate } from '../../../utils/consoleRouter';
-import { getLicenseExpiryStatus } from './ConsoleDashboardPanel';
+import { getLicenseExpiryStatus } from './consoleLicenseStatus';
+import { LimitSummaryCell } from './consoleLimitCells';
 import { toast } from '../../common/toast';
 
 interface Props {
@@ -290,35 +291,27 @@ export const ConsoleCompaniesPanel: React.FC<Props> = ({
                           {(org.licenseType || 'cloud_saas').replace('_', ' ')}
                         </div>
                         <div className="text-[11px]">
-                          {org.licenseExpiresAt ? (
-                            (() => {
-                              const exp = getLicenseExpiryStatus(org.licenseExpiresAt);
-                              return (
-                                <span
-                                  className={
-                                    exp.tone === 'active'
-                                      ? 'text-emerald-700 font-semibold'
-                                      : exp.tone === 'warning'
-                                      ? 'text-amber-700 font-semibold'
-                                      : exp.tone === 'expired'
-                                      ? 'text-rose-700 font-semibold'
-                                      : 'text-slate-500'
-                                  }
-                                >
-                                  {exp.label}
-                                </span>
-                              );
-                            })()
-                          ) : (
-                            <span className="text-slate-400 font-medium">Perpetual</span>
-                          )}
+                          {(() => {
+                            // `getLicenseExpiryStatus(null)` already answers
+                            // "Perpetual", so there is no separate branch for a
+                            // missing expiry date.
+                            const exp = getLicenseExpiryStatus(org.licenseExpiresAt);
+                            const tone =
+                              exp.tone === 'active'
+                                ? 'text-emerald-700 font-semibold'
+                                : exp.tone === 'warning'
+                                  ? 'text-amber-700 font-semibold'
+                                  : exp.tone === 'expired'
+                                    ? 'text-rose-700 font-semibold'
+                                    : 'text-slate-500';
+                            return <span className={tone}>{exp.label}</span>;
+                          })()}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-slate-600">
-                      {/* `?? 0` rather than `|| 0` — same reason as the form. */}
-                      <span className="font-bold text-slate-900">{org.settings?.allowedUserSeats ?? 0}</span> seats ·{' '}
-                      <span className="font-bold text-slate-900">{org.settings?.storageQuotaGb ?? 0}</span> GB Platform
+                      {/* An unconfigured limit is unlimited, not zero — shared wording with the Seats tab. */}
+                      <LimitSummaryCell org={org} />
                       {org.settings?.storage?.provider && org.settings.storage.provider !== 'supabase' ? (
                         <div className="text-[10px] text-emerald-700 font-semibold mt-0.5 flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />

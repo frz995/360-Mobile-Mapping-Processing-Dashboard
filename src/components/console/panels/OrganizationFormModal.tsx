@@ -24,6 +24,7 @@ import {
   type LicenseType
 } from '../../../services/tenantContext';
 import { ModalShell, Field, inputClass } from './consoleUi';
+import { LimitFields, draftLimits } from './consoleLimitCells';
 import { fetchR2BucketUsage } from '../../../services/tenantStorage';
 
 export const LICENSE_TYPES: { key: LicenseType; label: string }[] = [
@@ -82,10 +83,10 @@ function draftFrom(org: Organization | null): OrganizationDraft {
     licenseExpiresAt: org.licenseExpiresAt || null,
     databaseConfig: org.databaseConfig || { url: '', anonKey: '' },
     settings: {
-      // `?? 10` rather than `|| 10`: a company explicitly set to zero seats is
-      // a real configuration and must not be silently rewritten to the default.
-      allowedUserSeats: org.settings?.allowedUserSeats ?? 10,
-      storageQuotaGb: org.settings?.storageQuotaGb ?? 200,
+      // A company with no limit on file has no limit. `?? 10` would silently
+      // cap an unlimited company the moment the seller opened the form to
+      // change something else. A configured zero is preserved as a zero.
+      ...draftLimits(org),
       contactEmail: org.settings?.contactEmail || '',
       webgisUrl: org.settings?.webgisUrl || '',
       nasApiUrl: org.settings?.nasApiUrl || '',
@@ -696,38 +697,13 @@ export const OrganizationFormModal: React.FC<Props> = ({
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-          <Field label="Licensed Seats">
-            <input
-              type="number"
-              min="0"
-              max="1000"
-              value={formData.settings?.allowedUserSeats ?? 10}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  settings: { ...formData.settings, allowedUserSeats: Number(e.target.value) || 0 }
-                })
-              }
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Storage Quota (GB)">
-            <input
-              type="number"
-              min="0"
-              max="100000"
-              value={formData.settings?.storageQuotaGb ?? 200}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  settings: { ...formData.settings, storageQuotaGb: Number(e.target.value) || 0 }
-                })
-              }
-              className={inputClass}
-            />
-          </Field>
-        </div>
+        <LimitFields
+          seats={formData.settings?.allowedUserSeats}
+          quotaGb={formData.settings?.storageQuotaGb}
+          onChange={(limits) =>
+            setFormData({ ...formData, settings: { ...formData.settings, ...limits } })
+          }
+        />
 
         <div className="flex items-center justify-between pt-4 border-t border-slate-100">
           <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">

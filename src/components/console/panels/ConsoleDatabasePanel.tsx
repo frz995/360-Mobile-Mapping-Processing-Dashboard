@@ -23,7 +23,7 @@ import { Database, Server, Activity, Check, ShieldAlert, Users } from 'lucide-re
 import { testDedicatedDatabaseConnection, type Organization } from '../../../services/tenantContext';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
 import { PanelCard, PanelHeader, ReadFailure } from './consoleUi';
-import { getLicenseExpiryStatus } from './ConsoleDashboardPanel';
+import { getLicenseExpiryStatus } from './consoleLicenseStatus';
 
 type ProbeState =
   | { kind: 'idle' }

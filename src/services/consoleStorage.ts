@@ -9,25 +9,49 @@
  * REAL METRICS ONLY
  *   Queries real PostgreSQL disk sizes and public.file_inventory entries.
  *   Zero mock values.
+ *
+ * WHAT A FAILED READ MAY NOT DO
+ *   Two things used to happen here, and both turned an outage into a clean
+ *   bill of health:
+ *
+ *   1. The `file_inventory` read discarded its error. `const { data: files } =
+ *      …` throws the error away, so a failed inventory query became an empty
+ *      array, and an empty array became "every company has stored 0 bytes and
+ *      0 files" — reported with `error: null`, so nothing on the screen said
+ *      anything was wrong.
+ *   2. The parent-stats fallback invented a database size. It returned
+ *      `47185920` bytes, rendered as "45 MB (Catalog baseline)", together with
+ *      a PostgreSQL version and a PostGIS version, as though it had measured
+ *      them. Only `pg_database_size()` can measure the first; only the
+ *      database can answer the other two.
+ *
+ *   The fallback now measures what it can reach and reports `null` for
+ *   everything it cannot.
  */
 
 import { supabase } from './supabase';
 
 export interface ParentDatabaseStats {
+  /** null = not measured. Only `pg_database_size()` can measure this. */
   databaseSizeBytes: number | null;
-  databaseSizePretty: string;
+  databaseSizePretty: string | null;
   storageBytes: number | null;
-  storageBytesPretty: string;
+  storageBytesPretty: string | null;
   storageFiles: number | null;
   totalAllocatedStorageGb: number | null;
   totalAllocatedSeats: number | null;
   totalCompanies: number | null;
   activeCompanies: number | null;
-  postgresVersion: string;
-  postgisVersion: string;
+  /** null = not measured. */
+  postgresVersion: string | null;
+  /** null = not measured. "Not Installed" is a measured answer and is kept. */
+  postgisVersion: string | null;
+  /** 'unknown' = the tier was not reported. The plan tier is a deployment setting, not a live billing read. */
   planTier: string;
-  planDbLimitBytes: number;
-  planStorageLimitBytes: number;
+  /** null = not reported by the catalog. */
+  planDbLimitBytes: number | null;
+  /** null = not reported by the catalog. */
+  planStorageLimitBytes: number | null;
 }
 
 export interface ParentDatabaseResult {
@@ -63,6 +87,57 @@ export interface CompanyStorageResult {
   error: string | null;
 }
 
+/** A number, or null when the value was not a number. Never a fabricated 0. */
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+/** A non-empty string, or null. */
+function textOrNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * `version()` returns the whole build string — "PostgreSQL 17.6 (Debian
+ * 17.6-1.pgdg120+1) on x86_64-pc-linux-gnu, compiled by gcc…". The console
+ * shows an engine version, not a compiler banner.
+ */
+function shortPostgresVersion(raw: unknown): string | null {
+  const text = textOrNull(raw);
+  if (!text) return null;
+  const match = /^PostgreSQL\s+([0-9][0-9.]*)/i.exec(text);
+  return match ? `PostgreSQL ${match[1]}` : text;
+}
+
+/** The organizations columns the fallbacks read. */
+interface OrgFallbackRow {
+  id: string;
+  name: string;
+  client_code: string | null;
+  database_type: string | null;
+  license_type: string | null;
+  license_expires_at: string | null;
+  status: string | null;
+  settings: {
+    storageQuotaGb?: number;
+    allowedUserSeats?: number;
+  } | null;
+}
+
+/** The file_inventory columns the fallbacks read. */
+interface InventoryFallbackRow {
+  organization_id: string | null;
+  bucket: string | null;
+  size_bytes: number | null;
+}
+
 export function formatBytes(bytes: number | null | undefined, decimals = 1): string {
   if (bytes === null || bytes === undefined || !Number.isFinite(bytes)) return '—';
   if (bytes === 0) return '0 B';
@@ -88,21 +163,38 @@ export function formatPercent(value: number | null | undefined, decimals = 1): s
 export async function fetchParentDatabaseStats(): Promise<ParentDatabaseResult> {
   const runFallback = async (originalErrorMsg: string): Promise<ParentDatabaseResult> => {
     try {
-      const { data: orgs, error: orgsErr } = await supabase
+      const { data: orgsRaw, error: orgsErr } = await supabase
         .from('organizations')
-        .select('id, status, settings');
+        .select('id, name, client_code, database_type, license_type, license_expires_at, status, settings');
 
-      if (orgsErr || !orgs) {
+      if (orgsErr || !orgsRaw) {
         return { stats: null, error: originalErrorMsg };
       }
 
-      const { data: files } = await supabase
+      const orgs: OrgFallbackRow[] = orgsRaw;
+
+      // The inventory read's error is read, not discarded. A failed read means
+      // the bucket totals are unknown — not that the buckets are empty.
+      const { data: filesRaw, error: filesErr } = await supabase
         .from('file_inventory')
         .select('size_bytes');
 
-      const filesList = files || [];
-      const totalStorageBytes = filesList.reduce((acc: number, f: any) => acc + (Number(f.size_bytes) || 0), 0);
-      const totalStorageFiles = filesList.length;
+      let totalStorageBytes: number | null = null;
+      let totalStorageFiles: number | null = null;
+      let inventoryError: string | null = null;
+
+      if (filesErr || !filesRaw) {
+        inventoryError = filesErr
+          ? `Storage inventory read failed: ${filesErr.message}`
+          : 'Storage inventory read returned no payload.';
+      } else {
+        const files: { size_bytes: number | null }[] = filesRaw;
+        totalStorageBytes = files.reduce(
+          (acc: number, f) => acc + (Number(f.size_bytes) || 0),
+          0
+        );
+        totalStorageFiles = files.length;
+      }
 
       let totalAllocatedGb = 0;
       let totalAllocatedSeats = 0;
@@ -118,9 +210,12 @@ export async function fetchParentDatabaseStats(): Promise<ParentDatabaseResult> 
         }
       }
 
+      // The cluster figures are NOT measured here. `pg_database_size()` and the
+      // extension versions are only reachable through the RPC, so they are
+      // reported as unknown rather than guessed.
       const fallbackStats: ParentDatabaseStats = {
-        databaseSizeBytes: 47185920,
-        databaseSizePretty: '45 MB (Catalog baseline)',
+        databaseSizeBytes: null,
+        databaseSizePretty: null,
         storageBytes: totalStorageBytes,
         storageBytesPretty: formatBytes(totalStorageBytes),
         storageFiles: totalStorageFiles,
@@ -128,14 +223,17 @@ export async function fetchParentDatabaseStats(): Promise<ParentDatabaseResult> 
         totalAllocatedSeats: totalAllocatedSeats,
         totalCompanies: orgs.length,
         activeCompanies: activeCompanies,
-        postgresVersion: 'PostgreSQL 17.6 (Cluster)',
-        postgisVersion: '3.5.2 (PostGIS)',
-        planTier: 'free',
-        planDbLimitBytes: 524288000,
-        planStorageLimitBytes: 1073741824
+        postgresVersion: null,
+        postgisVersion: null,
+        planTier: 'unknown',
+        planDbLimitBytes: null,
+        planStorageLimitBytes: null
       };
 
-      return { stats: fallbackStats, error: null };
+      return {
+        stats: fallbackStats,
+        error: inventoryError ?? originalErrorMsg
+      };
     } catch {
       return { stats: null, error: originalErrorMsg };
     }
@@ -154,21 +252,24 @@ export async function fetchParentDatabaseStats(): Promise<ParentDatabaseResult> 
     }
 
     const row = data[0];
+    const dbBytes = numberOrNull(row.database_size_bytes);
+    const storageBytes = numberOrNull(row.storage_bytes);
+
     const stats: ParentDatabaseStats = {
-      databaseSizeBytes: typeof row.database_size_bytes === 'number' ? row.database_size_bytes : Number(row.database_size_bytes) || 0,
-      databaseSizePretty: row.database_size_pretty || formatBytes(row.database_size_bytes),
-      storageBytes: typeof row.storage_bytes === 'number' ? row.storage_bytes : Number(row.storage_bytes) || 0,
-      storageBytesPretty: row.storage_bytes_pretty || formatBytes(row.storage_bytes),
-      storageFiles: typeof row.storage_files === 'number' ? row.storage_files : Number(row.storage_files) || 0,
-      totalAllocatedStorageGb: typeof row.total_allocated_storage_gb === 'number' ? row.total_allocated_storage_gb : Number(row.total_allocated_storage_gb) || 0,
-      totalAllocatedSeats: typeof row.total_allocated_seats === 'number' ? row.total_allocated_seats : Number(row.total_allocated_seats) || 0,
-      totalCompanies: typeof row.total_companies === 'number' ? row.total_companies : Number(row.total_companies) || 0,
-      activeCompanies: typeof row.active_companies === 'number' ? row.active_companies : Number(row.active_companies) || 0,
-      postgresVersion: row.postgres_version || 'PostgreSQL (Cluster)',
-      postgisVersion: row.postgis_version || 'Not Installed',
-      planTier: row.plan_tier || 'free',
-      planDbLimitBytes: typeof row.plan_db_limit_bytes === 'number' ? row.plan_db_limit_bytes : 524288000,
-      planStorageLimitBytes: typeof row.plan_storage_limit_bytes === 'number' ? row.plan_storage_limit_bytes : 1073741824
+      databaseSizeBytes: dbBytes,
+      databaseSizePretty: textOrNull(row.database_size_pretty) ?? (dbBytes === null ? null : formatBytes(dbBytes)),
+      storageBytes: storageBytes,
+      storageBytesPretty: textOrNull(row.storage_bytes_pretty) ?? formatBytes(storageBytes),
+      storageFiles: numberOrNull(row.storage_files),
+      totalAllocatedStorageGb: numberOrNull(row.total_allocated_storage_gb),
+      totalAllocatedSeats: numberOrNull(row.total_allocated_seats),
+      totalCompanies: numberOrNull(row.total_companies),
+      activeCompanies: numberOrNull(row.active_companies),
+      postgresVersion: shortPostgresVersion(row.postgres_version),
+      postgisVersion: textOrNull(row.postgis_version),
+      planTier: textOrNull(row.plan_tier) ?? 'unknown',
+      planDbLimitBytes: numberOrNull(row.plan_db_limit_bytes),
+      planStorageLimitBytes: numberOrNull(row.plan_storage_limit_bytes)
     };
 
     return { stats, error: null };
@@ -190,30 +291,43 @@ export async function fetchCompanyStorageBreakdown(): Promise<CompanyStorageResu
     if (error) {
       console.warn('Company storage breakdown RPC unavailable, falling back to direct table aggregation:', error.message);
       try {
-        const { data: orgs, error: orgsErr } = await supabase
+        const { data: orgsRaw, error: orgsErr } = await supabase
           .from('organizations')
           .select('id, name, client_code, database_type, license_type, license_expires_at, status, settings');
 
-        if (orgsErr || !orgs) {
+        if (orgsErr || !orgsRaw) {
           return { breakdown: [], error: error.message };
         }
 
-        const { data: files } = await supabase
+        const orgs: OrgFallbackRow[] = orgsRaw;
+
+        // The inventory read's error is read, not discarded. Discarding it made
+        // a failed inventory query report every company as storing nothing.
+        const { data: filesRaw, error: filesErr } = await supabase
           .from('file_inventory')
           .select('organization_id, bucket, size_bytes');
 
-        const filesList = files || [];
-        const breakdown: CompanyStorageBreakdown[] = orgs.map((o: any) => {
-          const orgFiles = filesList.filter((f: any) => f.organization_id === o.id);
-          const consumedBytes = orgFiles.reduce((acc: number, f: any) => acc + (Number(f.size_bytes) || 0), 0);
+        if (filesErr || !filesRaw) {
+          return {
+            breakdown: [],
+            error: filesErr
+              ? `Storage inventory read failed: ${filesErr.message}`
+              : 'Storage inventory read returned no payload.'
+          };
+        }
+
+        const files: InventoryFallbackRow[] = filesRaw;
+        const breakdown: CompanyStorageBreakdown[] = orgs.map((o) => {
+          const orgFiles = files.filter((f) => f.organization_id === o.id);
+          const consumedBytes = orgFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0);
           const consumedGb = consumedBytes / (1024 * 1024 * 1024);
           const allocatedGb = o.settings && typeof o.settings.storageQuotaGb === 'number' ? o.settings.storageQuotaGb : null;
           const percentUsed = allocatedGb && allocatedGb > 0 ? (consumedGb / allocatedGb) * 100 : null;
 
-          const mmsFiles = orgFiles.filter((f: any) => f.bucket === 'MMS_PIC');
-          const panoFiles = orgFiles.filter((f: any) => f.bucket === 'panoramas');
-          const geomFiles = orgFiles.filter((f: any) => f.bucket === 'road-analysis-geometry');
-          const otherFiles = orgFiles.filter((f: any) => !['MMS_PIC', 'panoramas', 'road-analysis-geometry'].includes(f.bucket));
+          const mmsFiles = orgFiles.filter((f) => f.bucket === 'MMS_PIC');
+          const panoFiles = orgFiles.filter((f) => f.bucket === 'panoramas');
+          const geomFiles = orgFiles.filter((f) => f.bucket === 'road-analysis-geometry');
+          const otherFiles = orgFiles.filter((f) => !['MMS_PIC', 'panoramas', 'road-analysis-geometry'].includes(f.bucket || ''));
 
           return {
             organizationId: o.id,
@@ -226,13 +340,13 @@ export async function fetchCompanyStorageBreakdown(): Promise<CompanyStorageResu
             allocatedStorageGb: allocatedGb,
             consumedStorageBytes: consumedBytes,
             consumedFilesCount: orgFiles.length,
-            mmsPicBytes: mmsFiles.reduce((acc: number, f: any) => acc + (Number(f.size_bytes) || 0), 0),
+            mmsPicBytes: mmsFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0),
             mmsPicFiles: mmsFiles.length,
-            panoramasBytes: panoFiles.reduce((acc: number, f: any) => acc + (Number(f.size_bytes) || 0), 0),
+            panoramasBytes: panoFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0),
             panoramasFiles: panoFiles.length,
-            geometryBytes: geomFiles.reduce((acc: number, f: any) => acc + (Number(f.size_bytes) || 0), 0),
+            geometryBytes: geomFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0),
             geometryFiles: geomFiles.length,
-            otherBytes: otherFiles.reduce((acc: number, f: any) => acc + (Number(f.size_bytes) || 0), 0),
+            otherBytes: otherFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0),
             otherFiles: otherFiles.length,
             consumedStorageGb: consumedGb,
             percentUsed

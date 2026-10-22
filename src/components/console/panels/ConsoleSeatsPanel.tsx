@@ -25,7 +25,7 @@ import React from 'react';
 import { Users, AlertTriangle } from 'lucide-react';
 import { fetchSeatSummary, type SeatSummaryRow } from '../../../services/consoleAccess';
 import type { ConsoleDirectory } from '../useConsoleDirectory';
-import { formatMetric } from '../useConsoleDirectory';
+import { formatMetric } from '../consoleDirectoryMetrics';
 import { PanelCard, PanelHeader, PrimaryButton, ReadFailure } from './consoleUi';
 
 interface Props {
