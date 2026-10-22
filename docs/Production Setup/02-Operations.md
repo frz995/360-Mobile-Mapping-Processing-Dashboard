@@ -393,7 +393,7 @@ The Cloudflare Tunnel is outbound-only and needs no inbound rule.
 > old "each client installs their own platform" model.
 >
 > Before starting, confirm migration `0044` is applied. Without it the console
-> refuses to open — see [01-Infrastructure.md §2.3a](01-Infrastructure.md#23a-migrations-0036-0047-are-the-multi-tenancy-layer).
+> refuses to open — see [01-Infrastructure.md §2.3a](01-Infrastructure.md#23a-migrations-0036-0048-are-the-multi-tenancy-layer).
 
 ### 4.1 Create the company
 

@@ -19,10 +19,10 @@
     "secretShapedClientEnv": 0
   },
   "migrationMetrics": {
-    "migrations": 47,
+    "migrations": 48,
     "definers": 22,
     "definersWithoutSearchPath": 0,
-    "definersWithoutRevoke": 1,
+    "definersWithoutRevoke": 0,
     "definersExecutableByAnon": 4,
     "definersExecutableByAnonNotAllowListed": 0,
     "tablesCreated": 30,

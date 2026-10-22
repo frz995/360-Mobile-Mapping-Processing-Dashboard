@@ -167,10 +167,9 @@ if (overBudget.length === 0) {
 }
 
 // --- Security-surface audit ------------------------------------------------
-// Report-only this round (blocking in WP 9). The numbers come from the same
-// scanner `npm run audit:static` runs, so this line cannot claim a fix the
-// command would contradict. A regression is printed loudly but does not fail
-// the lint gate yet — the gate that fails today is the audit command itself.
+// Blocking enforcement (WP 9). The numbers come from the same scanner
+// `npm run audit:static` runs. A regression in any security-surface baseline
+// fails the lint gate.
 const audit = runStaticAudit(repoRoot)
 const auditBaseline = JSON.parse(readFileSync(path.join(here, 'audit', 'baseline.json'), 'utf8'))
 const auditRows = diffAgainstBaseline(audit, auditBaseline)
@@ -186,14 +185,17 @@ for (const row of auditRegressions) {
 }
 
 // --- Exit ------------------------------------------------------------------
-// ESLint errors are blocking. Budget overruns are blocking too, which is the
-// whole point: growing a god file should require editing the baseline on
-// purpose. The two counters above are report-only.
+// ESLint errors, file-budget overruns, and security audit regressions are blocking.
 if (overBudget.length > 0) {
   console.error(
     '\nlint: a file exceeded its size budget. Either split it, or raise the ' +
       'number in scripts/quality-baseline.json deliberately.'
   )
 }
+if (auditRegressions.length > 0) {
+  console.error(
+    '\nlint: security audit surface regressed against scripts/audit/baseline.json.'
+  )
+}
 
-process.exit(errors > 0 || overBudget.length > 0 ? 1 : (parsed.status ?? 0))
+process.exit(errors > 0 || overBudget.length > 0 || auditRegressions.length > 0 ? 1 : (parsed.status ?? 0))
