@@ -1,0 +1,32 @@
+{
+  "_why": "Measured audit baselines for scripts/audit/static-scan.mjs. Every number was produced by running the scanner, not estimated. A count may only fall: the comparison fails when a value increases. See implementation_plan_v40.md WP 0.",
+  "capturedAt": "2026-10-22",
+  "scope": "src/**/*.ts,tsx excluding __tests__/*.test/*.spec; supabase/migrations/*.sql. Empty-catch figures use the same classifier as scripts/lint.mjs so the two ratchets cannot disagree.",
+  "metrics": {
+    "postMessageCalls": 13,
+    "wildcardPostMessage": 0,
+    "windowMessageListeners": 10,
+    "unvalidatedWindowListeners": 0,
+    "sourceOnlyWindowListeners": 3,
+    "dangerouslySetInnerHTML": 1,
+    "zeroCoercions": 478,
+    "emptyCatchStrict": 140,
+    "emptyCatchConsoleOnly": 67,
+    "inlineEmptyCatch": 70,
+    "evalOrNewFunction": 0,
+    "todoMarkers": 0,
+    "hardcodedSecrets": 0,
+    "secretShapedClientEnv": 0
+  },
+  "migrationMetrics": {
+    "migrations": 47,
+    "definers": 22,
+    "definersWithoutSearchPath": 0,
+    "definersWithoutRevoke": 1,
+    "definersExecutableByAnon": 4,
+    "definersExecutableByAnonNotAllowListed": 0,
+    "tablesCreated": 30,
+    "tablesWithoutRls": 0,
+    "createPolicyStatements": 251
+  }
+}

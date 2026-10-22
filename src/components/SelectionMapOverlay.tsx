@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MousePointerClick, MoveUpRight, Crosshair } from 'lucide-react';
 import { extractSubgridName } from '../services/supabase';
 import type { SelectedPointInfo, SubgridPointRow } from './DeletionSelectionMap';
+import { postToMapFrame } from '../utils/mapOrigin';
 
 interface GeoPoint { lat: number; lng: number; }
 interface ScreenPoint { x: number; y: number; }
@@ -287,10 +288,10 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
       const maxY = Math.max(b.y1, b.y2);
 
       if (iframeRef.current && iframeRef.current.contentWindow) {
-        iframeRef.current.contentWindow.postMessage({
+        postToMapFrame(iframeRef.current, {
           type: 'QUERY_RENDERED_FEATURES',
           bbox: [[minX, minY], [maxX, maxY]]
-        }, '*');
+        });
       } else {
         setToast('Map not ready for selection.');
         setTimeout(() => setToast(null), 3500);
@@ -303,10 +304,10 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
   const selectNearestAt = useCallback(
     (p: ScreenPoint) => {
       if (iframeRef.current && iframeRef.current.contentWindow) {
-        iframeRef.current.contentWindow.postMessage({
+        postToMapFrame(iframeRef.current, {
           type: 'QUERY_CLICK_FEATURE',
           point: [p.x, p.y]
-        }, '*');
+        });
       }
     },
     [subgridPoints, availableSet, onAddSubgrids, onFlyTo, seedFromSubgridPoints, subgridFilter, containerRef]

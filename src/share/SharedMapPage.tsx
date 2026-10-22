@@ -20,6 +20,7 @@ import {
 import { SharePasswordGate } from './SharePasswordGate';
 import { buildMeshExpression, classRangeLabel, METRIC_UNIT } from '../utils/choroplethSettings';
 import { resolveActiveWebgisUrl } from '../utils/activeWebgisUrl';
+import { postToMapFrame, createMapOriginMatcher } from '../utils/mapOrigin';
 
 const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
 if (typeof (maplibregl as any).setWorkerUrl === 'function') {
@@ -117,8 +118,12 @@ function pointCollection(points: Array<{ lat: number; lng: number }>, props: Rec
   };
 }
 
+export function escapeHtml(str: unknown): string {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
-function panotrackCardHtml(
+export function panotrackCardHtml(
   share: MapShare,
   subgrid: string,
   pointStatus?: string,
@@ -150,7 +155,7 @@ function panotrackCardHtml(
     dotColor = '#f59e0b';
   }
 
-  const title = cleanSubgrid || 'Panotrack Station';
+  const title = escapeHtml(cleanSubgrid || 'Panotrack Station');
 
   return `
     <div style="background:#ffffff;border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 12px 30px -4px rgba(15,23,42,0.1),0 4px 6px -2px rgba(15,23,42,0.04);padding:14px 16px;min-width:210px;max-width:260px;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
@@ -181,7 +186,7 @@ function panotrackCardHtml(
         ${cleanSubgrid ? `
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="color:#64748b;font-weight:500;">Subgrid</span>
-          <span style="color:#0f172a;font-weight:700;">${cleanSubgrid}</span>
+          <span style="color:#0f172a;font-weight:700;">${escapeHtml(cleanSubgrid)}</span>
         </div>` : ''}
         ${seg ? `
         <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -200,7 +205,7 @@ function panotrackCardHtml(
         ${seg.date ? `
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="color:#64748b;font-weight:500;">Survey Date</span>
-          <span style="color:#0f172a;font-weight:600;">${seg.date}</span>
+          <span style="color:#0f172a;font-weight:600;">${escapeHtml(seg.date)}</span>
         </div>` : ''}
         ` : ''}
       </div>
@@ -1034,8 +1039,12 @@ function LiveMapReference({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const src = useMemo(() => liveShareUrl(share), [share]);
 
+  const isAllowedOrigin = useMemo(() => createMapOriginMatcher(src, window.location.origin, { trustApexSubdomains: true }), [src]);
+
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
+      if (!isAllowedOrigin(e.origin)) return;
+      if (iframeRef.current && e.source !== iframeRef.current.contentWindow) return;
       const d = e.data as { type?: string; coords?: { lat?: number; lng?: number } | null; subgrid?: string } | null;
       if (!d) return;
       if (d.type === 'SHARE_COORDS') {
@@ -1047,12 +1056,12 @@ function LiveMapReference({
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-  }, [onCoords, onSelectSubgrid]);
+  }, [onCoords, onSelectSubgrid, isAllowedOrigin]);
 
   useEffect(() => {
     if (!subgrid) return;
     try {
-      iframeRef.current?.contentWindow?.postMessage({ type: 'SHARE_FOCUS', subgrid }, '*');
+      postToMapFrame(iframeRef.current, { type: 'SHARE_FOCUS', subgrid });
     } catch { /* cross-origin iframe may reject; ignore */ }
   }, [subgrid]);
 

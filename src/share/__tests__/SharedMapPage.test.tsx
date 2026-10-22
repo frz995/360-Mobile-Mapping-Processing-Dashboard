@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { SharedMapPage } from '../SharedMapPage';
+import { SharedMapPage, escapeHtml, panotrackCardHtml } from '../SharedMapPage';
 import * as mapShares from '../../utils/mapShares';
 
 // Hoisted supabase mock so the auth gate resolves an authenticated session.
@@ -368,6 +368,37 @@ describe('SharedMapPage', () => {
       expect(screen.getByText('> 9 km/km²')).toBeInTheDocument();
       expect(screen.getByText('GRID-007')).toBeInTheDocument();
       expect(screen.queryByText('Extracted road trace')).not.toBeInTheDocument();
+    });
+  });
+  describe('Public-surface XSS Protection (WP 2)', () => {
+    it('escapes dangerous HTML characters in escapeHtml', () => {
+      expect(escapeHtml('<script>alert(1)</script>')).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
+      expect(escapeHtml('"foo" & \'bar\'')).toBe('&quot;foo&quot; &amp; &#39;bar&#39;');
+      expect(escapeHtml(null)).toBe('');
+      expect(escapeHtml(undefined)).toBe('');
+    });
+
+    it('sanitizes subgrid, title, and survey date inside panotrackCardHtml popup', () => {
+      const shareMock: any = {
+        snapshot: {
+          segments: [
+            {
+              subgrid: '<img src=x onerror=alert("xss")>',
+              status: 'published',
+              km: 5.2,
+              poi: 100,
+              defects: 0,
+              date: '<svg onload=alert(1)>'
+            }
+          ]
+        }
+      };
+
+      const html = panotrackCardHtml(shareMock, '<img src=x onerror=alert("xss")>', 'published', [101.5, 3.1]);
+      expect(html).not.toContain('<img src=x onerror=alert("xss")>');
+      expect(html).not.toContain('<svg onload=alert(1)>');
+      expect(html).toContain('&lt;img src=x onerror=alert(&quot;xss&quot;)&gt;');
+      expect(html).toContain('&lt;svg onload=alert(1)&gt;');
     });
   });
 });

@@ -1,5 +1,6 @@
 import { supabase, scoped, getServiceProjectId } from './client';
 import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
+import { getActiveOrganizationId } from '../tenantContext';
 
 const HUB_SESSION_TABLE = 'hub_session_state';
 
@@ -80,12 +81,16 @@ export async function saveHubSessionToSupabase(
   setLocalSession(state);
   const pid = getServiceProjectId();
   if (!pid) return false; // guest mode: local mirror only
-  const payload = {
+  const orgId = getActiveOrganizationId();
+  const payload: Record<string, unknown> = {
     project_id: pid,
     state,
     updated_by: updatedBy || null,
     updated_at: new Date().toISOString()
   };
+  if (orgId) {
+    payload.organization_id = orgId;
+  }
   try {
     const { error } = await supabase
       .from(HUB_SESSION_TABLE)

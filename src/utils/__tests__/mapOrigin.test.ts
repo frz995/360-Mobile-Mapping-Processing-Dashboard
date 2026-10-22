@@ -60,6 +60,11 @@ describe('resolveWebgisUrl', () => {
     expect(resolveWebgisUrl('ftp://files.example.my', null)).toBe(DEFAULT_WEBGIS_URL);
   });
 
+  it('rejects retired vercel.app domains and falls back to platform default', () => {
+    expect(resolveWebgisUrl('https://mobilemapping-nine.vercel.app', null)).toBe(DEFAULT_WEBGIS_URL);
+    expect(resolveWebgisUrl(null, 'https://old-preview.vercel.app')).toBe(DEFAULT_WEBGIS_URL);
+  });
+
   it('reports a rejected override instead of dropping it silently', () => {
     // Rule zero: a configured setting that is not doing anything must say so.
     resolveWebgisUrl('map.example.my', null);

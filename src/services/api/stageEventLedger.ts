@@ -1,4 +1,5 @@
 import { supabase, scoped, getServiceProjectId } from './client';
+import { getActiveOrganizationId } from '../tenantContext';
 import type {
   StageEventLedgerRow,
   StageLedgerEvent,
@@ -39,10 +40,11 @@ function setLocalPending(rows: PendingLedgerRow[]): void {
 }
 
 async function insertEvent(row: StageEventLedgerRow): Promise<boolean> {
+  const { _pending, ...clean } = row as PendingLedgerRow;
   try {
     const { error } = await supabase
       .from(STAGE_LEDGER_TABLE)
-      .insert([row]);
+      .insert([clean]);
     return !error;
   } catch (_) {
     return false;
@@ -74,9 +76,11 @@ async function flushPendingLedger(): Promise<void> {
 /** Append one immutable pipeline event. Fire-and-forget friendly: persists a
  * pending local copy first and removes it once Supabase accepts the insert. */
 export async function appendStageEventToSupabase(input: StageEventAppendInput): Promise<boolean> {
+  const orgId = input.organization_id || getActiveOrganizationId() || null;
   const row: PendingLedgerRow = {
     id: input.id || clientEventId(),
     project_id: input.project_id || getServiceProjectId() || null,
+    organization_id: orgId,
     subgrid: (input.subgrid || '').trim().toUpperCase(),
     stage: input.stage,
     event: input.event,

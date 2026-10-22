@@ -14,6 +14,7 @@ import type {
   QaqcWorkerStationInput,
   QaqcWorkerThresholds
 } from '../workers/qaqc.worker';
+import { postToMapFrame } from '../utils/mapOrigin';
 
 export interface StationNode {
   filename?: string;
@@ -169,7 +170,7 @@ function broadcastToMapIframes(payload: any) {
   const iframes = document.querySelectorAll('iframe');
   iframes.forEach(f => {
     try {
-      f.contentWindow?.postMessage(payload, '*');
+      postToMapFrame(f, payload);
     } catch (err) {
       console.warn('Failed to postMessage to iframe:', err);
     }

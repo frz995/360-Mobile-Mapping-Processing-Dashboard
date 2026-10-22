@@ -81,6 +81,9 @@ import { pathLengthLngLatKm } from '../utils/geo';
 import {
   clipLineRunsToBbox,
   computeSubgridMetrics,
+  connectRunsByEndpoints,
+  PLAN_ENDPOINT_SNAP_M,
+  PLAN_TJUNCTION_SNAP_M,
   type SubgridMetric,
   type SubgridRelationNotice
 } from '../utils/subgridComparison';
@@ -134,29 +137,8 @@ export interface RoadAnalysisWorkspaceProps {
 type RoadTab = 'region' | 'plan' | 'import' | 'catalog' | 'compare' | 'allocation' | 'print';
 type PlanSource = 'system' | 'manual' | 'extracted';
 
-export function getAuthStorageUserKey(authSession?: any, isGuestUser?: boolean): string {
-  if (isGuestUser) return 'guest';
-  const sessionUser = authSession?.user;
-  if (sessionUser?.id) return String(sessionUser.id);
-  if (sessionUser?.email) return String(sessionUser.email).toLowerCase().trim();
-
-  try {
-    const sbKey = Object.keys(localStorage).find((k) => k.startsWith('sb-') && k.endsWith('-auth-token'));
-    if (sbKey) {
-      const raw = localStorage.getItem(sbKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const user = parsed?.user;
-        if (user?.id) return String(user.id);
-        if (user?.email) return String(user.email).toLowerCase().trim();
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return 'anonymous';
-}
+import { getAuthStorageUserKey } from '../utils/authStorage';
+export { getAuthStorageUserKey };
 
 export interface RoadAnalysisSavedState {
   activeTab?: RoadTab;
@@ -2028,18 +2010,21 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       // actually fall inside the region. This keeps the saved payload small
       // enough to persist to Supabase / localStorage reliably.
       const clipped = clipLineStringsToDistrictsWithIds(result.lines, selectedDistricts);
-      const clippedLines: ExtractedRoadLine[] = clipped.runs.map((run, i) => ({
+
+      // Connect endpoints, snap T-junctions, and planarize shared nodes so extracted roads
+      // form an authentic, unbroken topological road network graph.
+      const planarizedRuns = connectRunsByEndpoints(
+        clipped.runs,
+        PLAN_ENDPOINT_SNAP_M,
+        PLAN_TJUNCTION_SNAP_M,
+        true,
+        clipped.endpointIds
+      );
+
+      const clippedLines: ExtractedRoadLine[] = planarizedRuns.map((run, i) => ({
         id: `clip-${i}`,
         coordinates: run,
-        highway: 'extracted',
-        startNode:
-          typeof clipped.endpointIds[i]?.start === 'number'
-            ? (clipped.endpointIds[i].start as number)
-            : undefined,
-        endNode:
-          typeof clipped.endpointIds[i]?.end === 'number'
-            ? (clipped.endpointIds[i].end as number)
-            : undefined
+        highway: 'extracted'
       }));
 
       setExtractedLines(clippedLines);

@@ -54,6 +54,11 @@ function normalizeCandidate(value: string | null | undefined, label: string): st
     return null;
   }
 
+  if (parsed.hostname.toLowerCase().endsWith('vercel.app')) {
+    console.warn(`[config] Ignoring retired Vercel URL in ${label}: "${trimmed}". Defaulting to ${DEFAULT_WEBGIS_URL}.`);
+    return null;
+  }
+
   return trimmed.replace(/\/+$/, '');
 }
 
@@ -170,4 +175,83 @@ export function createMapOriginMatcher(
     }
     return false;
   };
+}
+
+/**
+ * Resolves the target origin for posting messages to an iframe element.
+ * 
+ * WHY FAIL-CLOSED
+ *   A missing or unparseable `src` means we cannot prove the recipient origin.
+ *   Falling back to `'*'` broadcasts sensitive state (staged data, filters,
+ *   camera targets) to any document that happened to load in that frame. We
+ *   never broadcast with `'*'`; if the target origin cannot be determined we
+ *   return null and the send path must not deliver the message.
+ */
+export function resolveFrameOrigin(frame: HTMLIFrameElement | null | undefined): string | null {
+  if (!frame?.src) return null;
+  try {
+    const base = typeof window !== 'undefined' && window.location?.href ? window.location.href : undefined;
+    const url = new URL(frame.src, base);
+    return url.origin && url.origin !== 'null' ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Post a message to an embedded map frame, fail-closed.
+ * 
+ * Only the sanctioned send path. If the target origin cannot be determined
+ * (frame detached, src missing/unparseable), the message is not sent and a
+ * single warning is logged. We never fall back to broadcast-to-all-origins.
+ */
+export function postToMapFrame(frame: HTMLIFrameElement | null | undefined, message: unknown): void {
+  if (!frame?.contentWindow) return;
+  const targetOrigin = resolveFrameOrigin(frame);
+  if (!targetOrigin) {
+    warnMissingOriginOnce();
+    return;
+  }
+  try {
+    frame.contentWindow.postMessage(message, targetOrigin);
+  } catch (postErr) {
+    console.warn('[bridge] Map frame message not delivered (frame detached):', postErr);
+  }
+}
+
+let warnedMissingOrigin = false;
+function warnMissingOriginOnce(): void {
+  if (warnedMissingOrigin) return;
+  warnedMissingOrigin = true;
+  console.warn(
+    '[bridge] Refusing to postMessage: target origin unknown (frame src missing or unparseable). ' +
+      'The bridge does not broadcast to all origins.'
+  );
+}
+
+/**
+ * True when a `message` event came from `frame` *and* from the origin that
+ * frame was loaded from.
+ *
+ * The `source` half stops a foreign embedder; the origin half stops a
+ * compromised or redirected map host. Deny-by-default when the frame's origin
+ * cannot be resolved.
+ */
+export function isTrustedMapMessage(
+  event: MessageEvent,
+  frame: HTMLIFrameElement | null | undefined
+): boolean {
+  if (!frame || event.source !== frame.contentWindow) return false;
+  const mapOrigin = resolveFrameOrigin(frame);
+  if (!mapOrigin) return false;
+  return createMapOriginMatcher(mapOrigin, window.location.origin)(event.origin);
+}
+
+/** Broadcast one message to every embedded map iframe on the page, fail-closed. */
+export function postToMapFrames(message: unknown): void {
+  if (typeof document === 'undefined') return;
+  const frames = document.querySelectorAll<HTMLIFrameElement>('iframe');
+  frames.forEach((frame) => {
+    postToMapFrame(frame, message);
+  });
 }

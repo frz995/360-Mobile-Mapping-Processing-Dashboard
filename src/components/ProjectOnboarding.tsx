@@ -19,11 +19,11 @@ import {
 import {
   MALAYSIA_DISTRICTS,
   districtsToGeoJSON,
-  ensureDistrictGeometriesLoaded,
-  isDistrictGeometriesLoaded
+  ensureDistrictGeometriesLoaded, isDistrictGeometriesLoaded
 } from './boundary/malaysiaDistricts';
 import { THEME_PRESETS, isLightTheme, resolveThemeKey, type ThemeKey } from './ThemeSelector';
 import { pushWorkspace } from '../utils/urlRouter';
+import { postToMapFrame } from '../utils/mapOrigin';
 
 export type GateStage = 'idle' | 'welcome' | 'pick' | 'loading';
 
@@ -184,15 +184,15 @@ const EmbeddedMapDashboard: React.FC<{
   const sendBoundaryToIframe = useCallback(() => {
     if (!iframeRef.current || !iframeRef.current.contentWindow) return;
     try {
-      iframeRef.current.contentWindow.postMessage({
+      postToMapFrame(iframeRef.current, {
         type: 'SET_PROJECT_BOUNDARY',
         geojson: geoJson,
         bbox
-      }, '*');
-      iframeRef.current.contentWindow.postMessage({
+      });
+      postToMapFrame(iframeRef.current, {
         type: 'DIM_OUTSIDE_BOUNDARY',
         enabled: false
-      }, '*');
+      });
     } catch {}
   }, [geoJson, bbox]);
 

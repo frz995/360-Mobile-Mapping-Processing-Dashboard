@@ -63,38 +63,10 @@ import {
   type UserProject,
   type ProjectDraft
 } from './services/projects';
+import { postToMapFrame, postToMapFrames, createMapOriginMatcher } from './utils/mapOrigin';
 
-/**
- * Post a message to an embedded map frame, tolerating a frame that has gone
- * away.
- *
- * WHY THIS EXISTS
- *
- * `postMessage` into a detached or cross-origin iframe throws. Every map sync
- * in this file — staged data, camera, filters, bbox toggles — is a
- * convenience broadcast to a frame that re-reads state whenever it next boots.
- * A throw there means the frame detached mid-flight, which costs nothing: it
- * will request the same state again on remount.
- *
- * These were nine separate bare `catch (e) { }` blocks. Concentrating the
- * reasoning in one place is what makes them safe to read rather than merely
- * short: a reviewer can check one function instead of nine call sites.
- */
-function postToMapFrame(frame: HTMLIFrameElement | null | undefined, message: unknown): void {
-  try {
-    frame?.contentWindow?.postMessage(message, '*');
-  } catch (postErr) {
-    // Genuinely best-effort: the frame detached before this broadcast landed.
-    console.warn('Map frame message not delivered (frame detached):', postErr);
-  }
-}
-
-/** Broadcast one message to every embedded map iframe on the page. */
-function postToMapFrames(message: unknown): void {
-  document.querySelectorAll<HTMLIFrameElement>('iframe').forEach((frame) => {
-    postToMapFrame(frame, message);
-  });
-}
+// Canonical sender lives in src/utils/mapOrigin.ts (WP 3): fail-closed,
+// never broadcast to '*'. App.tsx uses the imported postToMapFrame/postToMapFrames.
 
 const AdminSettingsView = React.lazy(() => import('./components/AdminSettingsView').then(m => ({ default: m.AdminSettingsView })));
 const OperationalActionCenter = React.lazy(() => import('./components/OperationalActionCenter').then(m => ({ default: m.OperationalActionCenter })));
@@ -1305,7 +1277,9 @@ export default function App() {
     };
 
     const onWindowMessage = (e: MessageEvent) => {
-      if (
+        const isAllowedOrigin = createMapOriginMatcher(projectSettings?.mapUrl, window.location.origin, { trustApexSubdomains: true });
+        if (!isAllowedOrigin(e.origin)) return;
+        if (
         e.data === 'geosphere:activity' ||
         e.data?.type === 'geosphere:activity' ||
         e.data?.type === 'GEOSPHERE_ACTIVITY'
@@ -1589,7 +1563,7 @@ export default function App() {
     ? (totalDefects === 0 ? '100.0' : Math.max(0, ((totalPoiForHealth - totalDefects) / totalPoiForHealth) * 100).toFixed(1))
     : null;
   const targetKm = Number(projectSettings?.targetKm) || (totalKm > 0 ? totalKm : 0);
-  const progressPercent = targetKm > 0 ? Math.min(100, Math.round((totalKm / targetKm) * 100)) : 0;
+  const progressPercent = targetKm > 0 ? (totalKm > 0 && (totalKm / targetKm) * 100 < 1 ? Number(((totalKm / targetKm) * 100).toFixed(2)) : Math.min(100, Math.round((totalKm / targetKm) * 100))) : 0;
   const ongoingMasterlistCount = batchLogs.filter(b => b.status === 'Ongoing').length;
   const stagedDailyBatchesCount = dailyData.filter(d => (d.publishToWebGIS || (d as any).publishToUSVPRO) !== 'yes').length;
 
@@ -1961,18 +1935,15 @@ export default function App() {
     filters: { published: boolean; defect: boolean; stitching: boolean },
     layerVisible: boolean
   ) => {
-    const win = inspectionMapIframeRef.current?.contentWindow;
-    if (!win) return;
+    const frame = inspectionMapIframeRef.current;
+    if (!frame?.contentWindow) return;
     try {
-      win.postMessage({
+      postToMapFrame(frame, {
         type: 'FILTER_STATUS_TYPES',
         statusFilters: { ...filters, selected: true },
         showPanotrackData: layerVisible
-      }, '*');
+      });
     } catch (filterPostErr) {
-      // Cross-frame message to the inspection map. A detached or cross-origin
-      // frame throws here; the map re-syncs on its own next mount, so losing
-      // one filter push costs nothing durable.
       console.warn('Trajectory filter not forwarded to map:', filterPostErr);
     }
   }, []);
@@ -2499,7 +2470,9 @@ export default function App() {
 
   useEffect(() => {
     const handlePanoramaMessage = (e: MessageEvent) => {
-      // Prevent clicks inside QAQC Workbench from triggering the background main dashboard map & viewer
+        const isAllowedOrigin = createMapOriginMatcher(projectSettings?.mapUrl, window.location.origin, { trustApexSubdomains: true });
+        if (!isAllowedOrigin(e.origin)) return;
+        // Prevent clicks inside QAQC Workbench from triggering the background main dashboard map & viewer
       if (isQAQCRunnerModalOpen || e.data?.source === 'qaqcWorkbench' || e.data?.isQAQC) {
         return;
       }

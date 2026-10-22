@@ -101,12 +101,12 @@ import {
   removeItemFromTree,
   addItemToFolder,
   getFlatFolderList,
-  type Layer,
-  type FolderType as Folder
+  type Layer, type FolderType as Folder
 } from './dataManagement/CatalogItem';
 import { DataForm, GRIDS } from './dataManagement/DataForm';
 import { SafeDeleteModal } from './dataManagement/SafeDeleteModal';
 import { usePermission } from '../hooks/usePermission';
+import { postToMapFrame } from '../utils/mapOrigin';
 
 // Calculate Haversine distance in KM between two GPS coordinates
 function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -738,14 +738,14 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       const padLng = Math.max(0.0015, (maxLng - minLng) * 0.15);
       iframes.forEach((ifr) => {
         try {
-          ifr.contentWindow?.postMessage({ type: 'FOCUS_BOUNDARY', bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat] }, '*');
-          ifr.contentWindow?.postMessage({ type: 'FLY_TO', lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2, lon: (minLng + maxLng) / 2, zoom: 17 }, '*');
+          postToMapFrame(ifr, { type: 'FOCUS_BOUNDARY', bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat] });
+          postToMapFrame(ifr, { type: 'FLY_TO', lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2, lon: (minLng + maxLng) / 2, zoom: 17 });
         } catch { }
       });
     } else if (subgrid) {
       iframes.forEach((ifr) => {
         try {
-          ifr.contentWindow?.postMessage({ type: 'SET_SUBGRID_FILTER', subgrid, date: '', isSingleRun: false, runId: null }, '*');
+          postToMapFrame(ifr, { type: 'SET_SUBGRID_FILTER', subgrid, date: '', isSingleRun: false, runId: null });
         } catch { }
       });
     }
@@ -790,24 +790,24 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         iframes.forEach((ifr) => {
           if (!ifr || !ifr.contentWindow) return;
           try {
-            ifr.contentWindow.postMessage({
+            postToMapFrame(ifr, {
               type: 'FOCUS_BOUNDARY',
               bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat]
-            }, '*');
-            ifr.contentWindow.postMessage({
+            });
+            postToMapFrame(ifr, {
               type: 'FLY_TO',
               lat: (minLat + maxLat) / 2,
               lng: (minLng + maxLng) / 2,
               lon: (minLng + maxLng) / 2,
               zoom: 17
-            }, '*');
-            ifr.contentWindow.postMessage({
+            });
+            postToMapFrame(ifr, {
               type: 'SET_SUBGRID_FILTER',
               subgrid: norm,
               date: '',
               isSingleRun: false,
               runId: null
-            }, '*');
+            });
           } catch { }
         });
       }
@@ -820,21 +820,21 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         iframes.forEach((ifr) => {
           if (!ifr || !ifr.contentWindow) return;
           try {
-            ifr.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
-            ifr.contentWindow.postMessage({
+            postToMapFrame(ifr, { type: 'CLEAR_BOUNDARY_FOCUS' });
+            postToMapFrame(ifr, {
               type: 'FLY_TO',
               lat: (minLat + maxLat) / 2,
               lng: (minLng + maxLng) / 2,
               lon: (minLng + maxLng) / 2,
               zoom: 15
-            }, '*');
-            ifr.contentWindow.postMessage({
+            });
+            postToMapFrame(ifr, {
               type: 'SET_SUBGRID_FILTER',
               subgrid: '',
               date: '',
               isSingleRun: false,
               runId: null
-            }, '*');
+            });
           } catch { }
         });
       }
@@ -1434,7 +1434,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     iframes.forEach(f => {
       try {
         const itemPub = (item: any) => item.publishToWebGIS || item.publishToUSVPRO;
-        f.contentWindow?.postMessage({
+        postToMapFrame(f, {
           type: 'SET_STAGED_DATA',
           stagedItems: updatedDraft.map(item => ({
             subgrid: item.subgrid,
@@ -1445,7 +1445,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
             statusColor: (itemPub(item) === 'yes' || item.isSyncedWithSupabase) ? '#10b981' : (itemPub(item) === 'need to recheck' || itemPub(item) === 'no' ? '#ef4444' : '#f59e0b'),
             panoramas: item.panoramas || []
           }))
-        }, '*');
+        });
       } catch (err) { }
     });
 
@@ -2219,12 +2219,12 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     const iframes = [currentMapIframeRef.current, afterMapIframeRef.current].filter(Boolean) as HTMLIFrameElement[];
     iframes.forEach((ifr) => {
       try {
-        ifr.contentWindow?.postMessage({
+        postToMapFrame(ifr, {
           type: 'SET_STAGED_DATA',
           stagedItems: updatedDaily,
           isSingleRun: false,
           runId: null
-        }, '*');
+        });
       } catch {}
     });
 

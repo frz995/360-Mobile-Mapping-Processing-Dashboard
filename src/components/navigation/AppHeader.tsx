@@ -171,12 +171,12 @@ export const AppHeader = ({
       >
         {/* WEBGIS LINK */}
         <a
-          href={liveWebgisUrl || ''}
+          href={liveWebgisUrl || 'https://map.geosphere.my'}
           target="_blank"
           rel="noopener noreferrer"
           className="p-1.5 hover:text-sky-400 transition-colors cursor-pointer relative flex items-center justify-center text-text-muted"
-          title="Open WebGIS"
-          aria-label="Open WebGIS"
+          title="Open WebGIS (map.geosphere.my)"
+          aria-label="Open WebGIS (map.geosphere.my)"
         >
           <ExternalLink size={18} />
         </a>

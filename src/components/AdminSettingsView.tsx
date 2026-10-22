@@ -65,6 +65,7 @@ import { WorkstationNetworkEditor } from './settings/WorkstationNetworkEditor';
 import { StorageProbeResultCard } from './settings/StorageProbeResultCard';
 import { isGuestEmail } from '../lib/authz';
 import { usePermission } from '../hooks/usePermission';
+import { postToMapFrame, createMapOriginMatcher } from '../utils/mapOrigin';
 
 const SETTINGS_TABS: ChromeTab<'settings' | 'theme-pack' | 'diagnostics'>[] = [
   {
@@ -289,21 +290,21 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         });
 
         // 1. Send Theme Mode (Dark/Light)
-        previewIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(previewIframeRef.current, {
           type: 'SET_THEME',
           theme: themeMode
-        }, '*');
+        });
 
         // 2. Send Basemap Selection
-        previewIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(previewIframeRef.current, {
           type: 'SET_BASEMAP',
           basemap: projectSettings.defaultBasemap || DEFAULT_BASEMAP,
           customUrl: projectSettings.customBasemapUrl || '',
           opacity: (projectSettings.basemapOpacity ?? 100) / 100
-        }, '*');
+        });
 
         // 3. Send Map Vector Layer Theme & Styling
-        previewIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(previewIframeRef.current, {
           type: 'SET_MAP_THEME',
           settings: {
             publishedTrackColor: projectSettings.publishedTrackColor || '#10B981',
@@ -316,47 +317,47 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             opacity: (projectSettings.layerOpacity ?? 100) / 100,
             layerOpacity: (projectSettings.layerOpacity ?? 100) / 100
           }
-        }, '*');
+        });
 
         // 4. Send Staged Point Data
-        previewIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(previewIframeRef.current, {
           type: 'SET_STAGED_DATA',
           stagedItems: formattedStaged
-        }, '*');
+        });
 
         // 5. Ensure Status Trajectory Filter is Open
-        previewIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(previewIframeRef.current, {
           type: 'FILTER_STATUS_TYPES',
           statusFilters: { published: true, defect: true, stitching: true },
           showPanotrackData: true
-        }, '*');
+        });
 
         // 6. Send committed Project Geographic Boundary
         const boundary = (projectSettings as any)?.projectBoundary;
         if (boundary?.geojson) {
-          previewIframeRef.current.contentWindow.postMessage({
+          postToMapFrame(previewIframeRef.current, {
             type: 'SET_PROJECT_BOUNDARY',
             geojson: boundary.geojson,
             bbox: boundary.bbox
-          }, '*');
+          });
           if (boundary.focusActive) {
             // Passive preview: do NOT auto-FOCUS_BOUNDARY — that direct
             // fitBounds (fired at load + retries) overrode the map's two-stage
             // intro zoom choreography. The dim overlay still reflects the
             // setting; the intro camera lands on the panotrack extent.
           }
-          previewIframeRef.current.contentWindow.postMessage({
+          postToMapFrame(previewIframeRef.current, {
             type: 'DIM_OUTSIDE_BOUNDARY',
             enabled: boundary.focusActive === true
-          }, '*');
+          });
         } else {
-          previewIframeRef.current.contentWindow.postMessage({
+          postToMapFrame(previewIframeRef.current, {
             type: 'SET_PROJECT_BOUNDARY',
             geojson: null,
             bbox: null
-          }, '*');
-          previewIframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
-          previewIframeRef.current.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
+          });
+          postToMapFrame(previewIframeRef.current, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: false });
+          postToMapFrame(previewIframeRef.current, { type: 'CLEAR_BOUNDARY_FOCUS' });
         }
       } catch (e) { }
     }
@@ -392,12 +393,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
     iframes.forEach(f => {
       try {
-        f.contentWindow?.postMessage({
+        postToMapFrame(f, {
           type: 'SET_BASEMAP',
           basemap: basemapVal,
           customUrl: customUrlVal,
           opacity: opacityVal
-        }, '*');
+        });
       } catch (e) { }
     });
   }, [projectSettings.defaultBasemap, projectSettings.customBasemapUrl, projectSettings.basemapOpacity]);
@@ -409,33 +410,33 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     iframes.forEach(f => {
       try {
         if (boundary?.geojson) {
-          f.contentWindow?.postMessage({
+          postToMapFrame(f, {
             type: 'SET_PROJECT_BOUNDARY',
             geojson: boundary.geojson,
             bbox: boundary.bbox
-          }, '*');
+          });
           if (boundary.focusActive) {
-            f.contentWindow?.postMessage({ type: 'FOCUS_BOUNDARY', bbox: boundary.bbox }, '*');
+            postToMapFrame(f, { type: 'FOCUS_BOUNDARY', bbox: boundary.bbox });
           }
-          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: boundary.focusActive === true }, '*');
+          postToMapFrame(f, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: boundary.focusActive === true });
         } else {
-          f.contentWindow?.postMessage({
+          postToMapFrame(f, {
             type: 'SET_PROJECT_BOUNDARY',
             geojson: null,
             bbox: null
-          }, '*');
+          });
         }
         if (action === 'focus') {
           if (boundary?.bbox) {
-            f.contentWindow?.postMessage({
+            postToMapFrame(f, {
               type: 'FOCUS_BOUNDARY',
               bbox: boundary.bbox
-            }, '*');
+            });
           }
-          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: true }, '*');
+          postToMapFrame(f, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: true });
         } else if (action === 'clear') {
-          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
-          f.contentWindow?.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
+          postToMapFrame(f, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: false });
+          postToMapFrame(f, { type: 'CLEAR_BOUNDARY_FOCUS' });
         }
       } catch (e) { }
     });
@@ -480,12 +481,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
     iframes.forEach(f => {
       try {
-        f.contentWindow?.postMessage(storageMessage, '*');
+        postToMapFrame(f, storageMessage);
       } catch (e) { }
     });
     if (previewIframeRef.current?.contentWindow) {
       try {
-        previewIframeRef.current.contentWindow.postMessage(storageMessage, '*');
+        postToMapFrame(previewIframeRef.current, storageMessage);
       } catch (e) { }
     }
   }, [committedSettings, projectSettings]);
@@ -571,10 +572,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     const iframe = previewIframeRef.current;
     if (!iframe || !iframe.contentWindow) return;
     try {
-      const win = iframe.contentWindow;
       if (!region || region.id === CUSTOM_REGION_ID) {
-        win.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
-        win.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
+        postToMapFrame(iframe, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: false });
+        postToMapFrame(iframe, { type: 'CLEAR_BOUNDARY_FOCUS' });
         return;
       }
 
@@ -603,8 +603,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         bbox = rGeo.bbox;
       }
 
-      win.postMessage({ type: 'SET_PROJECT_BOUNDARY', geojson, bbox }, '*');
-      win.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
+      postToMapFrame(iframe, { type: 'SET_PROJECT_BOUNDARY', geojson, bbox });
+      postToMapFrame(iframe, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: false });
     } catch (e) { }
   }, []);
 
@@ -748,14 +748,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
     iframes.forEach(f => {
       try {
-        f.contentWindow?.postMessage({
+        postToMapFrame(f, {
           type: 'SET_MAP_THEME',
           settings
-        }, '*');
-        f.contentWindow?.postMessage({
+        });
+        postToMapFrame(f, {
           type: 'SET_STAGED_DATA',
           stagedItems: formattedStaged
-        }, '*');
+        });
       } catch (e) { }
     });
   }, [dailyData, projectSettings]);
@@ -768,12 +768,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
     if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
       try {
-        previewIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(previewIframeRef.current, {
           type: 'SET_BASEMAP',
           basemap: basemapVal,
           customUrl: customUrlVal,
           opacity: opacityVal
-        }, '*');
+        });
       } catch (e) { }
     }
   }, [projectSettings.defaultBasemap, projectSettings.customBasemapUrl, projectSettings.basemapOpacity]);
@@ -824,14 +824,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
     if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
       try {
-        previewIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(previewIframeRef.current, {
           type: 'SET_MAP_THEME',
           settings
-        }, '*');
-        previewIframeRef.current.contentWindow.postMessage({
+        });
+        postToMapFrame(previewIframeRef.current, {
           type: 'SET_STAGED_DATA',
           stagedItems: formattedStaged
-        }, '*');
+        });
       } catch (e) { }
     }
   }, [dailyData, projectSettings]);
@@ -840,7 +840,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
   useEffect(() => {
     const handleMapMessage = (e: MessageEvent) => {
-      if (e.data?.type === 'MAP_COORDS' && typeof e.data.lat === 'number') {
+        const isAllowedOrigin = createMapOriginMatcher(previewWebgisUrl, window.location.origin, { trustApexSubdomains: true });
+        if (!isAllowedOrigin(e.origin)) return;
+        if (previewIframeRef.current && e.source !== previewIframeRef.current.contentWindow) return;
+        if (e.data?.type === 'MAP_COORDS' && typeof e.data.lat === 'number') {
         const lngVal = typeof e.data.lng === 'number' ? e.data.lng : e.data.lon;
         if (typeof lngVal === 'number') {
           setPreviewCoords({ lat: e.data.lat, lng: lngVal });

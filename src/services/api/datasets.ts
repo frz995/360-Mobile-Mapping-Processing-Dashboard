@@ -28,6 +28,7 @@ export const DATASET_WRITE_OPS = {
 import { withRetry } from '../../lib/retry';
 import { STORAGE_BUCKET_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../../config/defaults';
 import { checkProductionPublicationEligibility } from './productionRuns';
+import { getActiveOrganizationId } from '../tenantContext';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
@@ -99,18 +100,28 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
   error?: string;
 }> {
   try {
-    // Try fetching from panoramas_view or fallback to panoramas table
+    // Try fetching from panoramas_view or fallback to panoramas table strictly scoped to current tenant
     let data: any[] | null = null;
+    const activeOrgId = getActiveOrganizationId();
+    const activeProjectId = getServiceProjectId();
+
     const viewRes = await scoped(supabase.from('panoramas_view').select('*'));
     if (!viewRes.error && viewRes.data && viewRes.data.length > 0) {
       data = viewRes.data;
-    } else {
+    } else if (!activeOrgId && !activeProjectId) {
+      // Only check unassigned fallback when not in an isolated tenant context
       const tolerant = await scopedIncludingUnassigned(supabase.from('panoramas_view').select('*'));
       if (!tolerant.error && tolerant.data && tolerant.data.length > 0) {
         data = tolerant.data;
       } else {
         const baseRes = await scopedIncludingUnassigned(supabase.from('panoramas').select('*'));
         data = baseRes.data;
+      }
+    } else if (activeOrgId) {
+      // In an active company context, query the base table strictly scoped to this company
+      const baseScopedRes = await scoped(supabase.from('panoramas').select('*'));
+      if (!baseScopedRes.error && baseScopedRes.data) {
+        data = baseScopedRes.data;
       }
     }
 

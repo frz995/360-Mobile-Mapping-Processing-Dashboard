@@ -15,6 +15,7 @@ import {
   fetchHubSessionFromSupabase,
   saveHubSessionToSupabase
 } from '../api/hubSession'
+import { setActiveOrganizationId } from '../tenantContext'
 
 type Res = { data?: unknown; error?: unknown }
 
@@ -65,5 +66,20 @@ describe('hubSession service', () => {
     fromMock.mockImplementation(() => chainable({ data: null }, 'select'))
     const state = await fetchHubSessionFromSupabase()
     expect(state).toBeNull()
+  })
+
+  it('attaches organization_id when an active tenant organization is present', async () => {
+    setActiveOrganizationId('org-tenant-99')
+    try {
+      fromMock.mockImplementation(() => chainable({ error: null }, 'upsert'))
+      const ok = await saveHubSessionToSupabase({ subgrid: 'N93E70' }, 'Operator')
+      expect(ok).toBe(true)
+      expect(upsertStore[upsertStore.length - 1]).toMatchObject({
+        project_id: 'proj-1',
+        organization_id: 'org-tenant-99'
+      })
+    } finally {
+      setActiveOrganizationId(null)
+    }
   })
 })

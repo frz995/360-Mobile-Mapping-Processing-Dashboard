@@ -405,6 +405,7 @@ export type StationBoardMetricUnit = 'frames' | 'points';
 export interface StationBoardRow {
   id?: string;
   project_id?: string | null;
+  organization_id?: string | null;
   subgrid: string;
   station_id: WorkstationStationId;
   status: StationBoardStatus;
@@ -438,6 +439,7 @@ type StageLedgerVia = 'agent' | 'operator' | 'system';
 export interface StageEventLedgerRow {
   id?: string;
   project_id?: string | null;
+  organization_id?: string | null;
   subgrid: string;
   stage: StageLedgerStage;
   event: StageLedgerEvent;

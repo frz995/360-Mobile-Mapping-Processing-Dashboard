@@ -94,7 +94,7 @@ The migrations are applied as a **hand-run, ordered sequence**, or via the conso
 > - **Supabase SQL Editor:** Paste and run [`supabase/bootstrap.sql`](../../supabase/bootstrap.sql) (generated via `npm run migrations:bootstrap`).
 > - **psql:** `psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f supabase/bootstrap.sql`
 
-If applying individual files, run these **44 files in ascending numeric order**:
+If applying individual files, run these **46 files in ascending numeric order**:
 
 ```
 0001_schema_migrations.sql
@@ -142,12 +142,14 @@ If applying individual files, run these **44 files in ascending numeric order**:
 0043_organization_workers.sql
 0044_console_access_and_memberships.sql
 0045_console_storage_and_licensing.sql
+0046_panoramas_view_organization_id.sql
+0047_public_panorama_buckets.sql
 ```
 
-### 2.3a Migrations 0036-0045 are the multi-tenancy layer
+### 2.3a Migrations 0036-0047 are the multi-tenancy layer
 
 These are what make the Seller Console possible. On an install that predates
-them, applying `0036`-`0045` is not optional — the console cannot function
+them, applying `0036`-`0047` is not optional — the console cannot function
 without them.
 
 | Migration | Why it matters operationally |
@@ -160,14 +162,16 @@ without them.
 | `0043` | Per-company NAS worker credentials in `organization_workers` — this is what stops two companies sharing one database from browsing each other's raw survey imagery |
 | `0044` | The Seller Console's access and membership functions. **Without it `/console` refuses to open** with `Could not find the function public.console_access in the schema cache` |
 | `0045` | Console storage breakdown, parent cluster stats RPCs, and organization licensing/expiry tracking |
+| `0046` | Exposes `organization_id` on `public.panoramas_view` with `security_invoker = true` |
+| `0047` | Enables public read on `MMS_PIC` and `panoramas` storage buckets for standard 360 panorama WebGL viewers |
 
-> **Upgrading an existing install:** apply `0036` through `0045` in order, then
+> **Upgrading an existing install:** apply `0036` through `0047` in order, then
 > `NOTIFY pgrst, 'reload schema';`. Deploying the application before the
 > migration leaves the console locked — which is a safe failure (it refuses,
 > rather than opening), but it is still a lockout until the migration lands.
 >
 > The single-file path (`supabase/bootstrap.sql`) is for a **fresh** database. On
-> an install that already has `0001`-`0044`, apply `0045` alone.
+> an install that already has `0001`-`0045`, apply `0046` and `0047`.
 
 > ⚠️ **`0011_security_tests.sql` is a test, not a migration.** It makes no schema
 > changes. Run it separately as a verification step — see §5.2. A common mistake
@@ -177,7 +181,7 @@ without them.
 > ℹ️ **Fresh install compatibility:** In current builds, `0004` safely guards
 > `panoramas` and `staging_panoramas` RLS activation with existence checks. `0012`
 > creates the core tables and applies authoritative role-guarded RLS. Sequential
-> execution from `0001` through `0045` now passes cleanly with 0 errors. This is
+> execution from `0001` through `0047` now passes cleanly with 0 errors. This is
 > verified, not asserted: `npm run db:gate` applies the whole bundle to a
 > throwaway Postgres and runs the cross-tenant security gate against it, and it
 > is a blocking CI job.

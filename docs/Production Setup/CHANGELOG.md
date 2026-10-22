@@ -96,7 +96,7 @@ This release hardens the GeoSphere 360 Mobile Mapping platform for commercial di
 - **Feature:** Turnkey CLI utilizing `@supabase/supabase-js` Admin API (`service_role` key) to idempotently create or elevate users in both Supabase Auth (`auth.users`) and the internal directory (`public.user_accounts`). Eliminates manual SQL/Dashboard deadlock on fresh installations.
 
 #### Consolidated Database Bootstrap Synchronization
-- **File:** Synchronized `supabase/bootstrap.sql` across all 45 migrations (`0001` through `0045`), preserving byte-identical migration history while ensuring turnkey, single-script execution on fresh Supabase / PostgreSQL instances.
+- **File:** Synchronized `supabase/bootstrap.sql` across all 47 migrations (`0001` through `0047`), preserving byte-identical migration history while ensuring turnkey, single-script execution on fresh Supabase / PostgreSQL instances.
 - **Verification:** Verified via `src/__tests__/bootstrap-migrations.test.ts` (33/33 unit tests passing).
 
 #### Customer Documentation & Master Setup Guide

@@ -52,6 +52,7 @@ import {
   reconcileBatchLogs,
   getItemId
 } from '../App';
+import { postToMapFrame, createMapOriginMatcher } from '../utils/mapOrigin';
 
 export interface AuditRunRecord {
   subgrid: string;
@@ -893,12 +894,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       let formattedItems: ReturnType<typeof formatTrackItem>[] = [];
       if (runsToSend.length > 0) {
         formattedItems = runsToSend.map(formatTrackItem);
-        mapIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(mapIframeRef.current, {
           type: 'SET_STAGED_DATA',
           stagedItems: formattedItems,
           isSingleRun: isSingleDailyRun,
           runId: selectedRunId || ''
-        }, '*');
+        });
       }
 
       // Build a filename -> colored-point lookup from the formatted (staged) items so the
@@ -945,30 +946,30 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         };
       });
 
-      mapIframeRef.current.contentWindow.postMessage({
+      postToMapFrame(mapIframeRef.current, {
         type: 'SET_MAP_VIEW_STATE',
         viewMode: isSingleDailyRun ? 'SINGLE_RUN' : 'SUBGRID',
         subgrid: activeSg,
         runId: selectedRunId || null,
         points: formattedPoints
-      }, '*');
+      });
 
-      mapIframeRef.current.contentWindow.postMessage({
+      postToMapFrame(mapIframeRef.current, {
         type: 'FILTER_SUBGRID',
         subgrid: activeSg,
         runId: selectedRunId || '',
         isSingleRun: isSingleDailyRun
-      }, '*');
+      });
 
       // 3. Dispatch Defects
-      mapIframeRef.current.contentWindow.postMessage({
+      postToMapFrame(mapIframeRef.current, {
         type: 'QAQC_DEFECTS_RESET'
-      }, '*');
+      });
       if (allDefectsMerged.length > 0) {
-        mapIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(mapIframeRef.current, {
           type: 'QAQC_DEFECTS_SYNC',
           defects: allDefectsMerged
-        }, '*');
+        });
       }
 
       // 4. Force map to center on active display node
@@ -976,8 +977,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const activeIdx = Math.max(0, Math.min(activeDisplayIndex - 1, selectedStations.length - 1));
         const activeNode = selectedStations[activeIdx];
         if (activeNode) {
-          mapIframeRef.current.contentWindow.postMessage(
-            {
+          postToMapFrame(mapIframeRef.current, {
               type: 'SET_PANORAMA',
               point: {
                 filename: activeNode.filename,
@@ -989,9 +989,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 lng: activeNode.longitude ?? activeNode.lng,
                 bearing: activeNode.bearing ?? 0
               }
-            },
-            '*'
-          );
+            });
         }
       }
     } catch (_) { }
@@ -1036,17 +1034,16 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, _isMapReady, effectiveDefectsList.length, initWorkbenchMapTrack, clearWorkbenchMapTimers]);
 
   // Cancel any pending re-sends when the component unmounts.
-  useEffect(() => {
-    return clearWorkbenchMapTimers;
-  }, [clearWorkbenchMapTimers]);
+  useEffect(() => clearWorkbenchMapTimers, [clearWorkbenchMapTimers]);
 
-  useEffect(() => {
-    scheduleWorkbenchMapTrack();
-  }, [scheduleWorkbenchMapTrack]);
+  useEffect(() => { scheduleWorkbenchMapTrack(); }, [scheduleWorkbenchMapTrack]);
 
   useEffect(() => {
     const handleMapMessage = (e: MessageEvent) => {
-      if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY' || e.data?.type === 'MAP_LOADED' || e.data?.type === 'REQUEST_STAGED_DATA') {
+        const isAllowedOrigin = createMapOriginMatcher(import.meta.env.VITE_MAP_URL, window.location.origin, { trustApexSubdomains: true });
+        if (!isAllowedOrigin(e.origin)) return;
+        if (mapIframeRef.current && e.source !== mapIframeRef.current.contentWindow) return;
+        if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY' || e.data?.type === 'MAP_LOADED' || e.data?.type === 'REQUEST_STAGED_DATA') {
         lastLoadedSubgridRef.current = '';
         scheduleWorkbenchMapTrack();
       }
@@ -1059,11 +1056,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     if (!mapIframeRef.current?.contentWindow) return;
     if (effectiveDefectsList.length === 0) return;
     try {
-      mapIframeRef.current.contentWindow.postMessage({
+      postToMapFrame(mapIframeRef.current, {
         type: 'QAQC_DEFECTS_SYNC',
         subgrid: activeRunningSubgrid || selectedSubgrid,
         defects: effectiveDefectsList
-      }, '*');
+      });
     } catch (_) { }
   }, [effectiveDefectsList, activeRunningSubgrid, selectedSubgrid]);
 
@@ -1081,7 +1078,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     );
 
     try {
-      mapIframeRef.current.contentWindow.postMessage({
+      postToMapFrame(mapIframeRef.current, {
         type: 'MAP_POINT_SELECTED',
         point: {
           filename: activeDisplayPointId,
@@ -1096,13 +1093,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         },
         isLiveTracking: true,
         noAnimation: true
-      }, '*');
+      });
 
-      mapIframeRef.current.contentWindow.postMessage({
+      postToMapFrame(mapIframeRef.current, {
         type: 'SET_CAMERA_HEADING',
         bearing: activeDisplayBearing,
         heading: activeDisplayBearing
-      }, '*');
+      });
     } catch (_) { }
   }, [isRunning, activeDisplayIndex, activeDisplayCoords, activeDisplayBearing, activeDisplayPointId, activeRecord, liveCheckStatus, effectiveDefectsList, activeRunningSubgrid, selectedSubgrid]);
 
@@ -1124,23 +1121,23 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     };
 
     try {
-      mapIframeRef.current.contentWindow.postMessage({
+      postToMapFrame(mapIframeRef.current, {
         type: 'SET_PANORAMA',
         point: pointPayload
-      }, '*');
+      });
 
-      mapIframeRef.current.contentWindow.postMessage({
+      postToMapFrame(mapIframeRef.current, {
         type: 'MAP_POINT_SELECTED',
         point: pointPayload,
         isUserSelect: true,
         panTo: true
-      }, '*');
+      });
 
-      mapIframeRef.current.contentWindow.postMessage({
+      postToMapFrame(mapIframeRef.current, {
         type: 'SET_CAMERA_HEADING',
         bearing: activeDisplayBearing,
         heading: activeDisplayBearing
-      }, '*');
+      });
     } catch (_) { }
   }, [selectedStationIndex, activeDisplayIndex, isRunning, activeDisplayCoords, activeDisplayPointId, activeDisplayThumbnail, activeDisplayBearing, activeRunningSubgrid, selectedSubgrid]);
 
@@ -1177,8 +1174,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   }, [activeDisplayPointId, activeRawFile, activeRunningSubgrid, getStationsForSubgrid, projectSettings]);
 
   useEffect(() => {
-    const handleMessage = (e: MessageEvent) => {
-      if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY') {
+    const handleMessage = (e: MessageEvent) => {  const isAllowedOrigin = createMapOriginMatcher(import.meta.env.VITE_MAP_URL, window.location.origin, { trustApexSubdomains: true });  if (!isAllowedOrigin(e.origin)) return;  if (mapIframeRef.current && e.source !== mapIframeRef.current.contentWindow) return;  if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY') {
         setIsMapReady(true);
         lastLoadedSubgridRef.current = '';
         initWorkbenchMapTrack();
@@ -1231,7 +1227,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     const firstStation = selectedStations[0];
     if (firstStation && firstStation.lat && firstStation.lng && mapIframeRef.current?.contentWindow) {
       try {
-        mapIframeRef.current.contentWindow.postMessage({
+        postToMapFrame(mapIframeRef.current, {
           type: 'MAP_POINT_SELECTED',
           point: {
             filename: firstStation.filename || firstStation.id,
@@ -1243,12 +1239,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             bearing: firstStation.bearing || 0
           },
           zoom: 18
-        }, '*');
-        mapIframeRef.current.contentWindow.postMessage({
+        });
+        postToMapFrame(mapIframeRef.current, {
           type: 'SET_CAMERA_HEADING',
           bearing: firstStation.bearing || 0,
           heading: firstStation.bearing || 0
-        }, '*');
+        });
       } catch (_) { }
     }
     onStartInspection({
@@ -1734,11 +1730,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   setSelectedRunId(null);
                   setSelectedStationIndex(null);
                   if (mapIframeRef.current?.contentWindow) {
-                    mapIframeRef.current.contentWindow.postMessage({
+                    postToMapFrame(mapIframeRef.current, {
                       type: 'FILTER_SUBGRID',
                       subgrid: '',
                       runId: ''
-                    }, '*');
+                    });
                   }
                 }
               }}
@@ -1768,11 +1764,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           setSelectedRunId(null);
                           setSelectedStationIndex(null);
                           if (mapIframeRef.current?.contentWindow) {
-                            mapIframeRef.current.contentWindow.postMessage({
+                            postToMapFrame(mapIframeRef.current, {
                               type: 'FILTER_SUBGRID',
                               subgrid: '',
                               runId: ''
-                            }, '*');
+                            });
                           }
                           return;
                         }
@@ -2109,12 +2105,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         const pitchDeg = Math.round(pos.pitch * 100) / 100;
                         if (mapIframeRef.current?.contentWindow) {
                           try {
-                            mapIframeRef.current.contentWindow.postMessage({
+                            postToMapFrame(mapIframeRef.current, {
                               type: 'CAMERA_ROTATED',
                               source: 'parent',
                               yaw: yawDeg,
                               pitch: pitchDeg
-                            }, '*');
+                            });
                           } catch (_) { }
                         }
                       }}
@@ -2798,7 +2794,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                                 setSelectedStationIndex(item.index);
                                 if (item.lat && item.lng && mapIframeRef.current?.contentWindow) {
                                   try {
-                                    mapIframeRef.current.contentWindow.postMessage({
+                                    postToMapFrame(mapIframeRef.current, {
                                       type: 'MAP_POINT_SELECTED',
                                       point: {
                                         filename: item.pointId,
@@ -2810,12 +2806,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                                         bearing: item.bearing || 0
                                       },
                                       zoom: 18
-                                    }, '*');
-                                    mapIframeRef.current.contentWindow.postMessage({
+                                    });
+                                    postToMapFrame(mapIframeRef.current, {
                                       type: 'SET_CAMERA_HEADING',
                                       bearing: item.bearing || 0,
                                       heading: item.bearing || 0
-                                    }, '*');
+                                    });
                                   } catch (_) { }
                                 }
                               }}

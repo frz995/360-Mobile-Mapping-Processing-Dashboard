@@ -172,7 +172,7 @@ Do these in sequence. Each step depends on the previous one.
 | :-- | :--- | :--- | :--- |
 | 1 | Create Cloudflare + Supabase accounts, buy/attach a domain | `01` §1 | 1 day |
 | 2 | Create the Supabase project; **enable PostGIS first** | `01` §2 | 30 min |
-| 3 | Apply migrations `0001`-`0045` (or run `bootstrap.sql`) | `01` §2 | 15 min |
+| 3 | Apply migrations `0001`-`0047` (or run `bootstrap.sql`) | `01` §2 | 15 min |
 | 4 | Create the `MMS_PIC` storage bucket (**public**) | `01` §3 | 5 min |
 | 5 | Create the first **platform administrator** | `01` §4 | 15 min |
 | 6 | Deploy to Cloudflare Pages | `01` §7 | 30 min |

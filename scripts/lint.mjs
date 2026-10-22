@@ -12,8 +12,10 @@
 // baseline that was measured rather than estimated.
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { classifyCatches, collectSourceFiles } from './audit/source-metrics.mjs'
+import { runStaticAudit, diffAgainstBaseline } from './audit/static-scan.mjs'
 
 process.env.ESLINT_USE_FLAT_CONFIG = 'true'
 
@@ -108,74 +110,10 @@ if (warningDelta > 0) {
 // not always a defect — best-effort telemetry genuinely does not warrant
 // failing a build — so the count is surfaced, not enforced. It is what makes
 // section 1's work visible and stops the class from regrowing silently.
-function classifyCatches(source) {
-  let strict = 0
-  let consoleOnly = 0
-
-  const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
-
-  const skipString = (src, i) => {
-    const quote = src[i]
-    for (i++; i < src.length; i++) {
-      if (src[i] === '\\') i++
-      else if (src[i] === quote) return i
-    }
-    return i
-  }
-
-  const skipTemplate = (src, i) => {
-    for (i++; i < src.length; i++) {
-      if (src[i] === '\\') i++
-      else if (src[i] === '`') return i
-      else if (src[i] === '$' && src[i + 1] === '{') {
-        let depth = 1
-        i += 2
-        for (; i < src.length && depth > 0; i++) {
-          if (src[i] === '{') depth++
-          else if (src[i] === '}') depth--
-        }
-        i--
-      }
-    }
-    return i
-  }
-
-  // Brace-balanced walk of each `catch (...) { ... }` body. Strings and
-  // templates are skipped so a `}` inside one cannot end the block early.
-  const re = /\bcatch\s*(?:\([^)]*\))?\s*\{/g
-  let match
-  while ((match = re.exec(source)) !== null) {
-    const open = match.index + match[0].length - 1
-    let depth = 0
-    let i = open
-    for (; i < source.length; i++) {
-      const ch = source[i]
-      if (ch === '{') depth++
-      else if (ch === '}') {
-        depth--
-        if (depth === 0) break
-      } else if (ch === '`') i = skipTemplate(source, i)
-      else if (ch === '"' || ch === "'") i = skipString(source, i)
-    }
-    const body = stripComments(source.slice(open + 1, i)).trim()
-    if (body === '') strict++
-    else if (/^(console\.[a-z]+\([^;]*\);?\s*)+$/i.test(body)) consoleOnly++
-  }
-
-  return { strict, consoleOnly }
-}
+// classifyCatches and collectSourceFiles live in scripts/audit/source-metrics.mjs
+// so this ratchet and npm run audit:static count the same thing by construction.
 
 const SRC_DIR = path.join(repoRoot, 'src')
-const SOURCE_SKIP = new Set(['node_modules', 'dist', 'coverage'])
-function collectSourceFiles(dir, out = []) {
-  for (const entry of readdirSync(dir)) {
-    if (SOURCE_SKIP.has(entry)) continue
-    const full = path.join(dir, entry)
-    if (statSync(full).isDirectory()) collectSourceFiles(full, out)
-    else if (/\.(ts|tsx)$/.test(entry) && !/__tests__|\.test\.|\.spec\./.test(entry)) out.push(full)
-  }
-  return out
-}
 
 let strictCatches = 0
 let consoleCatches = 0
@@ -226,6 +164,25 @@ if (overBudget.length === 0) {
   for (const f of overBudget) {
     console.log(`  ${f.rel}: ${f.lines} lines, budget ${f.budget} (+${f.over})`)
   }
+}
+
+// --- Security-surface audit ------------------------------------------------
+// Report-only this round (blocking in WP 9). The numbers come from the same
+// scanner `npm run audit:static` runs, so this line cannot claim a fix the
+// command would contradict. A regression is printed loudly but does not fail
+// the lint gate yet — the gate that fails today is the audit command itself.
+const audit = runStaticAudit(repoRoot)
+const auditBaseline = JSON.parse(readFileSync(path.join(here, 'audit', 'baseline.json'), 'utf8'))
+const auditRows = diffAgainstBaseline(audit, auditBaseline)
+const auditRegressions = auditRows.filter((r) => r.status === 'WORSE' || r.status === 'NEW')
+console.log(
+  `audit surfaces  ${audit.metrics.wildcardPostMessage} wildcard postMessage, ` +
+    `${audit.metrics.unvalidatedWindowListeners} unvalidated listener(s), ` +
+    `${audit.metrics.dangerouslySetInnerHTML} raw HTML, ` +
+    `${audit.metrics.zeroCoercions} zero-coercion(s) (report only)`
+)
+for (const row of auditRegressions) {
+  console.log(`  REGRESSED     ${row.key}: ${row.expected ?? 'unmeasured'} -> ${row.actual}`)
 }
 
 // --- Exit ------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getAuthStorageUserKey } from '../components/RoadAnalysisWorkspace';
+import { getAuthStorageUserKey } from '../utils/authStorage';
 import type { ExtendedProjectSettings } from '../types/admin';
 import {
   ACTIVE_PROJECT_KEY_PREFIX,

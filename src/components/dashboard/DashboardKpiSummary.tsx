@@ -72,12 +72,17 @@ export const DashboardKpiSummary: React.FC<DashboardKpiSummaryProps> = ({
           ) : (
             <span className="text-2xl font-extrabold text-text-base tracking-tight">{totalKm.toFixed(1)} km</span>
           )}
-          <span className="text-[10px] text-text-base bg-inner border border-subtle px-1.5 py-0.5 rounded font-medium">
+          <span
+            className="text-[10px] text-text-base bg-inner border border-subtle px-1.5 py-0.5 rounded font-medium cursor-help"
+            title={targetKm > totalKm ? `${(targetKm - totalKm).toFixed(2)} km remaining to target` : 'Target reached'}
+          >
             {progressPercent}% of {targetKm} km Target
           </span>
         </div>
         <div className="text-[10px] text-text-muted font-medium truncate">
-          Cumulative Trajectory Distance &bull; Updated {lastUpdateDate}
+          {targetKm > totalKm && totalKm > 0
+            ? `${(targetKm - totalKm).toFixed(1)} km remaining • `
+            : 'Cumulative Trajectory Distance • '}Updated {lastUpdateDate}
         </div>
       </div>
 

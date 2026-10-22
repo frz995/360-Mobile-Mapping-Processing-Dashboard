@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { extractSubgridName } from '../services/supabase';
 import { minMaxOf } from '../utils/arrayBounds';
+import { postToMapFrame } from '../utils/mapOrigin';
 
 export interface SelectedPointInfo {
   subgrid: string;
@@ -346,70 +347,52 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
       iframes.forEach((ifr) => {
         if (!ifr || !ifr.contentWindow) return;
         try {
-          ifr.contentWindow.postMessage(
-            {
+          postToMapFrame(ifr, {
               type: 'SET_STAGED_DATA',
               stagedItems: formattedStagedItems,
               isSingleRun: false,
               runId: null
-            },
-            '*'
-          );
+            });
 
           // Exactly matching Processing Control Masterlist filter click
-          ifr.contentWindow.postMessage(
-            {
+          postToMapFrame(ifr, {
               type: 'SET_MAP_VIEW_STATE',
               viewMode: 'SUBGRID',
               subgrid: norm,
               date: '',
               runId: null,
               points: targetPoints
-            },
-            '*'
-          );
+            });
 
-          ifr.contentWindow.postMessage(
-            {
+          postToMapFrame(ifr, {
               type: 'FILTER_SUBGRID',
               subgrid: norm,
               date: '',
               isSingleRun: false,
               runId: null
-            },
-            '*'
-          );
+            });
 
-          ifr.contentWindow.postMessage(
-            {
+          postToMapFrame(ifr, {
               type: 'SET_SUBGRID_FILTER',
               subgrid: norm,
               date: '',
               isSingleRun: false,
               runId: null
-            },
-            '*'
-          );
+            });
 
           if (validPts.length > 0) {
-            ifr.contentWindow.postMessage(
-              {
+            postToMapFrame(ifr, {
                 type: 'FOCUS_BOUNDARY',
                 bbox: [bMinLng, bMinLat, bMaxLng, bMaxLat]
-              },
-              '*'
-            );
+              });
 
-            ifr.contentWindow.postMessage(
-              {
+            postToMapFrame(ifr, {
                 type: 'FLY_TO',
                 lat: centerLat,
                 lng: centerLng,
                 lon: centerLng,
                 zoom: 17
-              },
-              '*'
-            );
+              });
           }
         } catch {
           /* ignore */
@@ -444,71 +427,53 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
       iframes.forEach((ifr) => {
         if (!ifr || !ifr.contentWindow) return;
         try {
-          ifr.contentWindow.postMessage(
-            {
+          postToMapFrame(ifr, {
               type: 'SET_STAGED_DATA',
               stagedItems: formattedStagedItems,
               isSingleRun: false,
               runId: null
-            },
-            '*'
-          );
+            });
 
-          ifr.contentWindow.postMessage(
-            {
+          postToMapFrame(ifr, {
               type: 'SET_MAP_VIEW_STATE',
               viewMode: 'ALL',
               subgrid: '',
               date: '',
               runId: null,
               points: allPoints
-            },
-            '*'
-          );
+            });
 
-          ifr.contentWindow.postMessage(
-            {
+          postToMapFrame(ifr, {
               type: 'FILTER_SUBGRID',
               subgrid: '',
               date: '',
               isSingleRun: false,
               runId: null
-            },
-            '*'
-          );
+            });
 
-          ifr.contentWindow.postMessage(
-            {
+          postToMapFrame(ifr, {
               type: 'SET_SUBGRID_FILTER',
               subgrid: '',
               date: '',
               isSingleRun: false,
               runId: null
-            },
-            '*'
-          );
+            });
 
           if (validAll.length > 0) {
-            ifr.contentWindow.postMessage(
-              {
+            postToMapFrame(ifr, {
                 type: 'FOCUS_BOUNDARY',
                 bbox: [bMinLng, bMinLat, bMaxLng, bMaxLat]
-              },
-              '*'
-            );
+              });
 
-            ifr.contentWindow.postMessage(
-              {
+            postToMapFrame(ifr, {
                 type: 'FLY_TO',
                 lat: centerLat,
                 lng: centerLng,
                 lon: centerLng,
                 zoom: 14
-              },
-              '*'
-            );
+              });
           } else {
-            ifr.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
+            postToMapFrame(ifr, { type: 'CLEAR_BOUNDARY_FOCUS' });
           }
         } catch {
           /* ignore */
@@ -521,15 +486,12 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
   useEffect(() => {
     if (iframeRef.current?.contentWindow) {
       try {
-        iframeRef.current.contentWindow.postMessage(
-          {
+        postToMapFrame(iframeRef.current, {
             type: 'SET_STAGED_DATA',
             stagedItems: formattedStagedItems,
             isSingleRun: false,
             runId: null
-          },
-          '*'
-        );
+          });
       } catch {}
     }
 
@@ -542,45 +504,33 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
       );
 
       try {
-        afterIframeRef.current.contentWindow.postMessage(
-          {
+        postToMapFrame(afterIframeRef.current, {
             type: 'SET_STAGED_DATA',
             stagedItems: afterStaged,
             isSingleRun: false,
             runId: null
-          },
-          '*'
-        );
-        afterIframeRef.current.contentWindow.postMessage(
-          {
+          });
+        postToMapFrame(afterIframeRef.current, {
             type: 'SET_SUBGRID_FILTER',
             subgrid: targetFilter,
             isSingleRun: false,
             runId: null,
             date: ''
-          },
-          '*'
-        );
-        afterIframeRef.current.contentWindow.postMessage(
-          {
+          });
+        postToMapFrame(afterIframeRef.current, {
             type: 'FILTER_SUBGRID',
             subgrid: targetFilter,
             date: '',
             isSingleRun: false,
             runId: null
-          },
-          '*'
-        );
-        afterIframeRef.current.contentWindow.postMessage(
-          {
+          });
+        postToMapFrame(afterIframeRef.current, {
             type: 'SET_MAP_VIEW_STATE',
             viewMode: selectedSubgrids.length > 0 ? 'SUBGRID' : 'ALL',
             subgrid: targetFilter,
             date: '',
             runId: null
-          },
-          '*'
-        );
+          });
       } catch {}
     }
   }, [formattedStagedItems, selectedSubgrids, subgridPoints]);
@@ -907,26 +857,20 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                   const iframes = [iframeRef.current, afterIframeRef.current].filter(Boolean) as HTMLIFrameElement[];
                   iframes.forEach((ifr) => {
                     try {
-                      ifr.contentWindow?.postMessage(
-                        {
+                      postToMapFrame(ifr, {
                           type: 'FLY_TO',
                           lat: currentCenterRef.current.lat,
                           lng: currentCenterRef.current.lng,
                           lon: currentCenterRef.current.lng,
                           zoom: currentZoomRef.current
-                        },
-                        '*'
-                      );
-                      ifr.contentWindow?.postMessage(
-                        {
+                        });
+                      postToMapFrame(ifr, {
                           type: 'SET_MAP_CENTER',
                           lat: currentCenterRef.current.lat,
                           lng: currentCenterRef.current.lng,
                           lon: currentCenterRef.current.lng,
                           zoom: currentZoomRef.current
-                        },
-                        '*'
-                      );
+                        });
                     } catch {}
                   });
                 }}
@@ -966,26 +910,20 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                     const iframes = [iframeRef.current, afterIframeRef.current].filter(Boolean) as HTMLIFrameElement[];
                     iframes.forEach((ifr) => {
                       try {
-                        ifr.contentWindow?.postMessage(
-                          {
+                        postToMapFrame(ifr, {
                             type: 'FLY_TO',
                             lat: currentCenterRef.current.lat,
                             lng: currentCenterRef.current.lng,
                             lon: currentCenterRef.current.lng,
                             zoom: currentZoomRef.current
-                          },
-                          '*'
-                        );
-                        ifr.contentWindow?.postMessage(
-                          {
+                          });
+                        postToMapFrame(ifr, {
                             type: 'SET_MAP_CENTER',
                             lat: currentCenterRef.current.lat,
                             lng: currentCenterRef.current.lng,
                             lon: currentCenterRef.current.lng,
                             zoom: currentZoomRef.current
-                          },
-                          '*'
-                        );
+                          });
                       } catch {}
                     });
                     return;

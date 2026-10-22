@@ -1,5 +1,6 @@
 import { supabase, scoped, getServiceProjectId } from './client';
 import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
+import { getActiveOrganizationId } from '../tenantContext';
 import type { StationBoardRow, StationBoardMetricUnit } from '../../types/production';
 
 const STATION_BOARD_TABLE = 'station_board_items';
@@ -94,10 +95,12 @@ export async function fetchStationBoardItemsFromSupabase(subgrid?: string): Prom
 export async function upsertStationBoardItemInSupabase(
   row: StationBoardRow & { metric_unit?: StationBoardMetricUnit | null }
 ): Promise<boolean> {
+  const orgId = row.organization_id || getActiveOrganizationId() || null;
   const payload: StationBoardRow = {
     ...row,
     subgrid: (row.subgrid || '').trim().toUpperCase(),
     project_id: row.project_id || getServiceProjectId() || null,
+    organization_id: orgId,
     metric_unit: row.metric_unit || 'frames',
     updated_at: new Date().toISOString()
   };

@@ -370,7 +370,7 @@ async function fetchOverpassDirect(initialUrl: string, query: string): Promise<a
   if (lastError?.name === 'TypeError') {
     throw new Error(
       'Road extraction failed: the browser cannot reach Overpass directly (CORS). ' +
-      'Make sure the /api/road-extraction serverless function is deployed correctly on Vercel.'
+      'Make sure the /api/road-extraction function is deployed correctly on Cloudflare Pages.'
     );
   }
 

@@ -8,12 +8,6 @@ vi.mock('../supabase', () => ({
   }
 }));
 
-// Mock RoadAnalysisWorkspace's key helper so we don't pull in that heavy module.
-vi.mock('../../components/RoadAnalysisWorkspace', () => ({
-  getAuthStorageUserKey: (authSession?: any, isGuestUser?: boolean) =>
-    isGuestUser ? 'guest' : (authSession?.user?.id ?? 'anon')
-}));
-
 import { supabase } from '../supabase';
 import {
   getActiveProjectStorageKey,

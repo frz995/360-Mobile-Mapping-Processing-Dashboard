@@ -23,7 +23,6 @@ export function getProductionApiSettings(
       '',
     apiKey:
       projectSettings?.productionApiKey ||
-      import.meta.env.VITE_PRODUCTION_API_KEY ||
       ''
   };
 }

@@ -9,7 +9,7 @@ const DEFAULT_TRAJECTORY_FILTERS = { published: true, defect: true, stitching: t
 import type { Layer, Folder } from '../types/catalog';
 import { ensureDistrictGeometriesLoaded, rehydrateDistrictBoundary } from './boundary/malaysiaDistricts';
 import { getActiveOrganizationWebgis } from '../services/tenantContext';
-import { resolveWebgisUrl, createMapOriginMatcher } from '../utils/mapOrigin';
+import { resolveWebgisUrl, createMapOriginMatcher, postToMapFrame } from '../utils/mapOrigin';
 
 export const MapComponent = ({
   dataManagement = false,
@@ -313,49 +313,49 @@ export const MapComponent = ({
         const viewMode = selectedDailyRunId ? 'SINGLE_RUN' : (selectedSubgridFilter ? 'SUBGRID' : 'ALL');
 
         // 0. Send Unified SET_MAP_VIEW_STATE
-        iframeRef.current.contentWindow.postMessage({
+        postToMapFrame(iframeRef.current, {
           type: 'SET_MAP_VIEW_STATE',
           viewMode,
           subgrid: selectedSubgridFilter || '',
           runId: selectedDailyRunId || null,
           date: selectedDateFilter || null,
           points: allPoints
-        }, '*');
+        });
 
         // 1. Send SET_STAGED_DATA
-        iframeRef.current.contentWindow.postMessage({
+        postToMapFrame(iframeRef.current, {
           type: 'SET_STAGED_DATA',
           isStagingPreview: Boolean(dataManagement),
           stagedItems: formattedStagedItems,
           isSingleRun: isSingle,
           runId: selectedDailyRunId || null
-        }, '*');
+        });
 
         // 2. Send explicit selection messages for WebGIS viewer layers
         if (selectedSubgrids && selectedSubgrids.length > 0) {
           const highlightHex = isAfterDeletionPreview ? '#64748b' : '#38bdf8';
-          iframeRef.current.contentWindow.postMessage({
+          postToMapFrame(iframeRef.current, {
             type: 'SET_SELECTED_SUBGRIDS',
             subgrids: selectedSubgrids,
             selectedSubgrids: selectedSubgrids,
             color: highlightHex
-          }, '*');
-          iframeRef.current.contentWindow.postMessage({
+          });
+          postToMapFrame(iframeRef.current, {
             type: 'HIGHLIGHT_SUBGRID',
             subgrid: selectedSubgrids[0],
             subgrids: selectedSubgrids,
             color: highlightHex
-          }, '*');
+          });
         }
 
         // 3. Re-assert the operator's current trajectory filter. This used to
         // hardcode "everything on", so every staged-data refresh silently undid
         // an unchecked status or an unchecked master layer toggle.
-        iframeRef.current.contentWindow.postMessage({
+        postToMapFrame(iframeRef.current, {
           type: 'FILTER_STATUS_TYPES',
           statusFilters: { ...(trajectoryStatusFiltersRef.current || DEFAULT_TRAJECTORY_FILTERS), selected: true },
           showPanotrackData: showPanotrackLayerRef.current
-        }, '*');
+        });
 
         // 4. Send QAQC_DEFECTS_SYNC with all known defect items
         const defectsArray: any[] = [];
@@ -363,10 +363,10 @@ export const MapComponent = ({
           defectsArray.push(...defectsList);
         }
         if (defectsArray.length > 0) {
-          iframeRef.current.contentWindow.postMessage({
+          postToMapFrame(iframeRef.current, {
             type: 'QAQC_DEFECTS_SYNC',
             defects: defectsArray
-          }, '*');
+          });
         }
       } catch (e) { }
     }
@@ -377,11 +377,11 @@ export const MapComponent = ({
   useEffect(() => {
     if (!iframeRef.current?.contentWindow) return;
     try {
-      iframeRef.current.contentWindow.postMessage({
+      postToMapFrame(iframeRef.current, {
         type: 'FILTER_STATUS_TYPES',
         statusFilters: { ...(trajectoryStatusFilters || DEFAULT_TRAJECTORY_FILTERS), selected: true },
         showPanotrackData: showPanotrackLayer
-      }, '*');
+      });
     } catch (e) { }
   }, [showPanotrackLayer, trajectoryStatusFilters]);
 
@@ -426,15 +426,15 @@ export const MapComponent = ({
           resolved: basemap
         });
       }
-      iframeRef.current.contentWindow.postMessage({
+      postToMapFrame(iframeRef.current, {
         type: 'SET_BASEMAP',
         basemap,
         customUrl,
         opacity: (s.basemapOpacity ?? 100) / 100
-      }, '*');
+      });
 
       // 2. Send Map Vector Layer Theme & Styling
-      iframeRef.current.contentWindow.postMessage({
+      postToMapFrame(iframeRef.current, {
         type: 'SET_MAP_THEME',
         settings: {
           publishedTrackColor: s.publishedTrackColor || '#10B981',
@@ -447,7 +447,7 @@ export const MapComponent = ({
           opacity: (s.layerOpacity ?? 100) / 100,
           layerOpacity: (s.layerOpacity ?? 100) / 100
         }
-      }, '*');
+      });
 
       // 3. Send Project Geographic Boundary (shape + focus). Deduped by payload
       //    fingerprint: identical duplicates are skipped so the iframe's WebGL3DView
@@ -468,35 +468,35 @@ export const MapComponent = ({
 
       if (boundaryChanged) {
         if (payloadGeojson || payloadBbox) {
-          iframeRef.current.contentWindow.postMessage({
+          postToMapFrame(iframeRef.current, {
             type: 'SET_PROJECT_BOUNDARY',
             geojson: payloadGeojson,
             bbox: payloadBbox
-          }, '*');
+          });
           // Only send FOCUS_BOUNDARY if there are no survey points loaded,
           // so the map zooms into the actual survey trajectory when points are present.
           const hasSurveyPoints = formattedStagedItems.some(it => (it.panoramas || it.points || []).length > 0);
           if (boundary.focusActive && !hasSurveyPoints) {
-            iframeRef.current.contentWindow.postMessage({
+            postToMapFrame(iframeRef.current, {
               type: 'FOCUS_BOUNDARY',
               bbox: payloadBbox
-            }, '*');
+            });
           }
-          iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: boundary.focusActive === true }, '*');
+          postToMapFrame(iframeRef.current, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: boundary.focusActive === true });
         } else {
-          iframeRef.current.contentWindow.postMessage({
+          postToMapFrame(iframeRef.current, {
             type: 'SET_PROJECT_BOUNDARY',
             geojson: null,
             bbox: null
-          }, '*');
-          iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
-          iframeRef.current.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
+          });
+          postToMapFrame(iframeRef.current, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: false });
+          postToMapFrame(iframeRef.current, { type: 'CLEAR_BOUNDARY_FOCUS' });
         }
       }
 
       // 4. Send Storage / Dynamic Bucket Resolution Config so the WebGIS can resolve its own
       //    360 image URLs (single equirectangular OR multi-res tiles) against the active bucket.
-      iframeRef.current.contentWindow.postMessage({
+      postToMapFrame(iframeRef.current, {
         type: 'SET_STORAGE_CONFIG',
         storage: {
           storageProvider: s.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || '',
@@ -525,16 +525,16 @@ export const MapComponent = ({
           wasabiRegion: s.wasabiRegion || REGION_DEFAULTS.wasabiRegion,
           nasServerUrl: s.nasServerUrl || ''
         }
-      }, '*');
+      });
 
       // 5. Send dynamic Supabase backend target so the standalone WebGIS
       //    refetches published points from the active local/cloud DB when the
       //    user switches the database provider in Dashboard settings.
-      iframeRef.current.contentWindow.postMessage({
+      postToMapFrame(iframeRef.current, {
         type: 'SET_SUPABASE_TARGET',
         url: s.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '',
         anonKey: s.supabaseKey || s.databaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-      }, '*');
+      });
     } catch (e) { }
   }, [effectiveSettings, formattedStagedItems]);
 
@@ -571,13 +571,13 @@ export const MapComponent = ({
   // Send postMessage subgrid filter and staged data updates to embedded WebGIS map iframe
   useEffect(() => {
     if (iframeRef.current && iframeRef.current.contentWindow) {
-      iframeRef.current.contentWindow.postMessage({
+      postToMapFrame(iframeRef.current, {
         type: 'SET_SUBGRID_FILTER',
         subgrid: selectedSubgridFilter || '',
         isSingleRun: Boolean(selectedDailyRunId),
         runId: selectedDailyRunId || null,
         date: selectedDateFilter || ''
-      }, '*');
+      });
     }
   }, [selectedSubgridFilter, selectedDailyRunId, selectedDateFilter]);
 
@@ -655,13 +655,13 @@ export const MapComponent = ({
             const dispatch = () => {
               if (!iframeRef.current || !iframeRef.current.contentWindow) return;
               try {
-                iframeRef.current.contentWindow.postMessage({
+                postToMapFrame(iframeRef.current, {
                   type: 'SET_SUBGRID_FILTER',
                   subgrid: selectedSubgridFilter || '',
                   isSingleRun: Boolean(selectedDailyRunId),
                   runId: selectedDailyRunId || null,
                   date: selectedDateFilter || ''
-                }, '*');
+                });
                 syncMapSettings();
                 sendStagedData();
               } catch (e) { }
