@@ -44,7 +44,7 @@ export const DataForm = ({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const count = dataType === 'batches' ? (formData.images || 0) : (formData.imagesProcessed || 0);
+        const count = dataType === 'batches' ? (typeof formData.images === 'number' ? formData.images : 0) : (typeof formData.imagesProcessed === 'number' ? formData.imagesProcessed : 0);
         const finalKm = formData.kmProcessed > 0 ? formData.kmProcessed : Math.round((count * 0.005) * 100) / 100;
         onSave({ ...formData, kmProcessed: Math.round(finalKm * 100) / 100 });
       }}
@@ -76,19 +76,19 @@ export const DataForm = ({
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-text-muted block font-medium">POI Count</span>
-                <strong className="text-text-base font-semibold">{formData.poiCount ?? 0}</strong>
+                <strong className="text-text-base font-semibold">{formData.poiCount != null ? formData.poiCount : '—'}</strong>
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-text-muted block font-medium">Images</span>
-                <strong className="text-text-base font-semibold">{formData.images ?? 0} frames</strong>
+                <strong className="text-text-base font-semibold">{formData.images != null ? `${formData.images} frames` : '—'}</strong>
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-text-muted block font-medium">Distance</span>
-                <strong className="text-text-base font-semibold">{formData.kmProcessed ?? 0} km</strong>
+                <strong className="text-text-base font-semibold">{formData.kmProcessed != null ? `${formData.kmProcessed} km` : '—'}</strong>
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-text-muted block font-medium">Defects</span>
-                <strong className="text-text-base font-semibold">{formData.defects ?? 0}</strong>
+                <strong className="text-text-base font-semibold">{formData.defects != null ? formData.defects : '—'}</strong>
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle truncate">
                 <span className="text-[10px] text-text-muted block font-medium">First Image</span>
@@ -164,15 +164,15 @@ export const DataForm = ({
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-text-muted block font-medium">Images Processed</span>
-                <strong className="text-text-base font-semibold">{formData.imagesProcessed ?? 0} frames</strong>
+                <strong className="text-text-base font-semibold">{formData.imagesProcessed != null ? `${formData.imagesProcessed} frames` : '—'}</strong>
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-text-muted block font-medium">Distance</span>
-                <strong className="text-text-base font-semibold">{formData.kmProcessed ?? 0} km</strong>
+                <strong className="text-text-base font-semibold">{formData.kmProcessed != null ? `${formData.kmProcessed} km` : '—'}</strong>
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle col-span-2 sm:col-span-3">
                 <span className="text-[10px] text-text-muted block font-medium">Defects</span>
-                <strong className="text-text-base font-semibold">{formData.imagesDefected ?? 0}</strong>
+                <strong className="text-text-base font-semibold">{formData.imagesDefected != null ? formData.imagesDefected : '—'}</strong>
               </div>
             </div>
           </div>

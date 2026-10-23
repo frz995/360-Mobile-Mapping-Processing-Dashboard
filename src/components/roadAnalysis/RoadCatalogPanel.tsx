@@ -39,6 +39,11 @@ import {
   ReorderActionButtons
 } from '../common/ReorderList';
 
+const toPositiveCount = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
 export interface SystemLayerStyles {
   districtBoundary: {
     visible: boolean;
@@ -591,10 +596,10 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
           status,
           days: sortedDays,
           frames: sortedDays.reduce(
-            (acc, r) => acc + (Number(r?.availableImagesCount ?? r?.imagesProcessed ?? r?.images) || 0),
+            (acc, r) => acc + toPositiveCount(r?.availableImagesCount ?? r?.imagesProcessed ?? r?.images),
             0
           ),
-          poi: sortedDays.reduce((acc, r) => acc + (Number(r?.poiCount) || 0), 0)
+          poi: sortedDays.reduce((acc, r) => acc + toPositiveCount(r?.poiCount), 0)
         };
       })
       .sort((a, b) => a.code.localeCompare(b.code));
@@ -1228,8 +1233,9 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                         sg.days.map((d, idx) => {
                           const isLast = idx === sg.days.length - 1;
                           const connector = isLast ? '└─' : '├─';
-                          const frames = Number(d?.availableImagesCount ?? d?.imagesProcessed ?? d?.images) || 0;
-                          const poi = Number(d?.poiCount) || 0;
+                          const rawFrames = d?.availableImagesCount ?? d?.imagesProcessed ?? d?.images;
+                          const framesText = rawFrames !== undefined && rawFrames !== null && Number(rawFrames) >= 0 ? `${Number(rawFrames).toLocaleString()} fr` : '— fr';
+                          const poiText = d?.poiCount !== undefined && d?.poiCount !== null && Number(d.poiCount) >= 0 ? `${Number(d.poiCount).toLocaleString()} POI` : '— POI';
                           const pub = String(d?.publishToWebGIS || '').toLowerCase();
                           let stText = '—';
                           let stColor = 'text-text-muted';
@@ -1253,7 +1259,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                               <CalendarDays size={10} className="text-text-muted shrink-0" />
                               <span className="text-text-base whitespace-nowrap">{formatSurveyDate(d?.date)}</span>
                               <span className="text-text-muted whitespace-nowrap">
-                                {frames.toLocaleString()} fr &middot; {poi.toLocaleString()} POI
+                                {framesText} &middot; {poiText}
                               </span>
                               <span className={`ml-auto whitespace-nowrap ${stColor}`}>{stText}</span>
                             </div>
@@ -1667,7 +1673,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                   onUpdateCatalogLayer(layer.id, { fillOpacity: 0.35 })
                                 }
                                 className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors cursor-pointer ${
-                                  (layer.fillOpacity ?? 0) > 0
+                                  Number(layer.fillOpacity) > 0
                                     ? 'bg-inner border border-subtle text-text-base font-semibold shadow-sm'
                                     : 'text-text-muted hover:text-text-base'
                                 }`}
@@ -1680,7 +1686,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                   onUpdateCatalogLayer(layer.id, { fillOpacity: 0 })
                                 }
                                 className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors cursor-pointer ${
-                                  (layer.fillOpacity ?? 0) === 0
+                                  !(Number(layer.fillOpacity) > 0)
                                     ? 'bg-inner border border-subtle text-text-base font-semibold shadow-sm'
                                     : 'text-text-muted hover:text-text-base'
                                 }`}
@@ -1690,7 +1696,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                             </div>
                           </div>
 
-                          {(layer.fillOpacity ?? 0) > 0 && (
+                          {Number(layer.fillOpacity) > 0 && (
                             <>
                               {/* Fill Color Swatches (sleek w-3 h-3) */}
                               <div className="flex flex-col gap-1">
@@ -1752,7 +1758,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                 <div className="flex items-center justify-between text-[9px]">
                                   <span className="text-text-muted font-medium">Fill Opacity</span>
                                   <span className="font-mono text-text-base font-semibold">
-                                    {Math.round((layer.fillOpacity ?? 0) * 100)}%
+                                    {Math.round(Number(layer.fillOpacity) * 100)}%
                                   </span>
                                 </div>
                                 <CommitSlider
@@ -1979,7 +1985,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                               <div className="flex items-center gap-1.5">
                                 <span className="text-text-muted font-medium">Min Zoom</span>
                                 <select
-                                  value={layer.labelMinZoom ?? 0}
+                                  value={typeof layer.labelMinZoom === 'number' ? layer.labelMinZoom : 0}
                                   onChange={(e) =>
                                     onUpdateCatalogLayer(layer.id, { labelMinZoom: Number(e.target.value) })
                                   }

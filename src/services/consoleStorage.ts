@@ -190,7 +190,7 @@ export async function fetchParentDatabaseStats(): Promise<ParentDatabaseResult> 
       } else {
         const files: { size_bytes: number | null }[] = filesRaw;
         totalStorageBytes = files.reduce(
-          (acc: number, f) => acc + (Number(f.size_bytes) || 0),
+          (acc: number, f) => acc + (typeof f.size_bytes === 'number' ? f.size_bytes : 0),
           0
         );
         totalStorageFiles = files.length;
@@ -319,7 +319,7 @@ export async function fetchCompanyStorageBreakdown(): Promise<CompanyStorageResu
         const files: InventoryFallbackRow[] = filesRaw;
         const breakdown: CompanyStorageBreakdown[] = orgs.map((o) => {
           const orgFiles = files.filter((f) => f.organization_id === o.id);
-          const consumedBytes = orgFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0);
+          const consumedBytes = orgFiles.reduce((acc: number, f) => acc + (typeof f.size_bytes === 'number' ? f.size_bytes : 0), 0);
           const consumedGb = consumedBytes / (1024 * 1024 * 1024);
           const allocatedGb = o.settings && typeof o.settings.storageQuotaGb === 'number' ? o.settings.storageQuotaGb : null;
           const percentUsed = allocatedGb && allocatedGb > 0 ? (consumedGb / allocatedGb) * 100 : null;
@@ -340,13 +340,13 @@ export async function fetchCompanyStorageBreakdown(): Promise<CompanyStorageResu
             allocatedStorageGb: allocatedGb,
             consumedStorageBytes: consumedBytes,
             consumedFilesCount: orgFiles.length,
-            mmsPicBytes: mmsFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0),
+            mmsPicBytes: mmsFiles.reduce((acc: number, f) => acc + (typeof f.size_bytes === 'number' ? f.size_bytes : 0), 0),
             mmsPicFiles: mmsFiles.length,
-            panoramasBytes: panoFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0),
+            panoramasBytes: panoFiles.reduce((acc: number, f) => acc + (typeof f.size_bytes === 'number' ? f.size_bytes : 0), 0),
             panoramasFiles: panoFiles.length,
-            geometryBytes: geomFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0),
+            geometryBytes: geomFiles.reduce((acc: number, f) => acc + (typeof f.size_bytes === 'number' ? f.size_bytes : 0), 0),
             geometryFiles: geomFiles.length,
-            otherBytes: otherFiles.reduce((acc: number, f) => acc + (Number(f.size_bytes) || 0), 0),
+            otherBytes: otherFiles.reduce((acc: number, f) => acc + (typeof f.size_bytes === 'number' ? f.size_bytes : 0), 0),
             otherFiles: otherFiles.length,
             consumedStorageGb: consumedGb,
             percentUsed
@@ -363,8 +363,13 @@ export async function fetchCompanyStorageBreakdown(): Promise<CompanyStorageResu
       return { breakdown: [], error: 'No breakdown records returned.' };
     }
 
+    const numVal = (v: unknown): number => {
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
     const breakdown: CompanyStorageBreakdown[] = data.map((r: Record<string, unknown>) => {
-      const consumedBytes = typeof r.consumed_storage_bytes === 'number' ? r.consumed_storage_bytes : Number(r.consumed_storage_bytes) || 0;
+      const consumedBytes = numVal(r.consumed_storage_bytes);
       const consumedGb = consumedBytes / (1024 * 1024 * 1024);
       const allocatedGb = r.allocated_storage_gb !== null && r.allocated_storage_gb !== undefined ? Number(r.allocated_storage_gb) : null;
       const percentUsed = allocatedGb && allocatedGb > 0 ? (consumedGb / allocatedGb) * 100 : null;
@@ -379,15 +384,15 @@ export async function fetchCompanyStorageBreakdown(): Promise<CompanyStorageResu
         status: String(r.status || 'active'),
         allocatedStorageGb: allocatedGb,
         consumedStorageBytes: consumedBytes,
-        consumedFilesCount: typeof r.consumed_files_count === 'number' ? r.consumed_files_count : Number(r.consumed_files_count) || 0,
-        mmsPicBytes: typeof r.mms_pic_bytes === 'number' ? r.mms_pic_bytes : Number(r.mms_pic_bytes) || 0,
-        mmsPicFiles: typeof r.mms_pic_files === 'number' ? r.mms_pic_files : Number(r.mms_pic_files) || 0,
-        panoramasBytes: typeof r.panoramas_bytes === 'number' ? r.panoramas_bytes : Number(r.panoramas_bytes) || 0,
-        panoramasFiles: typeof r.panoramas_files === 'number' ? r.panoramas_files : Number(r.panoramas_files) || 0,
-        geometryBytes: typeof r.geometry_bytes === 'number' ? r.geometry_bytes : Number(r.geometry_bytes) || 0,
-        geometryFiles: typeof r.geometry_files === 'number' ? r.geometry_files : Number(r.geometry_files) || 0,
-        otherBytes: typeof r.other_bytes === 'number' ? r.other_bytes : Number(r.other_bytes) || 0,
-        otherFiles: typeof r.other_files === 'number' ? r.other_files : Number(r.other_files) || 0,
+        consumedFilesCount: numVal(r.consumed_files_count),
+        mmsPicBytes: numVal(r.mms_pic_bytes),
+        mmsPicFiles: numVal(r.mms_pic_files),
+        panoramasBytes: numVal(r.panoramas_bytes),
+        panoramasFiles: numVal(r.panoramas_files),
+        geometryBytes: numVal(r.geometry_bytes),
+        geometryFiles: numVal(r.geometry_files),
+        otherBytes: numVal(r.other_bytes),
+        otherFiles: numVal(r.other_files),
         consumedStorageGb: consumedGb,
         percentUsed
       };

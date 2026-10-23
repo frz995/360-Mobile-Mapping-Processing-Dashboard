@@ -25,12 +25,12 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
 }) => {
   // Dynamically compute exact ledger totals directly from dailyData or analytics
   const totalReportDistance = dailyData.length > 0
-    ? dailyData.reduce((sum, r) => sum + (Number(r.kmProcessed) || 0), 0)
-    : (analytics.totals.km || 0);
+    ? dailyData.reduce((sum, r) => sum + (typeof r.kmProcessed === 'number' ? r.kmProcessed : (Number.isFinite(Number(r.kmProcessed)) ? Number(r.kmProcessed) : 0)), 0)
+    : (typeof analytics.totals.km === 'number' ? analytics.totals.km : 0);
 
   const totalReportFrames = dailyData.length > 0
     ? dailyData.reduce((sum, r) => {
-        const rawPoi = Number(r.poiCount ?? r.poi ?? 0);
+        const rawPoi = typeof r.poiCount === 'number' ? r.poiCount : typeof r.poi === 'number' ? r.poi : 0;
         // Mirror getImagesProcessedCount priority order exactly
         if (typeof r.availableImagesCount === 'number') {
           return sum + (rawPoi > 0 ? Math.min(r.availableImagesCount, rawPoi) : r.availableImagesCount);
@@ -46,27 +46,22 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
         if (processed > 0) return sum + (rawPoi > 0 ? Math.min(processed, rawPoi) : processed);
         return sum;
       }, 0)
-    : (analytics.totals.frames || 0);
+    : (typeof analytics.totals.frames === 'number' ? analytics.totals.frames : 0);
 
   const totalReportDefects = dailyData.length > 0
-    ? dailyData.reduce(
-        (sum, r) =>
-          sum +
-          (Number(r.imagesDefected) ||
-            Number(r.defectCount) ||
-            Number(r.defects) ||
-            0),
-        0
-      )
-    : (analytics.totals.defects || 0);
+    ? dailyData.reduce((sum, r) => {
+        const rawD = r.imagesDefected ?? r.defectCount ?? r.defects;
+        return sum + (typeof rawD === 'number' ? rawD : 0);
+      }, 0)
+    : (typeof analytics.totals.defects === 'number' ? analytics.totals.defects : 0);
 
   const activeSubgridsCount = dailyData.length > 0
     ? new Set(
         dailyData.map((r) => (r.subgrid || '').toUpperCase().trim()).filter(Boolean)
       ).size
-    : (batchLogs.length || analytics.totals.subgrids || 1);
+    : (batchLogs.length > 0 ? batchLogs.length : (analytics.totals.subgrids > 0 ? analytics.totals.subgrids : 1));
 
-  const targetKm = Number(projectSettings?.targetKm) || analytics.totals.targetKm || 0;
+  const targetKm = Number(projectSettings?.targetKm) > 0 ? Number(projectSettings?.targetKm) : (analytics.totals.targetKm > 0 ? analytics.totals.targetKm : 0);
   const overallProgressPercent = targetKm > 0 ? (totalReportDistance / targetKm) * 100 : 0;
   const compliantPercent =
     totalReportFrames > 0
@@ -293,14 +288,15 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
               ) : (
                 dailyData.map((row, idx) => {
                   const frameCount =
-                    row.availableImagesCount ??
-                    row.panoramas?.length ??
-                    row.imagesProcessed ??
-                    row.poiCount ??
-                    row.images ??
-                    0;
-                  const km = Number(row.kmProcessed) || 0;
-                  const defects = Number(row.imagesDefected) || Number(row.defectCount) || 0;
+                    typeof row.availableImagesCount === 'number' ? row.availableImagesCount :
+                    typeof row.imagesProcessed === 'number' ? row.imagesProcessed :
+                    typeof row.images === 'number' ? row.images :
+                    typeof row.poiCount === 'number' ? row.poiCount :
+                    Array.isArray(row.panoramas) ? row.panoramas.length :
+                    null;
+                  const km = typeof row.kmProcessed === 'number' ? row.kmProcessed : (Number.isFinite(Number(row.kmProcessed)) ? Number(row.kmProcessed) : null);
+                  const rawD = row.imagesDefected ?? row.defectCount ?? row.defects;
+                  const defects = typeof rawD === 'number' ? rawD : null;
                   const isPublished =
                     row.publishToWebGIS === 'yes' || row.isSyncedWithSupabase === true;
 
@@ -313,12 +309,14 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
                         {row.date || '—'}
                       </td>
                       <td className="px-3.5 py-2.5 font-medium">{row.subgrid || '—'}</td>
-                      <td className="px-3.5 py-2.5 font-sans">{km.toFixed(1)} km</td>
+                      <td className="px-3.5 py-2.5 font-sans">{km !== null ? `${km.toFixed(1)} km` : '—'}</td>
                       <td className="px-3.5 py-2.5 font-sans font-semibold text-text-base">
-                        {Number(frameCount).toLocaleString()} frames
+                        {frameCount !== null ? `${frameCount.toLocaleString()} frames` : '—'}
                       </td>
                       <td className="px-3.5 py-2.5 font-sans">
-                        {defects > 0 ? (
+                        {defects === null ? (
+                          <span className="text-text-muted">—</span>
+                        ) : defects > 0 ? (
                           <span className="text-amber-400 font-semibold">{defects}</span>
                         ) : (
                           <span className="text-emerald-400">0</span>

@@ -116,6 +116,17 @@ export interface SurveyAnalytics {
   gaps: GapItem[];
 }
 
+function safeNum(val: unknown): number {
+  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return 0;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
 function extractSubgrid(value?: string): string {
   const m = /[nNsS]\d{2}[eEwW]\d{2,3}/.exec((value || '').trim());
   return m ? m[0].toUpperCase() : (value || '').trim().toUpperCase();
@@ -124,7 +135,8 @@ function extractSubgrid(value?: string): string {
 function poiOf(b: BatchLike): number {
   if (typeof b.poiCount === 'number' && b.poiCount >= 0) return b.poiCount;
   if (Array.isArray(b.panoramas) && b.panoramas.length > 0) return b.panoramas.length;
-  return Number(b.images ?? 0);
+  const img = Number(b.images);
+  return Number.isFinite(img) && img > 0 ? img : 0;
 }
 
 function framesOf(b: BatchLike): number {
@@ -191,10 +203,14 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
   // surveyed subgrid even when no plan geometry was clipped to the cell, so a
   // zero-filled map must not be treated as "$0 km to capture". Only when the
   // map carries real plan distances (sum > 0) are per-subgrid values trusted.
-  const subgridPlanTotal = Object.values(input.subgridPlanKm || {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
-  const effectiveTargetKm = Number(input.roadPlanKm) > 0 ? Number(input.roadPlanKm) : (Number(input.targetKm) || 0);
+  const subgridPlanTotal = Object.values(input.subgridPlanKm || {}).reduce((sum, v) => sum + safeNum(v), 0);
+  const rawTargetKm = Number(input.targetKm);
+  const effectiveTargetKm = Number(input.roadPlanKm) > 0
+    ? Number(input.roadPlanKm)
+    : (Number.isFinite(rawTargetKm) ? rawTargetKm : 0);
   const targetKm = effectiveTargetKm;
-  const targetImages = Number(input.targetImages) || 0;
+  const rawTargetImages = Number(input.targetImages);
+  const targetImages = Number.isFinite(rawTargetImages) ? rawTargetImages : 0;
   const hasRoadPlanSource = input.hasRoadPlanSource === true ||
     (input.hasRoadPlanSource !== false && (
       (typeof input.roadPlanKm === 'number' && input.roadPlanKm > 0) ||
@@ -243,10 +259,11 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
     const sg = extractSubgrid(d.subgrid || d.imageFilename) || 'UNASSIGNED';
     const acc = accFor(sg);
     acc.grid = d.grid || acc.grid || '1';
-    acc.km += Number(d.kmProcessed) || 0;
+    acc.km += safeNum(d.kmProcessed);
     acc.poi += poiOf(d);
     acc.frames += framesOf(d);
-    acc.defects += Number(d.defects) || Number((d as any).imagesDefected) || Number((d as any).defectCount) || 0;
+    const defectVal = d.defects ?? (d as any).imagesDefected ?? (d as any).defectCount;
+    acc.defects += safeNum(defectVal);
     acc.runsCount += 1;
     if (!acc.captureEquipment && d.captureEquipment) acc.captureEquipment = d.captureEquipment;
     if (!acc.pic && d.pic) acc.pic = d.pic;
@@ -263,10 +280,10 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
     const acc = accFor(sg);
     acc.grid = b.grid || acc.grid || '1';
     if (!dailySubgridKeys.has(sg)) {
-      acc.km += Number(b.kmProcessed) || 0;
+      acc.km += safeNum(b.kmProcessed);
       acc.poi += poiOf(b);
       acc.frames += framesOf(b);
-      acc.defects += Number(b.defects) || 0;
+      acc.defects += safeNum(b.defects);
       acc.runsCount += Number(b.runsCount) || 1;
     }
     if (!acc.captureEquipment && b.captureEquipment) acc.captureEquipment = b.captureEquipment;
@@ -313,11 +330,11 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
         // cell is fully covered, so leave the plan/remaining unknown.
         acc.planKm = null;
       }
-      sumPlanKm += (acc.planKm || 0);
       if (typeof acc.planKm === 'number') {
-        acc.remainingKm = Math.max(0, Math.round(((acc.planKm || 0) - acc.km) * 100) / 100);
-        acc.actualCoveragePct = (acc.planKm || 0) > 0
-          ? Math.min(100, Math.round((acc.km / (acc.planKm || 1)) * 100))
+        sumPlanKm += acc.planKm;
+        acc.remainingKm = Math.max(0, Math.round((acc.planKm - acc.km) * 100) / 100);
+        acc.actualCoveragePct = acc.planKm > 0
+          ? Math.min(100, Math.round((acc.km / acc.planKm) * 100))
           : (acc.km > 0 ? 100 : 0);
         acc.coveragePct = acc.actualCoveragePct;
       } else {
@@ -338,8 +355,8 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
     acc.defectsPerKm = acc.km > 0 ? acc.defects / acc.km : 0;
     acc.passRate = acc.poi > 0 ? Math.max(0, Math.round(((acc.poi - acc.defects) / acc.poi) * 100)) : 100;
     const qa = qaBySubgrid[acc.subgrid];
-    acc.qaApproved = qa?.approved || 0;
-    acc.qaRejected = qa?.rejected || 0;
+    acc.qaApproved = typeof qa?.approved === 'number' && qa.approved > 0 ? qa.approved : 0;
+    acc.qaRejected = typeof qa?.rejected === 'number' && qa.rejected > 0 ? qa.rejected : 0;
 
     if (acc.publishState === 'none' && (acc.km > 0 || acc.frames > 0)) acc.publishState = 'staged';
     if (acc.publishState === 'partial' || (acc.poi > acc.frames && acc.poi > 0)) acc.publishState = 'partial';
@@ -360,10 +377,10 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
   daily.forEach((d) => {
     const date = (d.date || '').slice(0, 10) || 'unknown';
     const pt = dailyByDate.get(date) || { date, km: 0, poi: 0, frames: 0, defects: 0 };
-    pt.km += Number(d.kmProcessed) || 0;
+    pt.km += safeNum(d.kmProcessed);
     pt.poi += poiOf(d);
     pt.frames = Math.max(pt.frames, framesOf(d));
-    pt.defects += Number(d.defects) || 0;
+    pt.defects += safeNum(d.defects);
     dailyByDate.set(date, pt);
   });
   const dailySeries = Array.from(dailyByDate.values()).sort((a, b) => a.date.localeCompare(b.date));

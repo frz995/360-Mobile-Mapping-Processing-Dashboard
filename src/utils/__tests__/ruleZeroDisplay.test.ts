@@ -103,5 +103,45 @@ describe('Rule Zero Display Metrics (WP 5)', () => {
       expect(resolveDefects({})).toBe(0)
       expect(resolveDefects({ defectCount: null, defects: null })).toBe(0)
     })
+
+    it('formats survey tree day records with em-dash when frames or poi are unmeasured', () => {
+      const formatSurveyRecord = (d: { availableImagesCount?: number | null; poiCount?: number | null }) => {
+        const rawFrames = d.availableImagesCount
+        const framesText = rawFrames !== undefined && rawFrames !== null && Number(rawFrames) >= 0
+          ? `${Number(rawFrames).toLocaleString()} fr`
+          : '— fr'
+        const poiText = d.poiCount !== undefined && d.poiCount !== null && Number(d.poiCount) >= 0
+          ? `${Number(d.poiCount).toLocaleString()} POI`
+          : '— POI'
+        return `${framesText} · ${poiText}`
+      }
+
+      expect(formatSurveyRecord({ availableImagesCount: null, poiCount: null })).toBe('— fr · — POI')
+      expect(formatSurveyRecord({ availableImagesCount: 150, poiCount: null })).toBe('150 fr · — POI')
+      expect(formatSurveyRecord({ availableImagesCount: null, poiCount: 200 })).toBe('— fr · 200 POI')
+      expect(formatSurveyRecord({ availableImagesCount: 150, poiCount: 200 })).toBe('150 fr · 200 POI')
+    })
+
+    it('formats ledger metrics with em-dash when unmeasured', () => {
+      const renderLedgerDefects = (defects: unknown) => {
+        const d = typeof defects === 'number' && Number.isFinite(defects) ? defects : null
+        return d !== null ? String(d) : '—'
+      }
+
+      const renderLedgerKm = (km: unknown) => {
+        const k = typeof km === 'number' && Number.isFinite(km) ? km : null
+        return k !== null ? `${k.toFixed(1)} km` : '—'
+      }
+
+      expect(renderLedgerDefects(null)).toBe('—')
+      expect(renderLedgerDefects(undefined)).toBe('—')
+      expect(renderLedgerDefects(0)).toBe('0')
+      expect(renderLedgerDefects(4)).toBe('4')
+
+      expect(renderLedgerKm(null)).toBe('—')
+      expect(renderLedgerKm(undefined)).toBe('—')
+      expect(renderLedgerKm(0)).toBe('0.0 km')
+      expect(renderLedgerKm(12.5)).toBe('12.5 km')
+    })
   })
 })
