@@ -1375,7 +1375,7 @@ export default function App() {
         status: ((d as any).status || 'Complete') as 'Complete' | 'Ongoing',
         isSyncedWithSupabase: d.isSyncedWithSupabase,
         publishToWebGIS: d.publishToWebGIS || 'yes',
-        defects: d.imagesDefected || d.defectCount || 0
+        defects: (d.imagesDefected ?? d.defectCount) ?? null
       }));
     }
     return reconcileBatchLogs(dailyData, batchLogs);
@@ -2592,7 +2592,7 @@ export default function App() {
 
     // Reset QA defect flags back to default when toggling subgrid without defects
     const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg);
-    if (!targetLog || (targetLog.defects || 0) === 0) {
+    if (!targetLog || targetLog.defects === 0) {
       setSelectedQaFlags({ blurry: false, obstruction: false, badGps: false });
       setQaQuestionnaireAnswer(null);
       setIsQaLocked(false);
@@ -2646,7 +2646,7 @@ subgrid: nextSubgrid,
                 frameState: d.imagesStorageVerified === true
                   ? (getImagesProcessedCount(d) < getPOICount(d) ? 'missing' : 'present')
                   : 'unverified',
-                qaState: (d.defectCount ?? 0) > 0 ? 'defect' : 'clean',
+                qaState: typeof d.defectCount === 'number' ? (d.defectCount > 0 ? 'defect' : 'clean') : 'unaudited',
                 isPublished: isPub
               });
               return { statusColor: runAppearance.color };
@@ -2815,7 +2815,7 @@ subgrid: nextSubgrid,
           frameState: daily.imagesStorageVerified === true
             ? (getImagesProcessedCount(daily) < getPOICount(daily) ? 'missing' : 'present')
             : 'unverified',
-          qaState: (daily.defectCount ?? 0) > 0 ? 'defect' : 'clean',
+          qaState: typeof daily.defectCount === 'number' ? (daily.defectCount > 0 ? 'defect' : 'clean') : 'unaudited',
           isPublished: isPub
         });
         return { statusColor: runAppearance.color };
@@ -3553,14 +3553,14 @@ subgrid: nextSubgrid,
 
                           const activeCoords = getSubgridCoords();
                           const activeKm = isDailySelected && activeDailyLog
-                            ? (activeDailyLog.kmProcessed?.toFixed(1) || '0.0')
-                            : (activeBatchLog?.kmProcessed ? activeBatchLog.kmProcessed.toFixed(1) : '0.0');
+                            ? (typeof activeDailyLog.kmProcessed === 'number' ? activeDailyLog.kmProcessed.toFixed(1) : '—')
+                            : (typeof activeBatchLog?.kmProcessed === 'number' ? activeBatchLog.kmProcessed.toFixed(1) : '—');
                           const activeImages = isDailySelected && activeDailyLog
-                            ? (activeDailyLog.imagesProcessed || activeDailyLog.availableImagesCount || activeDailyLog.poiCount || 0)
-                            : (activeBatchLog?.images || getPOICount(activeBatchLog) || 0);
+                            ? (activeDailyLog.imagesProcessed ?? activeDailyLog.availableImagesCount ?? activeDailyLog.poiCount ?? '—')
+                            : (activeBatchLog?.images ?? getPOICount(activeBatchLog) ?? '—');
                           const activeDefects = isDailySelected && activeDailyLog
-                            ? ((activeDailyLog.imagesDefected ?? activeDailyLog.defectCount) || 0)
-                            : (activeBatchLog?.defects || 0);
+                            ? (activeDailyLog.imagesDefected ?? activeDailyLog.defectCount ?? null)
+                            : (activeBatchLog?.defects ?? null);
                           const activePic = (isDailySelected && activeDailyLog ? activeDailyLog.pic : activeBatchLog?.pic) || 'Unassigned';
 
                           const isPublished = isDailySelected && activeDailyLog
@@ -3570,7 +3570,7 @@ subgrid: nextSubgrid,
                           const activeStatusText = isDailySelected && activeDailyLog
                             ? (activeDailyLog.publishToWebGIS === 'yes'
                               ? 'Published to WebGIS'
-                              : ((activeDailyLog.qaqcStatus && activeDailyLog.qaqcStatus !== 'Not yet on WebGIS' ? activeDailyLog.qaqcStatus : null) || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'Staging')))
+                              : ((activeDailyLog.qaqcStatus && activeDailyLog.qaqcStatus !== 'Not yet on WebGIS' ? activeDailyLog.qaqcStatus : null) || (activeDefects && activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'Staging')))
                             : (activeBatchLog?.status === 'Complete' ? 'Published to WebGIS' : 'Staging');
 
                           return selectedSubgridFilter ? (
@@ -3615,14 +3615,14 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
                                       setInspectorSubgrid(selectedSubgridFilter);
                                     }
                                   }}
-                                  className={`font-semibold px-2 py-0.5 rounded border text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95 ${activeDefects > 0
+                                  className={`font-semibold px-2 py-0.5 rounded border text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95 ${activeDefects && activeDefects > 0
                                     ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 border-amber-500/30 hover:border-amber-500/60'
                                     : 'text-text-muted bg-slate-500/10 border-subtle/20'
                                     }`}
                                   title="Click to filter & select defect data"
                                 >
-                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeDefects > 0 ? 'bg-amber-400' : 'bg-slate-400'}`}></span>
-                                  <span>{activeDefects} Flagged</span>
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeDefects && activeDefects > 0 ? 'bg-amber-400' : 'bg-slate-400'}`}></span>
+                                  <span>{activeDefects === null ? '—' : `${activeDefects} Flagged`}</span>
                                   <Filter size={10} className="group-hover:scale-110 transition-transform shrink-0" />
                                 </button>
                               </div>
@@ -4538,9 +4538,10 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
                 if (selectedDefectSubgrid) {
                   setInspectorSubgrid(selectedDefectSubgrid);
                 }
-                if (target.bearing !== undefined) {
-                  setPanoramaTelemetry(prev => ({ ...prev, yaw: target.bearing || 0 }));
-                  setHeading(target.bearing || 0);
+                const targetBearing = target.bearing;
+                if (typeof targetBearing === 'number' && Number.isFinite(targetBearing)) {
+                  setPanoramaTelemetry(prev => ({ ...prev, yaw: targetBearing }));
+                  setHeading(targetBearing);
                 }
                 setFocusedSection('qa');
                 setTimeout(() => {

@@ -1285,7 +1285,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       item.lng,
       item.bearing.toFixed(1),
       item.stepDistance.toFixed(2),
-      (item.blurVariance ?? 0).toFixed(1),
+      typeof item.blurVariance === 'number' ? item.blurVariance.toFixed(1) : '—',
       item.status,
       `"${item.deliverableModel || localThresholds.deliverableModel || 'masked_car'}"`,
       `"${item.defectType || ''}"`,

@@ -636,7 +636,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         masterRec?.isSyncedWithSupabase ||
         dailyRecs.some((d) => d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase)
       );
-      const masterDefects = masterRec?.defects || 0;
+      const masterDefects = typeof masterRec?.defects === 'number' ? masterRec.defects : 0;
       const hasDefects = Boolean(
         masterDefects > 0 ||
         dailyRecs.some((d) => ((d as any).defects && (d as any).defects > 0) || d.publishToWebGIS === 'need to recheck' || d.publishToWebGIS === 'no') ||
@@ -3532,7 +3532,7 @@ e.stopPropagation();
                                       className="text-text-muted italic"
                                       title="Defect count could not be read — qa_defects was unreachable. Migration 0032."
                                     >
-                                      unknown
+                                      —
                                     </span>
                                   ) : (
                                     batch.defects
@@ -3548,7 +3548,7 @@ e.stopPropagation();
                                       <span>Complete</span>
                                     </div>
                                   ) : (
-                                    <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap" title={batch.runsCount ? `${batch.publishedRunsCount || 0} of ${batch.runsCount} runs published` : undefined}>
+                                    <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap" title={batch.runsCount ? `${batch.publishedRunsCount ?? '—'} of ${batch.runsCount} runs published` : undefined}>
                                       <Clock size={14} className="text-amber-400 shrink-0" />
                                       <span>Ongoing</span>
                                     </div>
@@ -3697,7 +3697,7 @@ e.stopPropagation();
                                         className="text-text-muted italic"
                                         title="Defect count could not be read — qa_defects was unreachable. Migration 0032."
                                       >
-                                        unknown
+                                        —
                                       </span>
                                     ) : (
                                       d

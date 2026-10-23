@@ -153,7 +153,7 @@ export function resolvePointAppearance({
     color = PALETTE.defect;
   } else if (frameState === 'missing') {
     color = highlightMissingFrames ? PALETTE.missing : (isPublished ? PALETTE.published : PALETTE.staging);
-  } else if (frameState === 'unverified' || frameState === 'unrecorded') {
+  } else if (frameState === 'unverified' || frameState === 'unrecorded' || qaState === 'unaudited') {
     color = PALETTE.unknown;
   } else {
     color = isPublished ? PALETTE.published : PALETTE.staging;
@@ -178,7 +178,7 @@ export function resolvePointAppearance({
     status = 'defect';
   } else if (frameState === 'missing') {
     status = highlightMissingFrames ? 'missing' : (isPublished ? 'published' : 'staging');
-  } else if (frameState === 'unverified' || frameState === 'unrecorded') {
+  } else if (frameState === 'unverified' || frameState === 'unrecorded' || qaState === 'unaudited') {
     status = 'unverified';
   } else {
     status = isPublished ? 'published' : 'staging';

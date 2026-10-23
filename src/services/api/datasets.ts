@@ -290,7 +290,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       if (!qaDefectsReadable) return null;
       const own = qaDefectsPerRun.get(`${normSubgrid}_${runKey}`);
       if (typeof own === 'number') return own;
-      return qaDefectsPerSubgrid.get(normSubgrid) || 0;
+      return typeof qaDefectsPerSubgrid.get(normSubgrid) === 'number' ? qaDefectsPerSubgrid.get(normSubgrid)! : 0;
     };
 
     // Query cloud qaqc_audit_runs table for persisted QAQC audit metrics
@@ -683,7 +683,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
               poiCount: extractedPoi,
               imagesProcessed: extractedPoi,
               kmProcessed: extractedKm,
-              defectCount: r.defect_count || 0,
+              defectCount: typeof r.defect_count === 'number' ? r.defect_count : (r.defect_count ? Number(r.defect_count) : null),
               capturedAt: r.captured_at,
               equipment: extractedEq,
               status: extractedPub,
@@ -868,10 +868,10 @@ panoramas: g.points.map((pt: any, pIdx: number) => {
       if (!sg) return;
 
       const isPublished = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
-      const singlePoi = d.poiCount || 0;
+      const singlePoi = typeof d.poiCount === 'number' ? d.poiCount : 0;
       const singleImg = typeof d.imagesProcessed === 'number' ? d.imagesProcessed : (typeof d.availableImagesCount === 'number' ? d.availableImagesCount : 0);
-      const kmVal = Number(d.kmProcessed || 0);
-      const defCount = Number(d.imagesDefected || d.defectCount || 0);
+      const kmVal = typeof d.kmProcessed === 'number' ? d.kmProcessed : (d.kmProcessed ? Number(d.kmProcessed) : 0);
+      const defCount = typeof (d.imagesDefected ?? d.defectCount) === 'number' ? Number(d.imagesDefected ?? d.defectCount) : 0;
 
       const existing = batchMap.get(sg);
       if (existing) {
@@ -1225,7 +1225,7 @@ export async function saveToStagingSupabase(record: {
         roll: Number(p.roll ?? 0),
         subgrid: sgKey,
         grid: record.grid || '1',
-        km_processed: record.kmProcessed || 0,
+        km_processed: typeof record.kmProcessed === 'number' ? record.kmProcessed : (record.kmProcessed ? Number(record.kmProcessed) : 0),
         poi_count: record.poiCount || rawList.length,
         images_processed: record.imagesProcessed || rawList.length,
         // `null` is written as SQL NULL, not 0. A `? : 0` here would persist a
