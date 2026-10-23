@@ -33,7 +33,9 @@ function getLocalSession(): Record<string, unknown> | null {
 function setLocalSession(state: Record<string, unknown>): void {
   try {
     localStorage.setItem(getSessionStorageKey(), JSON.stringify(state));
-  } catch (_) { }
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Local storage session mirror', err instanceof Error ? err.message : String(err), 'warning');
+  }
 }
 
 /** The operator's last Production Hub activity for the active project. */
@@ -126,10 +128,13 @@ export async function saveHubSessionToSupabase(
 export async function purgeHubSession(): Promise<void> {
   try {
     localStorage.removeItem(getSessionStorageKey());
-  } catch (_) { }
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Purge local session mirror', err instanceof Error ? err.message : String(err), 'warning');
+  }
   const pid = getServiceProjectId();
   if (!pid) return;
-  try {
-    await supabase.from(HUB_SESSION_TABLE).delete().eq('project_id', pid);
-  } catch (_) { }
+  const { error } = await supabase.from(HUB_SESSION_TABLE).delete().eq('project_id', pid);
+  if (error) {
+    reportWriteFailure(HUB_WRITE_OPS.sessionWrite, 'Purge hub session', error.message);
+  }
 }

@@ -61,8 +61,9 @@ export async function saveRoadAnalysisStateToSupabase(
           data: { roadAnalysisState: null }
         });
       }
-    } catch {
-      // ignore
+    } catch (authPruneErr) {
+      // Best-effort cleanup of legacy JWT metadata; failure is non-fatal.
+      console.debug?.('[roadTrace] auth metadata prune notice:', authPruneErr);
     }
 
     // 2. Persist via the narrow SECURITY DEFINER RPC (migration 0014). It updates
@@ -92,8 +93,8 @@ export async function saveRoadAnalysisStateToSupabase(
       }
       // Missing function (migration not deployed) / no-op client: fall through to the
       // legacy direct upsert so the path still works where the RPC does not exist.
-    } catch {
-      // fall through to the legacy upsert below
+    } catch (rpcEx) {
+      console.debug?.('[roadTrace] RPC unavailable, falling through to direct upsert:', rpcEx);
     }
 
     if (!cloudUpdatedAt) {
@@ -147,8 +148,8 @@ export async function saveRoadAnalysisStateToSupabase(
         user: userEmail,
         status: 'success'
       });
-    } catch {
-      // ignore
+    } catch (auditErr) {
+      console.warn('[roadTrace] audit log notice:', auditErr);
     }
 
     return { success: true, updatedAt: cloudUpdatedAt || timestamp };

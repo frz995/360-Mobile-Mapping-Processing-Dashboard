@@ -143,7 +143,10 @@ export async function resolveStorageFiles(
           return result;
         }
       }
-    } catch (_) { /* manifest unavailable -> legacy fallback */ }
+    } catch (manifestErr) {
+      // Manifest unavailable -> fall back to database inventory / bucket listing
+      console.debug?.('[storage] manifest unavailable, falling back:', manifestErr);
+    }
   }
 
   const addFile = (name: string) => {
@@ -219,7 +222,10 @@ export async function resolveStorageFiles(
       storageInventoryCache = { result, timestamp: Date.now(), key: cacheKey };
       return result;
     }
-  } catch (_) { /* table or query unavailable -> fall back to storage listing */ }
+  } catch (inventoryErr) {
+    // Table or query unavailable -> fall back to storage listing
+    console.debug?.('[storage] file_inventory query failed, falling back to storage list:', inventoryErr);
+  }
 
   // 2) Fallback: enumerate files directly from the storage bucket(s)
   for (const loc of deduplicatedCandidates) {
@@ -249,7 +255,10 @@ export async function resolveStorageFiles(
       }
       // If we found files in the primary/candidate location, stop probing fallback buckets
       if (result.totalFiles > 0) break;
-    } catch (_) { /* skip inaccessible bucket */ }
+    } catch (bucketErr) {
+      // Skip inaccessible candidate bucket
+      console.debug?.(`[storage] bucket ${loc.bucket} probe failed:`, bucketErr);
+    }
   }
 
   storageInventoryCache = { result, timestamp: Date.now(), key: cacheKey };
@@ -279,7 +288,10 @@ export async function ensureManifestSettings(settings?: ExtendedProjectSettings)
   try {
     const dbSettings = await fetchProjectSettingsFromSupabase();
     if (dbSettings) return { ...candidate, ...dbSettings };
-  } catch (_) { /* fall back to the passed settings */ }
+  } catch (dbSettingsErr) {
+    // Database project settings unavailable -> fall back to the passed settings
+    console.debug?.('[storage] fetchProjectSettingsFromSupabase notice, falling back:', dbSettingsErr);
+  }
   return candidate;
 }
 

@@ -1,4 +1,5 @@
 import { supabase, scoped, getServiceProjectId } from './client';
+import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
 import type { ProcessingJobRecord } from '../../types/production';
 
 const PROCESSING_JOBS_TABLE = 'processing_jobs';
@@ -69,7 +70,9 @@ function getLocalJobs(): ProcessingJobRecord[] {
 function setLocalJobs(jobs: ProcessingJobRecord[]): void {
   try {
     localStorage.setItem(getJobStorageKey(), JSON.stringify(jobs));
-  } catch (_) { }
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Local processing jobs cache', err instanceof Error ? err.message : String(err), 'warning');
+  }
 }
 
 function getDeletedJobStorageKey(): string {
@@ -89,7 +92,9 @@ function getDeletedJobIds(): Set<string> {
 function saveDeletedJobIds(ids: Set<string>): void {
   try {
     localStorage.setItem(getDeletedJobStorageKey(), JSON.stringify(Array.from(ids)));
-  } catch (_) { }
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Deleted job IDs local cache', err instanceof Error ? err.message : String(err), 'warning');
+  }
 }
 
 export async function fetchProcessingJobsFromSupabase(): Promise<ProcessingJobRecord[]> {
@@ -160,26 +165,29 @@ export async function saveProcessingJobToSupabase(job: ProcessingJobRecord): Pro
 
   // 2. Try Supabase
   try {
+    let queryRes;
     if (job.id) {
       let query = supabase
         .from(PROCESSING_JOBS_TABLE)
         .update({ ...target })
         .eq('id', target.id);
       if (pid) query = query.eq('project_id', pid);
-      const { data, error } = await query
-        .select('*')
-        .single();
-      if (!error && data) return data as ProcessingJobRecord;
+      queryRes = await query.select('*').single();
     } else {
-      const { data, error } = await supabase
+      queryRes = await supabase
         .from(PROCESSING_JOBS_TABLE)
         .insert([{ ...target }])
         .select('*')
         .single();
-      if (!error && data) return data as ProcessingJobRecord;
+    }
+    if (queryRes.error) {
+      reportWriteFailure('jobs.save', `Processing job: ${target.name || target.id}`, queryRes.error.message);
+    } else if (queryRes.data) {
+      reportWriteSuccess('jobs.save');
+      return queryRes.data as ProcessingJobRecord;
     }
   } catch (err) {
-    console.warn('saveProcessingJobToSupabase catch:', err);
+    reportWriteFailure('jobs.save', `Processing job: ${target.name || target.id}`, err instanceof Error ? err.message : String(err));
   }
 
   return target;

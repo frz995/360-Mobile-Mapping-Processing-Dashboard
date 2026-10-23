@@ -1,4 +1,5 @@
 import { supabase, scoped, getServiceProjectId } from './client';
+import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
 import { STORAGE_BUCKET_DEFAULT } from '../../config/defaults';
 import type { ExtendedProjectSettings } from '../../types/admin';
 import { getStorageInventoryCacheTotalFiles } from './storage';
@@ -408,12 +409,13 @@ export async function saveDeletionRequestToSupabase(req: any): Promise<boolean> 
       ...(pid ? { project_id: pid } : {})
     }]);
     if (error) {
-      console.warn('Deletion request insert notice:', error.message);
+      reportWriteFailure('admin.deletion_request', 'Save deletion request', error.message);
       return false;
     }
+    reportWriteSuccess('admin.deletion_request');
     return true;
   } catch (err) {
-    console.warn('Exception saving deletion request:', err);
+    reportWriteFailure('admin.deletion_request', 'Save deletion request', err instanceof Error ? err.message : String(err));
     return false;
   }
 }
@@ -437,12 +439,13 @@ export async function updateDeletionRequestStatusInSupabase(
       rejection_reason: rejectionReason || null
     }).eq('id', id);
     if (error) {
-      console.warn('Update deletion request notice:', error.message);
+      reportWriteFailure('admin.deletion_request_status', 'Update deletion request status', error.message);
       return false;
     }
+    reportWriteSuccess('admin.deletion_request_status');
     return true;
   } catch (err) {
-    console.warn('Exception updating deletion request:', err);
+    reportWriteFailure('admin.deletion_request_status', 'Update deletion request status', err instanceof Error ? err.message : String(err));
     return false;
   }
 }
@@ -462,7 +465,7 @@ export function getCachedUserAccounts(): any[] {
       }
     }
   } catch {
-    // ignore
+    return [];
   }
   return [];
 }
@@ -549,7 +552,9 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
 
       // Opportunistically sync active user to public.user_accounts
       if (!existing) {
-        saveUserAccountToSupabase([sessionUserData]).catch(() => { });
+        saveUserAccountToSupabase([sessionUserData]).catch((err) => {
+          console.debug?.('Opportunistic user sync notice:', err);
+        });
       }
     }
   } catch (err) {
@@ -560,8 +565,8 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
   if (results.length > 0) {
     try {
       localStorage.setItem(CACHED_USER_ACCOUNTS_KEY, JSON.stringify(results));
-    } catch {
-      // storage quota or disabled
+    } catch (err) {
+      reportWriteFailure('storage.local_storage', 'User accounts local cache', err instanceof Error ? err.message : String(err), 'warning');
     }
   }
   return results;
@@ -625,18 +630,19 @@ export async function saveUserAccountToSupabase(users: any[]): Promise<boolean> 
     if (!Array.isArray(users) || users.length === 0) return true;
     try {
       localStorage.setItem(CACHED_USER_ACCOUNTS_KEY, JSON.stringify(users));
-    } catch {
-      // ignore
+    } catch (err) {
+      reportWriteFailure('storage.local_storage', 'User accounts local cache', err instanceof Error ? err.message : String(err), 'warning');
     }
     const rows = users.map(toUserAccountRow);
     const { error } = await supabase.from('user_accounts').upsert(rows, { onConflict: 'email' });
     if (error) {
-      console.warn('User accounts upsert notice:', error.message);
+      reportWriteFailure('admin.user_accounts', 'User accounts directory', error.message);
       return false;
     }
+    reportWriteSuccess('admin.user_accounts');
     return true;
   } catch (err) {
-    console.warn('Exception saving user account:', err);
+    reportWriteFailure('admin.user_accounts', 'User accounts directory', err instanceof Error ? err.message : String(err));
     return false;
   }
 }
@@ -687,7 +693,9 @@ export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
       const parsed = data.settings || data;
       try {
         localStorage.setItem('geosphere_project_settings', JSON.stringify(parsed));
-      } catch (_) { }
+      } catch (err) {
+        reportWriteFailure('storage.local_storage', 'Project settings local cache', err instanceof Error ? err.message : String(err), 'warning');
+      }
       return withTenantOrganizationScope(parsed);
     }
   } catch (err) {
@@ -707,8 +715,12 @@ export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
       return withTenantOrganizationScope(parsed);
     }
     localStorage.removeItem('geosphere_project_settings');
-  } catch (_) {
-    try { localStorage.removeItem('geosphere_project_settings'); } catch (__) { }
+  } catch {
+    try {
+      localStorage.removeItem('geosphere_project_settings');
+    } catch {
+      return null;
+    }
   }
 
   return null;
@@ -722,7 +734,9 @@ export async function saveProjectSettingsToSupabase(settings: any): Promise<bool
     // 1. Immediately persist to localStorage
     try {
       localStorage.setItem('geosphere_project_settings', JSON.stringify(settings));
-    } catch (_) { }
+    } catch (err) {
+      reportWriteFailure('storage.local_storage', 'Project settings local cache', err instanceof Error ? err.message : String(err), 'warning');
+    }
 
     // 2. Persist to Supabase project_settings table
     const { error } = await supabase.from('project_settings').upsert([
@@ -734,12 +748,13 @@ export async function saveProjectSettingsToSupabase(settings: any): Promise<bool
     ], { onConflict: 'id' });
 
     if (error) {
-      console.warn('Project settings Supabase upsert notice:', error.message);
+      reportWriteFailure('admin.project_settings', 'Project settings', error.message);
       return false;
     }
+    reportWriteSuccess('admin.project_settings');
     return true;
   } catch (err) {
-    console.warn('Exception saving project settings:', err);
+    reportWriteFailure('admin.project_settings', 'Project settings', err instanceof Error ? err.message : String(err));
     return false;
   }
 }

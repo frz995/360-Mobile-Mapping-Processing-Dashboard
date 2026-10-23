@@ -1,5 +1,6 @@
 import { supabase, scoped, getServiceProjectId } from './client';
 import { getActiveOrganizationId } from '../tenantContext';
+import { reportWriteFailure, reportWriteSuccess } from '../../lib/writeFailures';
 import type {
   StageEventLedgerRow,
   StageLedgerEvent,
@@ -36,7 +37,9 @@ function getLocalPending(): PendingLedgerRow[] {
 function setLocalPending(rows: PendingLedgerRow[]): void {
   try {
     localStorage.setItem(getLedgerStorageKey(), JSON.stringify(rows.slice(-500)));
-  } catch (_) { }
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Local storage pending ledger mirror', err instanceof Error ? err.message : String(err), 'warning');
+  }
 }
 
 async function insertEvent(row: StageEventLedgerRow): Promise<boolean> {
@@ -45,8 +48,14 @@ async function insertEvent(row: StageEventLedgerRow): Promise<boolean> {
     const { error } = await supabase
       .from(STAGE_LEDGER_TABLE)
       .insert([clean]);
-    return !error;
-  } catch (_) {
+    if (error) {
+      reportWriteFailure('ledger.insert_event', `Stage event: ${clean.stage}/${clean.event}`, error.message);
+      return false;
+    }
+    reportWriteSuccess('ledger.insert_event');
+    return true;
+  } catch (err) {
+    reportWriteFailure('ledger.insert_event', `Stage event: ${clean.stage}/${clean.event}`, err instanceof Error ? err.message : String(err));
     return false;
   }
 }
@@ -56,7 +65,9 @@ function clientEventId(): string {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID();
     }
-  } catch (_) { }
+  } catch {
+    return `evt-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+  }
   return `evt-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 }
 
@@ -109,13 +120,15 @@ export async function fetchStageEventLedgerFromSupabase(subgrid?: string): Promi
   await flushPendingLedger();
   const target = (subgrid || '').trim().toUpperCase();
   let remote: StageEventLedgerRow[] = [];
-  try {
-    const query = scoped(supabase
-      .from(STAGE_LEDGER_TABLE)
-      .select('*'));
-    const { data, error } = await query.order('occurrence', { ascending: true });
-    if (!error && Array.isArray(data)) remote = data as StageEventLedgerRow[];
-  } catch (_) { }
+  const query = scoped(supabase
+    .from(STAGE_LEDGER_TABLE)
+    .select('*'));
+  const { data, error } = await query.order('occurrence', { ascending: true });
+  if (error) {
+    console.warn('[stageEventLedger] fetch notice:', error.message);
+  } else if (Array.isArray(data)) {
+    remote = data as StageEventLedgerRow[];
+  }
   const pending = getLocalPending()
     .filter((r) => r._pending)
     .filter((r) => !target || (r.subgrid || '').trim().toUpperCase() === target);
