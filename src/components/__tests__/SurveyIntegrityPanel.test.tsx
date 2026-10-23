@@ -653,4 +653,13 @@ describe('SurveyIntegrityPanel — survives a clipped ancestor', () => {
     expect(screen.getByText('Survey Date Capture')).toBeTruthy()
     expect(screen.getByText('Unlinked images')).toBeTruthy()
   })
+
+  it('renders neutral slate dot and em-dash rather than false green or hyphen when unmeasured', () => {
+    renderPanel(subject({ verifiedFilenames: [], inventoryVerified: false }))
+    const missingRow = screen.getByText('Missing').closest('tr')
+    const dot = missingRow?.querySelector('span.rounded-full')
+    expect(dot?.className).toContain('bg-slate-500')
+    expect(dot?.className).not.toContain('bg-emerald-400')
+    expect(missingRow?.textContent).toContain('—')
+  })
 })

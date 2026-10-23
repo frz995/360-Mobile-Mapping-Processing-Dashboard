@@ -71,5 +71,37 @@ describe('Rule Zero Display Metrics (WP 5)', () => {
       const display = rawDefects === null ? '—' : `${rawDefects} Flagged`
       expect(display).toBe('0 Flagged')
     })
+
+    it('formats road analysis explorer tooltip metrics with em-dash when unmeasured', () => {
+      const formatDensity = (d: unknown) =>
+        d !== null && d !== undefined && Number.isFinite(Number(d)) ? `${Number(d).toFixed(2)} km/km²` : '— km/km²'
+      const formatRoads = (km: unknown) =>
+        km !== null && km !== undefined && Number.isFinite(Number(km)) ? `${Number(km).toFixed(1)} km roads` : '— km roads'
+      const formatCoverage = (cov: unknown) =>
+        cov !== null && cov !== undefined && Number.isFinite(Number(cov)) ? `${Number(cov)}% covered` : '—% covered'
+
+      expect(formatDensity(null)).toBe('— km/km²')
+      expect(formatDensity(undefined)).toBe('— km/km²')
+      expect(formatDensity(1.456)).toBe('1.46 km/km²')
+
+      expect(formatRoads(null)).toBe('— km roads')
+      expect(formatRoads(12.34)).toBe('12.3 km roads')
+
+      expect(formatCoverage(null)).toBe('—% covered')
+      expect(formatCoverage(85)).toBe('85% covered')
+    })
+
+    it('resolves deletion impact defect count safely without zero coercions', () => {
+      const resolveDefects = (record: Record<string, unknown>): number => {
+        const dVal = record.defectCount ?? record.imagesDefected ?? record.defects
+        return typeof dVal === 'number' ? dVal : 0
+      }
+
+      expect(resolveDefects({ defectCount: 5 })).toBe(5)
+      expect(resolveDefects({ defectCount: null, imagesDefected: 3 })).toBe(3)
+      expect(resolveDefects({ defects: 2 })).toBe(2)
+      expect(resolveDefects({})).toBe(0)
+      expect(resolveDefects({ defectCount: null, defects: null })).toBe(0)
+    })
   })
 })

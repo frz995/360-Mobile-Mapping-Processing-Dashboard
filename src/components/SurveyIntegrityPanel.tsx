@@ -160,7 +160,7 @@ export function SurveyIntegrityPanel({
       { label: 'Metadata mismatch', value: mismatchCount }
     ];
     const unknownLabels = terms.filter((t) => t.value === null).map((t) => t.label);
-    const total = unknownLabels.length === 0 ? terms.reduce((s, t) => s + (t.value ?? 0), 0) : null;
+    const total = unknownLabels.length === 0 ? terms.reduce((s, t) => s + (t.value !== null ? t.value : 0), 0) : null;
     return { total, unknownLabels };
   }, [duplicateCount, invalidCount, mismatchCount]);
 
@@ -186,7 +186,7 @@ export function SurveyIntegrityPanel({
     ? 'border-emerald-500'
     : isWarning
     ? 'border-amber-400'
-    : report.inventoryVerified && (missingCount ?? 0) > 0
+    : report.inventoryVerified && typeof missingCount === 'number' && missingCount > 0
     ? 'border-rose-500'
     : 'border-slate-500';
 
@@ -200,7 +200,7 @@ export function SurveyIntegrityPanel({
   // which prints "0% linked" for a run nobody looked at.
   const linkageKnown = report.foundImages !== null && report.gpsLinkedImages !== null;
   const linkageIsLowerBound = report.inventoryVerified && report.unlinkedImages === null;
-  const linkedCount = report.gpsLinkedImages ?? 0;
+  const linkedCount = typeof report.gpsLinkedImages === 'number' ? report.gpsLinkedImages : 0;
   const percentLinked = useMemo(() => {
     if (!linkageKnown || expectedCount <= 0) return 0;
     return Math.min(100, Math.max(0, Math.round((linkedCount / expectedCount) * 100)));
@@ -382,13 +382,13 @@ export function SurveyIntegrityPanel({
                 <span className="text-[10px] font-medium text-text-muted">Available Frames</span>
                 <div className="my-0.5">
                   <span className="text-lg sm:text-xl font-bold text-text-base tabular-nums">
-                    {report.foundImages !== null ? report.foundImages.toLocaleString() : '-'}
+                    {report.foundImages !== null ? report.foundImages.toLocaleString() : '—'}
                   </span>
                 </div>
                 <span className="text-[9px] text-text-muted truncate">
                   {linkageIsLowerBound
                     ? 'Lower bound, bucket unread'
-                    : (unlinkedCount ?? 0) > 0
+                    : typeof unlinkedCount === 'number' && unlinkedCount > 0
                     ? 'Linked + unclaimed strays'
                     : 'POI-matched in storage'}
                 </span>
@@ -400,16 +400,16 @@ export function SurveyIntegrityPanel({
                 <div className="my-0.5">
                   <span
                     className={`text-lg sm:text-xl font-bold tabular-nums ${
-                      (missingCount ?? 0) > 0 ? 'text-rose-400' : 'text-text-base'
+                      typeof missingCount === 'number' && missingCount > 0 ? 'text-rose-400' : 'text-text-base'
                     }`}
                   >
-                    {missingCount !== null ? missingCount.toLocaleString() : '-'}
+                    {missingCount !== null ? missingCount.toLocaleString() : '—'}
                   </span>
                 </div>
                 <span className="text-[9px] text-text-muted truncate">
                   {missingCount === null
                     ? 'Not measured'
-                    : (missingCount ?? 0) > 0
+                    : missingCount > 0
                     ? 'Expected minus GPS-linked'
                     : 'All accounted for'}
                 </span>
@@ -424,7 +424,7 @@ export function SurveyIntegrityPanel({
                       totalIssuesCount !== null && totalIssuesCount > 0 ? 'text-amber-400' : 'text-text-base'
                     }`}
                   >
-                    {totalIssuesCount !== null ? totalIssuesCount.toLocaleString() : '-'}
+                    {totalIssuesCount !== null ? totalIssuesCount.toLocaleString() : '—'}
                   </span>
                 </div>
                 <span className="text-[9px] text-text-muted truncate">
@@ -590,7 +590,7 @@ export function SurveyIntegrityPanel({
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            (missingCount ?? 0) > 0 ? 'bg-rose-400' : 'bg-emerald-400'
+                            missingCount === null ? 'bg-slate-500' : missingCount > 0 ? 'bg-rose-400' : 'bg-emerald-400'
                           }`}
                         />
                         <span>Missing frames</span>
@@ -621,7 +621,7 @@ export function SurveyIntegrityPanel({
                       {missingCount === null ? (
                         <span className="text-text-muted">
                           <span className="sr-only">{storageUnknown}</span>
-                          -
+                          —
                         </span>
                       ) : missingCount > 0 ? (
                         <button
@@ -632,7 +632,7 @@ export function SurveyIntegrityPanel({
                           View details &gt;
                         </button>
                       ) : (
-                        <span className="text-text-muted">-</span>
+                        <span className="text-text-muted">—</span>
                       )}
                     </td>
                   </tr>
@@ -643,28 +643,32 @@ export function SurveyIntegrityPanel({
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            (duplicateCount ?? 0) > 0 ? 'bg-amber-400' : 'bg-slate-500'
+                            typeof duplicateCount === 'number' && duplicateCount > 0 ? 'bg-amber-400' : 'bg-slate-500'
                           }`}
                         />
                         <span>Duplicate</span>
                       </div>
                     </td>
                     <td className="py-1.5 px-2">
-                      {duplicateCount === 0 ? (
+                      {duplicateCount === null ? (
+                        <span className="text-text-muted italic">{metadataUnknown}</span>
+                      ) : duplicateCount === 0 ? (
                         <span aria-label="0" className="text-text-muted tabular-nums">0</span>
                       ) : (
                         <span className="font-semibold tabular-nums text-amber-400">
-                          {duplicateCount?.toLocaleString()}
+                          {duplicateCount.toLocaleString()}
                         </span>
                       )}
                     </td>
                     <td className="py-1.5 px-2 text-[10px] text-text-muted">
-                      {(duplicateCount ?? 0) === 0
+                      {duplicateCount === null
+                        ? metadataUnknown
+                        : duplicateCount === 0
                         ? 'No repeated filenames in the run metadata'
                         : `${duplicateCount} filename${duplicateCount === 1 ? '' : 's'} claimed by more than one POI, ${duplicateOccurrences} extra claim${duplicateOccurrences === 1 ? '' : 's'}`}
                     </td>
                     <td className="py-1.5 px-2 text-right">
-                      {(duplicateCount ?? 0) > 0 ? (
+                      {typeof duplicateCount === 'number' && duplicateCount > 0 ? (
                         <button
                           title="Click to list duplicates"
                           onClick={() => setOpenList('duplicates')}
@@ -673,7 +677,7 @@ export function SurveyIntegrityPanel({
                           View details &gt;
                         </button>
                       ) : (
-                        <span className="text-text-muted">-</span>
+                        <span className="text-text-muted">—</span>
                       )}
                     </td>
                   </tr>
@@ -684,26 +688,32 @@ export function SurveyIntegrityPanel({
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            (invalidCount ?? 0) > 0 ? 'bg-amber-400' : 'bg-slate-500'
+                            typeof invalidCount === 'number' && invalidCount > 0 ? 'bg-amber-400' : 'bg-slate-500'
                           }`}
                         />
                         <span>Invalid filename</span>
                       </div>
                     </td>
                     <td className="py-1.5 px-2">
-                      {invalidCount === 0 ? (
+                      {invalidCount === null ? (
+                        <span className="text-text-muted italic">{metadataUnknown}</span>
+                      ) : invalidCount === 0 ? (
                         <span aria-label="0" className="text-text-muted tabular-nums">0</span>
                       ) : (
                         <span className="font-semibold tabular-nums text-amber-400">
-                          {invalidCount?.toLocaleString()}
+                          {invalidCount.toLocaleString()}
                         </span>
                       )}
                     </td>
                     <td className="py-1.5 px-2 text-[10px] text-text-muted">
-                      {(invalidCount ?? 0) === 0 ? 'All filenames are valid' : `${invalidCount} invalid filename structures`}
+                      {invalidCount === null
+                        ? metadataUnknown
+                        : invalidCount === 0
+                        ? 'All filenames are valid'
+                        : `${invalidCount} invalid filename structures`}
                     </td>
                     <td className="py-1.5 px-2 text-right">
-                      {(invalidCount ?? 0) > 0 ? (
+                      {typeof invalidCount === 'number' && invalidCount > 0 ? (
                         <button
                           title="Click to list invalid filenames"
                           onClick={() => setOpenList('invalidFilenames')}
@@ -712,7 +722,7 @@ export function SurveyIntegrityPanel({
                           View details &gt;
                         </button>
                       ) : (
-                        <span className="text-text-muted">-</span>
+                        <span className="text-text-muted">—</span>
                       )}
                     </td>
                   </tr>
@@ -723,7 +733,7 @@ export function SurveyIntegrityPanel({
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            (mismatchCount ?? 0) > 0 ? 'bg-amber-400' : 'bg-slate-500'
+                            typeof mismatchCount === 'number' && mismatchCount > 0 ? 'bg-amber-400' : 'bg-slate-500'
                           }`}
                         />
                         <span>Metadata mismatch</span>
@@ -744,13 +754,13 @@ export function SurveyIntegrityPanel({
                     </td>
                     <td className="py-1.5 px-2 text-[10px] text-text-muted">
                       {report.metadataCaptured
-                        ? (mismatchCount ?? 0) === 0
+                        ? mismatchCount === 0
                           ? 'Metadata matches recorded frames'
                           : `${mismatchCount} mismatches against CSV`
                         : metadataUnknown}
                     </td>
                     <td className="py-1.5 px-2 text-right">
-                      {(mismatchCount ?? 0) > 0 ? (
+                      {typeof mismatchCount === 'number' && mismatchCount > 0 ? (
                         <button
                           title="Click to list metadata mismatches"
                           onClick={() => setOpenList('metadataMismatches')}
@@ -759,7 +769,7 @@ export function SurveyIntegrityPanel({
                           View details &gt;
                         </button>
                       ) : (
-                        <span className="text-text-muted">-</span>
+                        <span className="text-text-muted">—</span>
                       )}
                     </td>
                   </tr>
@@ -785,7 +795,7 @@ export function SurveyIntegrityPanel({
                         : storageUnknown}
                     </td>
                     <td className="py-1.5 px-2 text-right">
-                      {(report.gpsLinkedImages ?? 0) > 0 ? (
+                      {typeof report.gpsLinkedImages === 'number' && report.gpsLinkedImages > 0 ? (
                         <button
                           onClick={() => toast.info(`${report.gpsLinkedImages} images mapped to trajectory`)}
                           className="text-text-muted hover:text-text-base font-semibold hover:underline inline-flex items-center gap-1 cursor-pointer text-[10px]"
@@ -793,7 +803,7 @@ export function SurveyIntegrityPanel({
                           View details &gt;
                         </button>
                       ) : (
-                        <span className="text-text-muted">-</span>
+                        <span className="text-text-muted">—</span>
                       )}
                     </td>
                   </tr>
@@ -804,7 +814,7 @@ export function SurveyIntegrityPanel({
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            (unlinkedCount ?? 0) > 0 ? 'bg-amber-400' : 'bg-slate-500'
+                            typeof unlinkedCount === 'number' && unlinkedCount > 0 ? 'bg-amber-400' : 'bg-slate-500'
                           }`}
                         />
                         <span>Unlinked images</span>
@@ -824,12 +834,12 @@ export function SurveyIntegrityPanel({
                     <td className="py-1.5 px-2 text-[10px] text-text-muted">
                       {report.unlinkedImages === null
                         ? bucketUnknown
-                        : (unlinkedCount ?? 0) === 0
+                        : unlinkedCount === 0
                         ? 'Every image here is claimed by some run'
                         : `${unlinkedCount} images no run of this subgrid claims`}
                     </td>
                     <td className="py-1.5 px-2 text-right">
-                      {(unlinkedCount ?? 0) > 0 ? (
+                      {typeof unlinkedCount === 'number' && unlinkedCount > 0 ? (
                         <button
                           title="Click to list unlinked images"
                           onClick={() => setOpenList('unlinkedImages')}
@@ -838,7 +848,7 @@ export function SurveyIntegrityPanel({
                           View details &gt;
                         </button>
                       ) : (
-                        <span className="text-text-muted">-</span>
+                        <span className="text-text-muted">—</span>
                       )}
                     </td>
                   </tr>

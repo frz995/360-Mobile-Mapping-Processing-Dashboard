@@ -237,7 +237,7 @@ export function computeDeletionImpact(params: ComputeDeletionImpactParams): Dele
   };
 
   const stagingFor = (sg: string) =>
-    stagingAggregates.filter((a) => matchesSubgrid(a.subgrid, sg)).reduce((s, a) => s + (a.frames || 0), 0);
+    stagingAggregates.filter((a) => matchesSubgrid(a.subgrid, sg)).reduce((s, a) => s + (typeof a.frames === 'number' ? a.frames : 0), 0);
 
   const qaFor = (sg: string) => {
     if (!qaRecords) return 0;
@@ -281,13 +281,9 @@ export function computeDeletionImpact(params: ComputeDeletionImpactParams): Dele
       const sg = (extractSubgridName(rawSg) || rawSg || 'RECORD').toUpperCase().trim();
       const poi = extractPoiCount(effectiveTarget);
       const frames = extractFramesCount(effectiveTarget);
-      const km = Math.round((Number(effectiveTarget.kmProcessed) || 0) * 100) / 100;
-      const defects = Number(
-        ('defectCount' in effectiveTarget ? effectiveTarget.defectCount : 0) ||
-        ('imagesDefected' in (effectiveTarget as any) ? (effectiveTarget as any).imagesDefected : 0) ||
-        ('defects' in (effectiveTarget as any) ? (effectiveTarget as any).defects : 0) ||
-        0
-      );
+      const km = Math.round((typeof effectiveTarget.kmProcessed === 'number' ? effectiveTarget.kmProcessed : 0) * 100) / 100;
+      const dVal = (effectiveTarget as any).defectCount ?? (effectiveTarget as any).imagesDefected ?? (effectiveTarget as any).defects;
+      const defects = typeof dVal === 'number' ? dVal : 0;
       const isPub = effectiveTarget.publishToWebGIS === 'yes' || Boolean(effectiveTarget.isSyncedWithSupabase);
       const published = isPub ? 1 : 0;
 
@@ -378,12 +374,9 @@ export function computeDeletionImpact(params: ComputeDeletionImpactParams): Dele
       const sg = (extractSubgridName(rawSg) || rawSg || 'RECORD').toUpperCase().trim();
       const poi = extractPoiCount(effectiveTarget);
       const frames = extractFramesCount(effectiveTarget);
-      const km = Math.round((Number(effectiveTarget.kmProcessed) || 0) * 100) / 100;
-      const defects = Number(
-        ('defects' in effectiveTarget ? effectiveTarget.defects : 0) ||
-        ('defectCount' in (effectiveTarget as any) ? (effectiveTarget as any).defectCount : 0) ||
-        0
-      );
+      const km = Math.round((typeof effectiveTarget.kmProcessed === 'number' ? effectiveTarget.kmProcessed : 0) * 100) / 100;
+      const dVal = (effectiveTarget as any).defects ?? (effectiveTarget as any).defectCount;
+      const defects = typeof dVal === 'number' ? dVal : 0;
 
       const linkedRuns = dailyFor(sg);
       const runs = (typeof (effectiveTarget as BatchLogLike).runsCount === 'number' && (effectiveTarget as BatchLogLike).runsCount! > 0)
@@ -487,8 +480,11 @@ export function computeDeletionImpact(params: ComputeDeletionImpactParams): Dele
         const runsInGroup = subgridGroups.get(sg) || [];
         const poi = runsInGroup.reduce((s, r) => s + extractPoiCount(r), 0);
         const frames = runsInGroup.reduce((s, r) => s + extractFramesCount(r), 0);
-        const km = Math.round(runsInGroup.reduce((s, r) => s + (Number(r.kmProcessed) || 0), 0) * 100) / 100;
-        const defects = runsInGroup.reduce((s, r) => s + Number(r.defectCount ?? (r as any).imagesDefected ?? 0), 0);
+        const km = Math.round(runsInGroup.reduce((s, r) => s + (typeof r.kmProcessed === 'number' ? r.kmProcessed : 0), 0) * 100) / 100;
+        const defects = runsInGroup.reduce((s, r) => {
+          const d = r.defectCount ?? (r as any).imagesDefected;
+          return s + (typeof d === 'number' ? d : 0);
+        }, 0);
         const published = runsInGroup.filter((r) => r.publishToWebGIS === 'yes' || r.isSyncedWithSupabase).length;
 
         const allRunsForSg = dailyFor(sg);
@@ -570,8 +566,9 @@ export function computeDeletionImpact(params: ComputeDeletionImpactParams): Dele
         const sg = (extractSubgridName(raw) || raw).toUpperCase().trim();
         const poi = extractPoiCount(b);
         const frames = extractFramesCount(b);
-        const km = Math.round((Number(b.kmProcessed) || 0) * 100) / 100;
-        const defects = Number(b.defects ?? (b as any).defectCount ?? 0);
+        const km = Math.round((typeof b.kmProcessed === 'number' ? b.kmProcessed : 0) * 100) / 100;
+        const bDef = b.defects ?? (b as any).defectCount;
+        const defects = typeof bDef === 'number' ? bDef : 0;
 
         const linkedRuns = dailyFor(sg);
         const runs = (typeof b.runsCount === 'number' && b.runsCount > 0)
@@ -664,14 +661,14 @@ export function computeDeletionImpact(params: ComputeDeletionImpactParams): Dele
       if (sourceTab === 'daily') {
         poi = runs.reduce((s, r) => s + extractPoiCount(r), 0);
         frames = runs.reduce((s, r) => s + extractFramesCount(r), 0);
-        km = runs.reduce((s, r) => s + (r.kmProcessed || 0), 0);
-        defects = runs.reduce((s, r) => s + (r.defectCount || 0), 0);
+        km = runs.reduce((s, r) => s + (typeof r.kmProcessed === 'number' ? r.kmProcessed : 0), 0);
+        defects = runs.reduce((s, r) => s + (typeof r.defectCount === 'number' ? r.defectCount : 0), 0);
         published = runs.filter((r) => r.publishToWebGIS === 'yes' || r.isSyncedWithSupabase).length;
       } else if (sourceTab === 'batches') {
         poi = batches.reduce((s, b) => s + extractPoiCount(b), 0);
         frames = batches.reduce((s, b) => s + extractFramesCount(b), 0);
-        km = batches.reduce((s, b) => s + (b.kmProcessed || 0), 0);
-        defects = batches.reduce((s, b) => s + (b.defects || 0), 0);
+        km = batches.reduce((s, b) => s + (typeof b.kmProcessed === 'number' ? b.kmProcessed : 0), 0);
+        defects = batches.reduce((s, b) => s + (typeof b.defects === 'number' ? b.defects : 0), 0);
         published = batches.filter((b) => b.publishToWebGIS === 'yes' || b.isSyncedWithSupabase).length;
       } else {
         const runsPoi = runs.reduce((s, r) => s + extractPoiCount(r), 0);
@@ -682,12 +679,12 @@ export function computeDeletionImpact(params: ComputeDeletionImpactParams): Dele
         const batchesFrames = batches.reduce((s, b) => s + extractFramesCount(b), 0);
         frames = Math.max(runsFrames, batchesFrames);
 
-        const runsKm = runs.reduce((s, r) => s + (r.kmProcessed || 0), 0);
-        const batchesKm = batches.reduce((s, b) => s + (b.kmProcessed || 0), 0);
+        const runsKm = runs.reduce((s, r) => s + (typeof r.kmProcessed === 'number' ? r.kmProcessed : 0), 0);
+        const batchesKm = batches.reduce((s, b) => s + (typeof b.kmProcessed === 'number' ? b.kmProcessed : 0), 0);
         km = Math.max(runsKm, batchesKm);
 
-        const runsDefects = runs.reduce((s, r) => s + (r.defectCount || 0), 0);
-        const batchesDefects = batches.reduce((s, b) => s + (b.defects || 0), 0);
+        const runsDefects = runs.reduce((s, r) => s + (typeof r.defectCount === 'number' ? r.defectCount : 0), 0);
+        const batchesDefects = batches.reduce((s, b) => s + (typeof b.defects === 'number' ? b.defects : 0), 0);
         defects = Math.max(runsDefects, batchesDefects);
 
         const runsPublished = runs.filter(
@@ -762,10 +759,9 @@ export function computeDeletionImpact(params: ComputeDeletionImpactParams): Dele
     const sg = (extractSubgridName(rawSg) || rawSg || 'RECORD').toUpperCase().trim();
     const poi = extractPoiCount(fallbackRecord);
     const frames = extractFramesCount(fallbackRecord);
-    const km = fallbackRecord.kmProcessed || 0;
-    const defects = (('defectCount' in fallbackRecord && typeof (fallbackRecord as any).defectCount === 'number')
-      ? (fallbackRecord as any).defectCount
-      : (('defects' in fallbackRecord && typeof (fallbackRecord as any).defects === 'number') ? (fallbackRecord as any).defects : 0)) || 0;
+    const km = typeof fallbackRecord.kmProcessed === 'number' ? fallbackRecord.kmProcessed : 0;
+    const fDef = (fallbackRecord as any).defectCount ?? (fallbackRecord as any).defects;
+    const defects = typeof fDef === 'number' ? fDef : 0;
     const isPub = fallbackRecord.publishToWebGIS === 'yes' || fallbackRecord.isSyncedWithSupabase;
 
     const row: ImpactRow = {

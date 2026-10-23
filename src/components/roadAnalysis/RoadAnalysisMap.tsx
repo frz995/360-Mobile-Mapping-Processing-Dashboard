@@ -1080,8 +1080,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
       const srcId = `ra-cat-${catLayer.id}`;
       const heavy =
-        (catLayer.featureCount ?? 0) >= HEAVY_CATALOG_FEATURE_COUNT ||
-        (catLayer.geometryBytes ?? 0) > HEAVY_CATALOG_BYTES;
+        (typeof catLayer.featureCount === 'number' && catLayer.featureCount >= HEAVY_CATALOG_FEATURE_COUNT) ||
+        (typeof catLayer.geometryBytes === 'number' && catLayer.geometryBytes > HEAVY_CATALOG_BYTES);
 
       // Determine initial data for the source. When geometry was rehydrated from
       // IndexedDB (reload path), only `geojsonJson` is set — `geojson` is undefined.
@@ -1233,7 +1233,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           const isBold = catLayer.labelBold ?? false;
           const haloColor = catLayer.labelHaloColor || '#090d16';
           const haloWidth = catLayer.labelHaloWidth ?? 2;
-          const minZoom = catLayer.labelMinZoom ?? 0;
+          const minZoom = typeof catLayer.labelMinZoom === 'number' ? catLayer.labelMinZoom : 0;
           map.addLayer({
             id: labelId,
             type: 'symbol',
@@ -1936,7 +1936,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const catalogGeometryKey = useMemo(
     () =>
       catalogLayers
-        .map((l) => `${l.id}:${l.geometryType}:${l.featureCount ?? 0}:${l.geojson ? 'g' : ''}${l.geojsonJson ? 'j' : ''}`)
+        .map((l) => `${l.id}:${l.geometryType}:${typeof l.featureCount === 'number' ? l.featureCount : ''}:${l.geojson ? 'g' : ''}${l.geojsonJson ? 'j' : ''}`)
         .join('|'),
     [catalogLayers]
   );
@@ -2425,29 +2425,29 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
       const p = features[0].properties || {};
       const subgrid = p.subgrid || 'GRID CELL';
-      const density = Number(p.density || 0).toFixed(2);
-      const planKm = Number(p.planKm || 0).toFixed(1);
-      const areaKm2 = Number(p.areaKm2 || 0).toFixed(1);
-      const complexity = Number(p.complexity || 0);
-      const panotrack = Number(p.panotrack || 0);
-      const coverage = Number(p.coverage || 0);
+      const density = p.density !== null && p.density !== undefined && Number.isFinite(Number(p.density)) ? Number(p.density).toFixed(2) : '—';
+      const planKm = p.planKm !== null && p.planKm !== undefined && Number.isFinite(Number(p.planKm)) ? Number(p.planKm).toFixed(1) : '—';
+      const areaKm2 = p.areaKm2 !== null && p.areaKm2 !== undefined && Number.isFinite(Number(p.areaKm2)) ? Number(p.areaKm2).toFixed(1) : '—';
+      const complexity = p.complexity !== null && p.complexity !== undefined && Number.isFinite(Number(p.complexity)) ? Number(p.complexity) : null;
+      const panotrack = p.panotrack !== null && p.panotrack !== undefined && Number.isFinite(Number(p.panotrack)) ? Number(p.panotrack) : null;
+      const coverage = p.coverage !== null && p.coverage !== undefined && Number.isFinite(Number(p.coverage)) ? Number(p.coverage) : null;
 
       const activeMetric = projectExplorerColorByMetricRef.current || 'density';
       let metricBadge = `${density} km/km²`;
-      let metricValue = Number(p.density || 0);
+      let metricValue = density !== '—' ? Number(density) : 0;
 
       if (activeMetric === 'complexity') {
-        metricBadge = `${complexity}/100 complexity`;
-        metricValue = complexity;
+        metricBadge = complexity !== null ? `${complexity}/100 complexity` : '— complexity';
+        metricValue = complexity !== null ? complexity : 0;
       } else if (activeMetric === 'panotrack') {
-        metricBadge = `${panotrack} survey frames`;
-        metricValue = panotrack;
+        metricBadge = panotrack !== null ? `${panotrack} survey frames` : '— survey frames';
+        metricValue = panotrack !== null ? panotrack : 0;
       } else if (activeMetric === 'roads') {
         metricBadge = `${planKm} km roads`;
-        metricValue = Number(p.planKm || 0);
+        metricValue = planKm !== '—' ? Number(planKm) : 0;
       } else if (activeMetric === 'coverage') {
-        metricBadge = `${coverage}% covered`;
-        metricValue = coverage;
+        metricBadge = coverage !== null ? `${coverage}% covered` : '—% covered';
+        metricValue = coverage !== null ? coverage : 0;
       }
 
       // Badge colour tracks the cell's choropleth class so the tooltip and the
@@ -2583,14 +2583,19 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           bbox = null;
         }
 
+        const parseMetric = (valA: unknown, valB: unknown): number => {
+          const raw = valA !== undefined && valA !== null ? valA : valB;
+          const num = Number(raw);
+          return Number.isFinite(num) ? num : 0;
+        };
         const cellData = {
           subgrid: subgridName,
-          density: Number(matchedFeature?.properties?.density ?? p.density ?? 0),
-          planKm: Number(matchedFeature?.properties?.planKm ?? p.planKm ?? 0),
-          areaKm2: Number(matchedFeature?.properties?.areaKm2 ?? p.areaKm2 ?? 0),
-          complexity: Number(matchedFeature?.properties?.complexity ?? p.complexity ?? 0),
-          panotrack: Number(matchedFeature?.properties?.panotrack ?? p.panotrack ?? 0),
-          coverage: Number(matchedFeature?.properties?.coverage ?? p.coverage ?? 0),
+          density: parseMetric(matchedFeature?.properties?.density, p.density),
+          planKm: parseMetric(matchedFeature?.properties?.planKm, p.planKm),
+          areaKm2: parseMetric(matchedFeature?.properties?.areaKm2, p.areaKm2),
+          complexity: parseMetric(matchedFeature?.properties?.complexity, p.complexity),
+          panotrack: parseMetric(matchedFeature?.properties?.panotrack, p.panotrack),
+          coverage: parseMetric(matchedFeature?.properties?.coverage, p.coverage),
           bbox,
           rings
         };
