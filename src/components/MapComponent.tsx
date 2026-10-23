@@ -201,7 +201,8 @@ export const MapComponent = ({
           isPublished: isPub,
           isSelected: isPointSelected,
           dimmed: isAfterDeletionPreview,
-          highlightMissingFrames: trajectoryStatusFilters?.missingFrames !== false
+          highlightMissingFrames: trajectoryStatusFilters?.missingFrames !== false,
+          highlightDefects: trajectoryStatusFilters?.defect !== false
         });
         const pointColorHex = isPointSelected && isAfterDeletionPreview
           ? '#64748b'
@@ -210,8 +211,8 @@ export const MapComponent = ({
           ? '#64748b'
           : appearance.strokeColor;
         const pointStatusVal = isAfterDeletionPreview
-          ? (isPointSelected ? 'purged' : (isPointDefect ? 'defect' : statusVal))
-          : (isPointSelected ? 'selected' : (isPointDefect ? 'defect' : statusVal));
+          ? (isPointSelected ? 'purged' : appearance.status)
+          : (isPointSelected ? 'selected' : appearance.status);
         const pointOp = isAfterDeletionPreview
           ? (isPointSelected ? 0.35 : (isPointDefect ? 1.0 : op))
           : (isPointSelected ? 1.0 : (isPointDefect ? 1.0 : op));
@@ -303,7 +304,7 @@ export const MapComponent = ({
         points: formattedPans
       };
     });
-  }, [stagedItems, defectsList, selectedSubgrids, selectedPoints, isAfterDeletionPreview, trajectoryStatusFilters?.missingFrames]);
+  }, [stagedItems, defectsList, selectedSubgrids, selectedPoints, isAfterDeletionPreview, trajectoryStatusFilters?.missingFrames, trajectoryStatusFilters?.defect]);
 
   const sendStagedDataImmediate = useCallback(() => {
     if (iframeRef.current && iframeRef.current.contentWindow && formattedStagedItems.length > 0) {

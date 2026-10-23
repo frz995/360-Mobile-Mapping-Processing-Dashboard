@@ -305,6 +305,41 @@ describe('resolvePointAppearance', () => {
     expect(defectMissing.color).toBe('#ef4444');
     expect(defectMissing.status).toBe('defect');
   });
+
+  it('falls back to staging yellow or published green when highlightDefects is false', () => {
+    // When Defect/Flags filter is unchecked, defect points stay visible in their base pipeline color
+    const stagingDefect = resolvePointAppearance({
+      frameState: 'present',
+      qaState: 'defect',
+      isPublished: false,
+      highlightDefects: false
+    });
+    expect(stagingDefect.color).toBe('#f59e0b');
+    expect(stagingDefect.strokeColor).toBe('#f59e0b');
+    expect(stagingDefect.status).toBe('staging');
+
+    const publishedDefect = resolvePointAppearance({
+      frameState: 'present',
+      qaState: 'defect',
+      isPublished: true,
+      highlightDefects: false
+    });
+    expect(publishedDefect.color).toBe('#10b981');
+    expect(publishedDefect.strokeColor).toBe('#10b981');
+    expect(publishedDefect.status).toBe('published');
+
+    // Missing frame stroke is preserved even if highlightDefects is false
+    const missingDefectNoHighlight = resolvePointAppearance({
+      frameState: 'missing',
+      qaState: 'defect',
+      isPublished: false,
+      highlightDefects: false,
+      highlightMissingFrames: true
+    });
+    expect(missingDefectNoHighlight.color).toBe('#f59e0b');
+    expect(missingDefectNoHighlight.strokeColor).toBe('#94a3b8');
+    expect(missingDefectNoHighlight.status).toBe('staging');
+  });
 })
 
 describe('isAvailableFromFrameState', () => {

@@ -76,6 +76,12 @@ export interface PointAppearanceInput {
    * status color: yellow (#f59e0b) if staging, green (#10b981) if published.
    */
   highlightMissingFrames?: boolean;
+  /**
+   * When true (default), defect points render as red (#ef4444) with status 'defect'.
+   * When false, defect points fall back to their pipeline status color:
+   * yellow (#f59e0b) if staging, green (#10b981) if published, with status 'staging' or 'published'.
+   */
+  highlightDefects?: boolean;
 }
 
 export interface PointAppearance {
@@ -134,7 +140,8 @@ export function resolvePointAppearance({
   isPublished,
   isSelected = false,
   dimmed = false,
-  highlightMissingFrames = true
+  highlightMissingFrames = true,
+  highlightDefects = true
 }: PointAppearanceInput): PointAppearance {
   if (dimmed) {
     return {
@@ -142,7 +149,7 @@ export function resolvePointAppearance({
       strokeColor: PALETTE.dimmed,
       frameState,
       qaState,
-      status: qaState === 'defect' ? 'defect' : 'missing',
+      status: qaState === 'defect' ? (highlightDefects ? 'defect' : (isPublished ? 'published' : 'staging')) : 'missing',
       opacity: 0.35
     };
   }
@@ -150,7 +157,7 @@ export function resolvePointAppearance({
   // ---- fill: the QA outcome --------------------------------------------
   let color: string;
   if (qaState === 'defect') {
-    color = PALETTE.defect;
+    color = highlightDefects ? PALETTE.defect : (isPublished ? PALETTE.published : PALETTE.staging);
   } else if (frameState === 'missing') {
     color = highlightMissingFrames ? PALETTE.missing : (isPublished ? PALETTE.published : PALETTE.staging);
   } else if (frameState === 'unverified' || frameState === 'unrecorded' || qaState === 'unaudited') {
@@ -175,7 +182,7 @@ export function resolvePointAppearance({
   // entry for it. Until then it degrades to the colour we send alongside it.
   let status: string;
   if (qaState === 'defect') {
-    status = 'defect';
+    status = highlightDefects ? 'defect' : (isPublished ? 'published' : 'staging');
   } else if (frameState === 'missing') {
     status = highlightMissingFrames ? 'missing' : (isPublished ? 'published' : 'staging');
   } else if (frameState === 'unverified' || frameState === 'unrecorded' || qaState === 'unaudited') {
