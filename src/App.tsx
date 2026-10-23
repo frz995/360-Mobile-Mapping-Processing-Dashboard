@@ -63,7 +63,7 @@ import {
   type UserProject,
   type ProjectDraft
 } from './services/projects';
-import { postToMapFrame, postToMapFrames, createMapOriginMatcher } from './utils/mapOrigin';
+import { postToMapFrame, postToMapFrames, createMapOriginMatcher, resolveWebgisUrl } from './utils/mapOrigin';
 
 // Canonical sender lives in src/utils/mapOrigin.ts (WP 3): fail-closed,
 // never broadcast to '*'. App.tsx uses the imported postToMapFrame/postToMapFrames.
@@ -1277,7 +1277,7 @@ export default function App() {
     };
 
     const onWindowMessage = (e: MessageEvent) => {
-        const isAllowedOrigin = createMapOriginMatcher(projectSettings?.mapUrl, window.location.origin, { trustApexSubdomains: true });
+        const isAllowedOrigin = createMapOriginMatcher(resolveWebgisUrl(projectSettings?.webgisUrl, import.meta.env.VITE_MAP_URL), window.location.origin, { trustApexSubdomains: true });
         if (!isAllowedOrigin(e.origin)) return;
         if (
         e.data === 'geosphere:activity' ||
@@ -2470,7 +2470,7 @@ export default function App() {
 
   useEffect(() => {
     const handlePanoramaMessage = (e: MessageEvent) => {
-        const isAllowedOrigin = createMapOriginMatcher(projectSettings?.mapUrl, window.location.origin, { trustApexSubdomains: true });
+        const isAllowedOrigin = createMapOriginMatcher(resolveWebgisUrl(projectSettings?.webgisUrl, import.meta.env.VITE_MAP_URL), window.location.origin, { trustApexSubdomains: true });
         if (!isAllowedOrigin(e.origin)) return;
         // Prevent clicks inside QAQC Workbench from triggering the background main dashboard map & viewer
       if (isQAQCRunnerModalOpen || e.data?.source === 'qaqcWorkbench' || e.data?.isQAQC) {
@@ -2663,7 +2663,7 @@ subgrid: nextSubgrid,
               // `datasets.ts` had already put on the point.
               const appearance = resolvePointAppearance({
                 frameState: (p.frameState as FrameState) ?? 'unrecorded',
-                qaState: isPtDefect ? 'defect' : (isPub ? 'clean' : 'unaudited'),
+                qaState: isPtDefect ? 'defect' : 'clean',
                 isPublished: isPub
               });
               return {
@@ -2851,7 +2851,7 @@ subgrid: nextSubgrid,
             // `datasets.ts` had already resolved onto the point.
             const appearance = resolvePointAppearance({
               frameState: (p.frameState as FrameState) ?? 'unrecorded',
-              qaState: isPtDefect ? 'defect' : (isPub ? 'clean' : 'unaudited'),
+              qaState: isPtDefect ? 'defect' : 'clean',
               isPublished: isPub
             });
             return {

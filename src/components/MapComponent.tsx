@@ -197,7 +197,7 @@ export const MapComponent = ({
             verifiedFilenames: item.availableFilenames ?? [],
             inventoryVerified: item.imagesStorageVerified === true
           }),
-          qaState: isPointDefect ? 'defect' : (statusVal === 'yes' ? 'clean' : 'unaudited'),
+          qaState: isPointDefect ? 'defect' : 'clean',
           isPublished: isPub,
           isSelected: isPointSelected,
           dimmed: isAfterDeletionPreview,
