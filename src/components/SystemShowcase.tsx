@@ -398,7 +398,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         try {
             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch {
-            try { root.scrollTop = el.offsetTop; } catch { /* test env */ }
+            try { root.scrollTop = el.offsetTop; } catch { return; }
         }
     }, []);
 

@@ -69,7 +69,7 @@ function emit(): void {
     try {
       listener(snap);
     } catch {
-      // A misbehaving listener must never break the write path that reported.
+      return;
     }
   });
 }
@@ -126,7 +126,9 @@ export function subscribeWriteFailures(listener: Listener): () => void {
   try {
     listener(snapshot());
   } catch {
-    // ignore
+    return () => {
+      listeners.delete(listener);
+    };
   }
   return () => {
     listeners.delete(listener);

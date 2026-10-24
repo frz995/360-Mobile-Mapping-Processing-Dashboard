@@ -308,8 +308,7 @@ export const MapComponent = ({
 
   const sendStagedDataImmediate = useCallback(() => {
     if (iframeRef.current && iframeRef.current.contentWindow && formattedStagedItems.length > 0) {
-      try {
-        const isSingle = Boolean(selectedDailyRunId);
+      const isSingle = Boolean(selectedDailyRunId);
         const allPoints = formattedStagedItems.flatMap(it => it.panoramas || it.points || []);
         const viewMode = selectedDailyRunId ? 'SINGLE_RUN' : (selectedSubgridFilter ? 'SUBGRID' : 'ALL');
 
@@ -369,7 +368,6 @@ export const MapComponent = ({
             defects: defectsArray
           });
         }
-      } catch (e) { }
     }
   }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId, selectedSubgridFilter, selectedSubgrids, isAfterDeletionPreview, selectedDateFilter]);
 
@@ -377,13 +375,11 @@ export const MapComponent = ({
   // effect immediately instead of waiting for the next staged-data push.
   useEffect(() => {
     if (!iframeRef.current?.contentWindow) return;
-    try {
-      postToMapFrame(iframeRef.current, {
-        type: 'FILTER_STATUS_TYPES',
-        statusFilters: { ...(trajectoryStatusFilters || DEFAULT_TRAJECTORY_FILTERS), selected: true },
-        showPanotrackData: showPanotrackLayer
-      });
-    } catch (e) { }
+    postToMapFrame(iframeRef.current, {
+      type: 'FILTER_STATUS_TYPES',
+      statusFilters: { ...(trajectoryStatusFilters || DEFAULT_TRAJECTORY_FILTERS), selected: true },
+      showPanotrackData: showPanotrackLayer
+    });
   }, [showPanotrackLayer, trajectoryStatusFilters]);
 
   // Debounced wrapper using requestAnimationFrame to coalesce bursts and avoid locking the main thread
@@ -408,8 +404,7 @@ export const MapComponent = ({
 
   const syncMapSettings = useCallback(() => {
     if (!iframeRef.current || !iframeRef.current.contentWindow) return;
-    try {
-      const s = effectiveSettings || {};
+    const s = effectiveSettings || {};
       // 1. Send Basemap. The id is validated here because an unregistered value
       // makes the iframe fall back to its default with no feedback, which reads
       // as "my saved basemap was ignored". custom_tile additionally needs a
@@ -536,7 +531,6 @@ export const MapComponent = ({
         url: s.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '',
         anonKey: s.supabaseKey || s.databaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
       });
-    } catch (e) { }
   }, [effectiveSettings, formattedStagedItems]);
 
   // Deny-by-default, rebuilt when the host changes. Subdomain trust stays OFF:
@@ -655,8 +649,7 @@ export const MapComponent = ({
             schedulePrepareClear(COLD_PREPARE_MS);
             const dispatch = () => {
               if (!iframeRef.current || !iframeRef.current.contentWindow) return;
-              try {
-                postToMapFrame(iframeRef.current, {
+              postToMapFrame(iframeRef.current, {
                   type: 'SET_SUBGRID_FILTER',
                   subgrid: selectedSubgridFilter || '',
                   isSingleRun: Boolean(selectedDailyRunId),
@@ -665,7 +658,6 @@ export const MapComponent = ({
                 });
                 syncMapSettings();
                 sendStagedData();
-              } catch (e) { }
             };
             // Fresh iframe session: clear the previous fingerprint so SET_PROJECT_BOUNDARY
             // is (re)sent now that the WebGIS listener is actually mounted. The mount-effect

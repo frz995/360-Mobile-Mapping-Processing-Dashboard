@@ -542,8 +542,8 @@ export default function App() {
   const markOnboarded = useCallback((userKey: string): void => {
     try {
       localStorage.setItem(`geosphere360_onboarded_${userKey}`, '1');
-    } catch {
-      /* storage unavailable — non-fatal */
+    } catch (err) {
+      reportWriteFailure('storage.local_storage', 'Onboarding marker cache', err instanceof Error ? err.message : String(err), 'warning');
     }
   }, []);
 
@@ -1039,10 +1039,9 @@ export default function App() {
       saveActiveProjectId(userKey, project.id, activeOrgId);
       setActiveProject(project);
       setProjectList((prev) => [project, ...prev.filter((p) => p.id !== project.id)]);
-      try {
-        await supabase.rpc('projects_adopt_legacy_rows', { p_project_id: project.id });
-      } catch {
-        // Non-fatal: rows simply stay unscoped until the RPC succeeds.
+      const { error: adoptErr } = await supabase.rpc('projects_adopt_legacy_rows', { p_project_id: project.id });
+      if (adoptErr) {
+        reportWriteFailure('projects.adopt_legacy', 'Adopt legacy project rows', adoptErr.message, 'warning');
       }
       return project;
     },

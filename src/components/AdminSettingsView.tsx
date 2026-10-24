@@ -259,8 +259,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   // Sync staged items & theme settings to preview iframe just like Dashboard Map
   const sendPreviewData = React.useCallback(() => {
     if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-      try {
-        const formattedStaged = (dailyData || []).map((item: any) => {
+      const formattedStaged = (dailyData || []).map((item: any) => {
           const isPub = item.publishToWebGIS === 'yes';
           const defaultItemColor = isPub ? (projectSettings.publishedTrackColor || '#10B981') : (projectSettings.stagingTrackColor || '#F59E0B');
           return {
@@ -359,7 +358,6 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           postToMapFrame(previewIframeRef.current, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: false });
           postToMapFrame(previewIframeRef.current, { type: 'CLEAR_BOUNDARY_FOCUS' });
         }
-      } catch (e) { }
     }
   }, [
     dailyData,
@@ -392,14 +390,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
     const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
     iframes.forEach(f => {
-      try {
-        postToMapFrame(f, {
-          type: 'SET_BASEMAP',
-          basemap: basemapVal,
-          customUrl: customUrlVal,
-          opacity: opacityVal
-        });
-      } catch (e) { }
+      postToMapFrame(f, {
+        type: 'SET_BASEMAP',
+        basemap: basemapVal,
+        customUrl: customUrlVal,
+        opacity: opacityVal
+      });
     });
   }, [projectSettings.defaultBasemap, projectSettings.customBasemapUrl, projectSettings.basemapOpacity]);
 
@@ -408,8 +404,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     const boundary = (projectSettings as any)?.projectBoundary;
     const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
     iframes.forEach(f => {
-      try {
-        if (boundary?.geojson) {
+      if (boundary?.geojson) {
           postToMapFrame(f, {
             type: 'SET_PROJECT_BOUNDARY',
             geojson: boundary.geojson,
@@ -438,7 +433,6 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           postToMapFrame(f, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: false });
           postToMapFrame(f, { type: 'CLEAR_BOUNDARY_FOCUS' });
         }
-      } catch (e) { }
     });
   }, [projectSettings]);
 
@@ -480,14 +474,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     };
     const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
     iframes.forEach(f => {
-      try {
-        postToMapFrame(f, storageMessage);
-      } catch (e) { }
+      postToMapFrame(f, storageMessage);
     });
     if (previewIframeRef.current?.contentWindow) {
-      try {
-        postToMapFrame(previewIframeRef.current, storageMessage);
-      } catch (e) { }
+      postToMapFrame(previewIframeRef.current, storageMessage);
     }
   }, [committedSettings, projectSettings]);
 
@@ -571,8 +561,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const previewBoundary = React.useCallback(async (region: any, districtIds: string[]) => {
     const iframe = previewIframeRef.current;
     if (!iframe || !iframe.contentWindow) return;
-    try {
-      if (!region || region.id === CUSTOM_REGION_ID) {
+    if (!region || region.id === CUSTOM_REGION_ID) {
         postToMapFrame(iframe, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: false });
         postToMapFrame(iframe, { type: 'CLEAR_BOUNDARY_FOCUS' });
         return;
@@ -605,7 +594,6 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
       postToMapFrame(iframe, { type: 'SET_PROJECT_BOUNDARY', geojson, bbox });
       postToMapFrame(iframe, { type: 'DIM_OUTSIDE_BOUNDARY', enabled: false });
-    } catch (e) { }
   }, []);
 
   const handlePreviewRegion = React.useCallback((regionId: string | null) => {
@@ -747,16 +735,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
     const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
     iframes.forEach(f => {
-      try {
-        postToMapFrame(f, {
-          type: 'SET_MAP_THEME',
-          settings
-        });
-        postToMapFrame(f, {
-          type: 'SET_STAGED_DATA',
-          stagedItems: formattedStaged
-        });
-      } catch (e) { }
+      postToMapFrame(f, {
+        type: 'SET_MAP_THEME',
+        settings
+      });
+      postToMapFrame(f, {
+        type: 'SET_STAGED_DATA',
+        stagedItems: formattedStaged
+      });
     });
   }, [dailyData, projectSettings]);
 
@@ -767,14 +753,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     const opacityVal = typeof op === 'number' ? op : ((projectSettings.basemapOpacity ?? 100) / 100);
 
     if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-      try {
-        postToMapFrame(previewIframeRef.current, {
-          type: 'SET_BASEMAP',
-          basemap: basemapVal,
-          customUrl: customUrlVal,
-          opacity: opacityVal
-        });
-      } catch (e) { }
+      postToMapFrame(previewIframeRef.current, {
+        type: 'SET_BASEMAP',
+        basemap: basemapVal,
+        customUrl: customUrlVal,
+        opacity: opacityVal
+      });
     }
   }, [projectSettings.defaultBasemap, projectSettings.customBasemapUrl, projectSettings.basemapOpacity]);
 
@@ -823,16 +807,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     });
 
     if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-      try {
-        postToMapFrame(previewIframeRef.current, {
-          type: 'SET_MAP_THEME',
-          settings
-        });
-        postToMapFrame(previewIframeRef.current, {
-          type: 'SET_STAGED_DATA',
-          stagedItems: formattedStaged
-        });
-      } catch (e) { }
+      postToMapFrame(previewIframeRef.current, {
+        type: 'SET_MAP_THEME',
+        settings
+      });
+      postToMapFrame(previewIframeRef.current, {
+        type: 'SET_STAGED_DATA',
+        stagedItems: formattedStaged
+      });
     }
   }, [dailyData, projectSettings]);
 
@@ -2127,6 +2109,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                   indexedFiles = health.storageTotalFiles;
                                 } catch {
                                   // A failed DB read leaves these null — unknown, not zero.
+                                  dbLatencyMs = null;
                                 }
 
                                 setCfTestResult({ ...res, dbLatencyMs, bucketStatus, indexedFiles });

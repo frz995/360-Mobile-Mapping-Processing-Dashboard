@@ -124,7 +124,9 @@ function deriveAlternatePanoramaUrl(url?: string | null): string | null {
         u.pathname = `/${segments[segments.length - 1]}`;
         return u.toString();
       }
-    } catch {}
+    } catch {
+      return null;
+    }
   }
   return null;
 }
@@ -139,7 +141,9 @@ function deriveAlternateConfigUrl(url?: string | null): string | null {
       u.pathname = prefixedMatch[1];
       return u.toString();
     }
-  } catch {}
+  } catch {
+    return null;
+  }
   return null;
 }
 
@@ -168,7 +172,9 @@ async function probeConfigUrl(url?: string | null): Promise<string | null> {
         configProbeCache.set(clean, true);
         return clean;
       }
-    } catch {}
+    } catch {
+      configProbeCache.set(clean, false);
+    }
   }
   configProbeCache.set(clean, false);
 
@@ -187,7 +193,9 @@ async function probeConfigUrl(url?: string | null): Promise<string | null> {
           configProbeCache.set(alt, true);
           return alt;
         }
-      } catch {}
+      } catch {
+        configProbeCache.set(alt, false);
+      }
     }
     configProbeCache.set(alt, false);
   }
@@ -345,7 +353,9 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
           if (hasAdapter !== hasValidConfigUrl) {
             try {
               viewerRef.current.destroy();
-            } catch (_) {}
+            } catch (_) {
+              viewerRef.current = null;
+            }
             viewerRef.current = null;
           }
         }
@@ -369,7 +379,9 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
                       yaw: (iy * Math.PI) / 180,
                       pitch: typeof curPos?.pitch === 'number' ? curPos.pitch : 0,
                     });
-                  } catch (_) { }
+                  } catch (_) {
+                    viewerRef.current = null;
+                  }
                 }
               }
             })
@@ -529,7 +541,9 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
           if (viewerRef.current && container.clientWidth > 0 && container.clientHeight > 0) {
             try {
               (viewerRef.current as any).autoSize?.();
-            } catch (_) { }
+            } catch (_) {
+              rafId = null;
+            }
           }
         });
       });

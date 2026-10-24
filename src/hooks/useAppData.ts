@@ -446,7 +446,7 @@ export function useAppData() {
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      if (liveChannel) { try { supabase.removeChannel(liveChannel); } catch { } }
+      if (liveChannel) { void supabase.removeChannel(liveChannel); }
       clearInterval(liveInterval);
     };
   }, []);

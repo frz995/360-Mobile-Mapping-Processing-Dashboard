@@ -171,14 +171,14 @@ function ProjectPreviewMap({ geojson, bbox, basemapKey }: { geojson: any; bbox: 
               paint: { 'line-color': lineColor, 'line-width': 1.5, 'line-opacity': 1 }
             });
           } catch {
-            /* layer already added */
+            return;
           }
         }
       }
       try {
         map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 12, animate: false });
       } catch {
-        /* keep fallback center/zoom */
+        return;
       }
     };
 
@@ -193,7 +193,7 @@ function ProjectPreviewMap({ geojson, bbox, basemapKey }: { geojson: any; bbox: 
       try {
         map?.remove();
       } catch {
-        /* already removed */
+        return;
       }
     };
   }, [geojson, bbox, basemapKey, fallback]);

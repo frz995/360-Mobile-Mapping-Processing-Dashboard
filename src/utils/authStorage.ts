@@ -21,7 +21,7 @@ export function getAuthStorageUserKey(authSession?: any, isGuestUser?: boolean):
       }
     }
   } catch {
-    // ignore
+    return 'anonymous';
   }
 
   return 'anonymous';

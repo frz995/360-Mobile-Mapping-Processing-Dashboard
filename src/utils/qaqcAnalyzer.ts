@@ -25,7 +25,7 @@ function getCanvasPixelContext(width: number, height: number): CanvasRenderingCo
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (ctx) return ctx;
     } catch (_err) {
-      // fall through to the HTML canvas path below
+      void 0;
     }
   }
   if (typeof document !== 'undefined') {

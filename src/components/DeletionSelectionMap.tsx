@@ -346,8 +346,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
 
       iframes.forEach((ifr) => {
         if (!ifr || !ifr.contentWindow) return;
-        try {
-          postToMapFrame(ifr, {
+        postToMapFrame(ifr, {
               type: 'SET_STAGED_DATA',
               stagedItems: formattedStagedItems,
               isSingleRun: false,
@@ -394,9 +393,6 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                 zoom: 17
               });
           }
-        } catch {
-          /* ignore */
-        }
       });
     } else {
       // Exactly matching Processing Control reset to ALL & restore default view
@@ -426,9 +422,8 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
 
       iframes.forEach((ifr) => {
         if (!ifr || !ifr.contentWindow) return;
-        try {
-          postToMapFrame(ifr, {
-              type: 'SET_STAGED_DATA',
+        postToMapFrame(ifr, {
+            type: 'SET_STAGED_DATA',
               stagedItems: formattedStagedItems,
               isSingleRun: false,
               runId: null
@@ -475,9 +470,6 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
           } else {
             postToMapFrame(ifr, { type: 'CLEAR_BOUNDARY_FOCUS' });
           }
-        } catch {
-          /* ignore */
-        }
       });
     }
   }, [subgridPoints, formattedStagedItems]);
@@ -485,14 +477,12 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
   // Synchronize live staged items to both map viewports whenever formattedStagedItems or selections change
   useEffect(() => {
     if (iframeRef.current?.contentWindow) {
-      try {
-        postToMapFrame(iframeRef.current, {
-            type: 'SET_STAGED_DATA',
-            stagedItems: formattedStagedItems,
-            isSingleRun: false,
-            runId: null
-          });
-      } catch {}
+      postToMapFrame(iframeRef.current, {
+          type: 'SET_STAGED_DATA',
+          stagedItems: formattedStagedItems,
+          isSingleRun: false,
+          runId: null
+        });
     }
 
     if (afterIframeRef.current?.contentWindow) {
@@ -503,9 +493,8 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
         (item) => !selectedSubgrids.includes((item.subgrid || '').toUpperCase().trim())
       );
 
-      try {
-        postToMapFrame(afterIframeRef.current, {
-            type: 'SET_STAGED_DATA',
+      postToMapFrame(afterIframeRef.current, {
+          type: 'SET_STAGED_DATA',
             stagedItems: afterStaged,
             isSingleRun: false,
             runId: null
@@ -530,8 +519,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
             subgrid: targetFilter,
             date: '',
             runId: null
-          });
-      } catch {}
+        });
     }
   }, [formattedStagedItems, selectedSubgrids, subgridPoints]);
 
@@ -856,7 +844,6 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                   currentZoomRef.current = Math.min(20, Math.max(9, currentZoomRef.current + delta));
                   const iframes = [iframeRef.current, afterIframeRef.current].filter(Boolean) as HTMLIFrameElement[];
                   iframes.forEach((ifr) => {
-                    try {
                       postToMapFrame(ifr, {
                           type: 'FLY_TO',
                           lat: currentCenterRef.current.lat,
@@ -871,7 +858,6 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                           lon: currentCenterRef.current.lng,
                           zoom: currentZoomRef.current
                         });
-                    } catch {}
                   });
                 }}
                 onPointerDown={(e) => {
@@ -909,7 +895,6 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
 
                     const iframes = [iframeRef.current, afterIframeRef.current].filter(Boolean) as HTMLIFrameElement[];
                     iframes.forEach((ifr) => {
-                      try {
                         postToMapFrame(ifr, {
                             type: 'FLY_TO',
                             lat: currentCenterRef.current.lat,
@@ -924,7 +909,6 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                             lon: currentCenterRef.current.lng,
                             zoom: currentZoomRef.current
                           });
-                      } catch {}
                     });
                     return;
                   }

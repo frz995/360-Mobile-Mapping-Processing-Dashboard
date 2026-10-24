@@ -398,7 +398,7 @@ const pipelineSla = data.pipelineSla ?? null;
       (map.getSource('active-district') as maplibregl.GeoJSONSource | undefined)?.setData(
         activeFeature || { type: 'FeatureCollection', features: [] }
       );
-    } catch { /* silent */ }
+    } catch { return; }
   }, [activeFeature, isMapReady]);
 
   // Keep the committed project-boundary in sync with the strict per-district boundary
@@ -412,7 +412,7 @@ const pipelineSla = data.pipelineSla ?? null;
       const source = map.getSource('project-boundary') as maplibregl.GeoJSONSource | undefined;
       if (!source) return;
       source.setData({ type: 'FeatureCollection', features: strictFeatures } as any);
-    } catch { /* silent */ }
+    } catch { return; }
   }, [data.boundaryGeojson, isMapReady]);
 
   return (

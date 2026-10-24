@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
+import { reportWriteFailure } from '../lib/writeFailures';
 import { Activity, Bell, Clock, Trash2, UploadCloud, X } from 'lucide-react';
 import type { NotificationItem } from '../types/dashboard';
 
@@ -108,7 +109,9 @@ export function NotificationPopover({
                               currentRead.add(strId);
                               currentRead.add(`notif-${strId}`);
                               localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
-                            } catch (_) { }
+                            } catch (err) {
+                              reportWriteFailure('storage.local_storage', 'Read notifications cache', err instanceof Error ? err.message : String(err), 'warning');
+                            }
                             setNotifications(prev => prev.filter(n => String(n.id) !== strId));
                           }}
                           className="text-text-muted hover:text-rose-400 p-0.5 cursor-pointer opacity-80 hover:opacity-100 transition-opacity"

@@ -1,21 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-    Palette,
-    Check,
-    RotateCcw,
-    Sliders,
-    CheckCircle2,
-    Navigation,
-    Camera,
-    Layers,
-    Activity,
-    Search,
-    Maximize2,
-    RectangleHorizontal,
-    LayoutGrid,
-    LayoutTemplate,
-    Columns3
-} from 'lucide-react';
+import { Palette, Check, RotateCcw, Sliders, CheckCircle2, Navigation, Camera, Layers, Activity, Search, Maximize2, RectangleHorizontal, LayoutGrid, LayoutTemplate, Columns3 } from 'lucide-react';
+import { reportWriteFailure } from '../lib/writeFailures';
 
 export type ThemeKey =
     | 'graphite'
@@ -355,7 +340,9 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
             localStorage.setItem('app_style_density', uiDensity);
             localStorage.setItem('app_style_split', mapSplit);
             localStorage.setItem('app_style_surface', surfaceStyle);
-        } catch { }
+        } catch (err) {
+            reportWriteFailure('storage.local_storage', 'Theme and style preferences', err instanceof Error ? err.message : String(err), 'warning');
+        }
 
         applyStyleWidgets(cardRadius, uiDensity, mapSplit, surfaceStyle);
         window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: stagedTheme }));

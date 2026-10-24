@@ -1,3 +1,4 @@
+import { reportWriteFailure } from '../lib/writeFailures';
 // ---------------------------------------------------------------------------
 // Active-project context — single synchronous source of truth for the active
 // project id used by the Supabase service layer to scope every operational
@@ -36,7 +37,7 @@ export function computeUserKey(): string {
       }
     }
   } catch {
-    // ignore and fall through
+    return 'guest';
   }
   return 'guest';
 }
@@ -64,8 +65,8 @@ export function saveActiveProjectId(userKey: string, projectId: string, orgId?: 
   memoryProjectId = projectId;
   try {
     localStorage.setItem(activeProjectStorageKey(userKey, orgId), projectId);
-  } catch {
-    // storage unavailable (private mode / quota) — non-fatal
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Active project id cache', err instanceof Error ? err.message : String(err), 'warning');
   }
 }
 
@@ -89,7 +90,7 @@ export function clearActiveProjectId(userKey: string, orgId?: string | null): vo
     if (!orgId) {
       localStorage.removeItem(activeProjectStorageKey(userKey));
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Clear active project id cache', err instanceof Error ? err.message : String(err), 'warning');
   }
 }

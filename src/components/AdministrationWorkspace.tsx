@@ -285,7 +285,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
         setRolePermissions(resolveMatrix(fetchedSettings.role_permissions));
       }
     } catch {
-      // ignore
+      return;
     } finally {
       setIsLoadingApprovals(false);
       setRefreshing(false);

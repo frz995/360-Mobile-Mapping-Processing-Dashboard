@@ -24,6 +24,7 @@ import {
 import { THEME_PRESETS, isLightTheme, resolveThemeKey, type ThemeKey } from './ThemeSelector';
 import { pushWorkspace } from '../utils/urlRouter';
 import { postToMapFrame } from '../utils/mapOrigin';
+import { reportWriteFailure } from '../lib/writeFailures';
 
 export type GateStage = 'idle' | 'welcome' | 'pick' | 'loading';
 
@@ -183,17 +184,15 @@ const EmbeddedMapDashboard: React.FC<{
   // Broadcast boundary to the embedded map dashboard iframe
   const sendBoundaryToIframe = useCallback(() => {
     if (!iframeRef.current || !iframeRef.current.contentWindow) return;
-    try {
-      postToMapFrame(iframeRef.current, {
-        type: 'SET_PROJECT_BOUNDARY',
-        geojson: geoJson,
-        bbox
-      });
-      postToMapFrame(iframeRef.current, {
-        type: 'DIM_OUTSIDE_BOUNDARY',
-        enabled: false
-      });
-    } catch {}
+    postToMapFrame(iframeRef.current, {
+      type: 'SET_PROJECT_BOUNDARY',
+      geojson: geoJson,
+      bbox
+    });
+    postToMapFrame(iframeRef.current, {
+      type: 'DIM_OUTSIDE_BOUNDARY',
+      enabled: false
+    });
   }, [geoJson, bbox]);
 
   // Synchronize cleanly on boundary change or iframe load (without interrupted retries)
@@ -248,7 +247,7 @@ const EmbeddedMapDashboard: React.FC<{
         if (geoLayerRef.current) {
           try {
             mapRef.current.removeLayer(geoLayerRef.current);
-          } catch {}
+          } catch { geoLayerRef.current = null; }
           geoLayerRef.current = null;
         }
 
@@ -272,7 +271,7 @@ const EmbeddedMapDashboard: React.FC<{
               [bbox[3], bbox[2]]
             ], { padding: [25, 25], maxZoom: 14, animate: true, duration: 0.5 });
           }
-        } catch {}
+        } catch { geoLayerRef.current = null; }
       }
     };
 
@@ -288,7 +287,7 @@ const EmbeddedMapDashboard: React.FC<{
       if (mapRef.current) {
         try {
           mapRef.current.remove();
-        } catch {}
+        } catch { mapRef.current = null; }
         mapRef.current = null;
       }
     };
@@ -494,7 +493,7 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
     document.documentElement.classList.toggle('light-mode', isLightTheme(themeId));
     try {
       localStorage.setItem('app_dashboard_theme', themeId);
-    } catch {}
+    } catch (err) { reportWriteFailure('storage.local_storage', 'Theme selection local cache', err instanceof Error ? err.message : String(err), 'warning'); }
     window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: themeId }));
   };
 

@@ -53,6 +53,7 @@ import {
   getItemId
 } from '../App';
 import { postToMapFrame, createMapOriginMatcher } from '../utils/mapOrigin';
+import { reportWriteFailure } from '../lib/writeFailures';
 
 export interface AuditRunRecord {
   subgrid: string;
@@ -243,7 +244,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         inspectorPic
       };
       localStorage.setItem('GEOSPHERE_QAQC_LAST_STATE', JSON.stringify(stateToSave));
-    } catch { }
+    } catch (err) {
+      reportWriteFailure('storage.local_storage', 'QAQC workbench state local cache', err instanceof Error ? err.message : String(err), 'warning');
+    }
   }, [
     targetTab,
     categoryFilter,
@@ -298,7 +301,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       ...(projectSettings || {}),
       ...updated
     };
-    saveProjectSettingsToSupabase(updatedSettings).catch(() => { });
+    void saveProjectSettingsToSupabase(updatedSettings);
   };
 
   const handleResetThresholds = () => {
@@ -314,7 +317,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       ...(projectSettings || {}),
       ...defaults
     };
-    saveProjectSettingsToSupabase(updatedSettings).catch(() => { });
+    void saveProjectSettingsToSupabase(updatedSettings);
   };
 
   const [localAuditRuns, setLocalAuditRuns] = useState<Record<string, AuditRunRecord>>({});
@@ -878,8 +881,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       };
     };
 
-    try {
-      const isSingleDailyRun = Boolean(selectedRunId);
+    const isSingleDailyRun = Boolean(selectedRunId);
 
       // 2. Dispatch staged data first (Keeps Defect Colors) so the map view state below
       //    can reuse the exact per-point published/defect colors.
@@ -992,7 +994,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             });
         }
       }
-    } catch (_) { }
   }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, dailyData, effectiveDefectsList, isRunning, liveDefectsList, selectedStations, activeDisplayIndex]);
 
   // Keep track of pending staggered re-sends so we can cancel them on unmount / re-selection.
@@ -1055,13 +1056,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   useEffect(() => {
     if (!mapIframeRef.current?.contentWindow) return;
     if (effectiveDefectsList.length === 0) return;
-    try {
-      postToMapFrame(mapIframeRef.current, {
-        type: 'QAQC_DEFECTS_SYNC',
-        subgrid: activeRunningSubgrid || selectedSubgrid,
-        defects: effectiveDefectsList
-      });
-    } catch (_) { }
+    postToMapFrame(mapIframeRef.current, {
+      type: 'QAQC_DEFECTS_SYNC',
+      subgrid: activeRunningSubgrid || selectedSubgrid,
+      defects: effectiveDefectsList
+    });
   }, [effectiveDefectsList, activeRunningSubgrid, selectedSubgrid]);
 
   useEffect(() => {
@@ -1077,9 +1076,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       effectiveDefectsList.some((d: any) => (d.point_id || d.pointId || d.filename) === activeDisplayPointId)
     );
 
-    try {
-      postToMapFrame(mapIframeRef.current, {
-        type: 'MAP_POINT_SELECTED',
+    postToMapFrame(mapIframeRef.current, {
+      type: 'MAP_POINT_SELECTED',
         point: {
           filename: activeDisplayPointId,
           subgrid: activeRunningSubgrid || selectedSubgrid,
@@ -1100,7 +1098,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         bearing: activeDisplayBearing,
         heading: activeDisplayBearing
       });
-    } catch (_) { }
   }, [isRunning, activeDisplayIndex, activeDisplayCoords, activeDisplayBearing, activeDisplayPointId, activeRecord, liveCheckStatus, effectiveDefectsList, activeRunningSubgrid, selectedSubgrid]);
 
   useEffect(() => {
@@ -1120,9 +1117,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       index: activeDisplayIndex
     };
 
-    try {
-      postToMapFrame(mapIframeRef.current, {
-        type: 'SET_PANORAMA',
+    postToMapFrame(mapIframeRef.current, {
+      type: 'SET_PANORAMA',
         point: pointPayload
       });
 
@@ -1138,7 +1134,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         bearing: activeDisplayBearing,
         heading: activeDisplayBearing
       });
-    } catch (_) { }
   }, [selectedStationIndex, activeDisplayIndex, isRunning, activeDisplayCoords, activeDisplayPointId, activeDisplayThumbnail, activeDisplayBearing, activeRunningSubgrid, selectedSubgrid]);
 
   useEffect(() => {
@@ -1226,8 +1221,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
     const firstStation = selectedStations[0];
     if (firstStation && firstStation.lat && firstStation.lng && mapIframeRef.current?.contentWindow) {
-      try {
-        postToMapFrame(mapIframeRef.current, {
+      postToMapFrame(mapIframeRef.current, {
           type: 'MAP_POINT_SELECTED',
           point: {
             filename: firstStation.filename || firstStation.id,
@@ -1244,8 +1238,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           type: 'SET_CAMERA_HEADING',
           bearing: typeof firstStation.bearing === 'number' ? firstStation.bearing : 0,
           heading: typeof firstStation.bearing === 'number' ? firstStation.bearing : 0
-        });
-      } catch (_) { }
+      });
     }
     onStartInspection({
       subgrid: selectedSubgrid,
@@ -2104,14 +2097,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         const yawDeg = Math.round(pos.yaw * 100) / 100;
                         const pitchDeg = Math.round(pos.pitch * 100) / 100;
                         if (mapIframeRef.current?.contentWindow) {
-                          try {
-                            postToMapFrame(mapIframeRef.current, {
-                              type: 'CAMERA_ROTATED',
-                              source: 'parent',
-                              yaw: yawDeg,
-                              pitch: pitchDeg
-                            });
-                          } catch (_) { }
+                          postToMapFrame(mapIframeRef.current, {
+                            type: 'CAMERA_ROTATED',
+                            source: 'parent',
+                            yaw: yawDeg,
+                            pitch: pitchDeg
+                          });
                         }
                       }}
                       className="w-full h-full"
@@ -2793,8 +2784,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                               onClick={() => {
                                 setSelectedStationIndex(item.index);
                                 if (item.lat && item.lng && mapIframeRef.current?.contentWindow) {
-                                  try {
-                                    postToMapFrame(mapIframeRef.current, {
+                                  postToMapFrame(mapIframeRef.current, {
                                       type: 'MAP_POINT_SELECTED',
                                       point: {
                                         filename: item.pointId,
@@ -2811,8 +2801,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                                       type: 'SET_CAMERA_HEADING',
                                       bearing: typeof item.bearing === 'number' ? item.bearing : 0,
                                       heading: typeof item.bearing === 'number' ? item.bearing : 0
-                                    });
-                                  } catch (_) { }
+                                  });
                                 }
                               }}
                               className={`transition-colors cursor-pointer ${

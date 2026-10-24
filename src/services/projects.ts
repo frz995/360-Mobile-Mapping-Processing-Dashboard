@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { reportWriteFailure } from '../lib/writeFailures';
 import { getAuthStorageUserKey } from '../utils/authStorage';
 import type { ExtendedProjectSettings } from '../types/admin';
 import {
@@ -134,8 +135,8 @@ export function saveProjectsCache(projects: UserProject[], orgId?: string | null
     const targetOrg = orgId !== undefined ? orgId : getActiveOrganizationId();
     const key = targetOrg ? `${PROJECTS_CACHE_KEY}_${targetOrg}` : PROJECTS_CACHE_KEY;
     localStorage.setItem(key, JSON.stringify(projects));
-  } catch {
-    // storage unavailable (private mode / quota) — non-fatal
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Projects cache', err instanceof Error ? err.message : String(err), 'warning');
   }
 }
 
@@ -166,8 +167,8 @@ export function hasSeededProject(userKey: string): boolean {
 export function markProjectSeeded(userKey: string): void {
   try {
     localStorage.setItem(seededProjectStorageKey(userKey), '1');
-  } catch {
-    // ignore
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Project seed flag', err instanceof Error ? err.message : String(err), 'warning');
   }
 }
 

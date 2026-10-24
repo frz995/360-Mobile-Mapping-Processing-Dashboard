@@ -1355,13 +1355,12 @@ export async function deletePointsFromSupabase(
       .in('filename', cleanFns);
 
     // 2. Also delete from qa_defects matching filenames
-    try {
-      await supabase
-        .from('qa_defects')
-        .delete()
-        .in('filename', cleanFns);
-    } catch {
-      /* ignore */
+    const { error: qaDefectsErr } = await supabase
+      .from('qa_defects')
+      .delete()
+      .in('filename', cleanFns);
+    if (qaDefectsErr) {
+      reportWriteFailure('qaqc.defectBatch', 'qa_defects cleanup', qaDefectsErr.message, 'warning');
     }
 
     if (pErr) {

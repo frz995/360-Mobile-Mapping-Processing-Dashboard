@@ -84,14 +84,10 @@ export async function ensureSignedPanoramaUrl(
 
   if (provider === 'supabase') {
     const bucket = (settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC').trim();
-    try {
-      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(cleanFn, ttlSeconds);
-      if (!error && data?.signedUrl) {
-        setCachedSignedPanoramaUrl(cleanFn, data.signedUrl, ttlSeconds);
-        return data.signedUrl;
-      }
-    } catch {
-      // Best-effort fallback
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(cleanFn, ttlSeconds);
+    if (!error && data?.signedUrl) {
+      setCachedSignedPanoramaUrl(cleanFn, data.signedUrl, ttlSeconds);
+      return data.signedUrl;
     }
   }
 
@@ -126,18 +122,14 @@ export async function batchPreloadSignedPanoramaUrls(
 
   if (provider === 'supabase') {
     const bucket = (settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC').trim();
-    try {
-      const { data, error } = await supabase.storage.from(bucket).createSignedUrls(toFetch, ttlSeconds);
-      if (!error && Array.isArray(data)) {
-        for (const item of data) {
-          if (item?.path && item?.signedUrl) {
-            setCachedSignedPanoramaUrl(item.path, item.signedUrl, ttlSeconds);
-            result.set(item.path, item.signedUrl);
-          }
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrls(toFetch, ttlSeconds);
+    if (!error && Array.isArray(data)) {
+      for (const item of data) {
+        if (item?.path && item?.signedUrl) {
+          setCachedSignedPanoramaUrl(item.path, item.signedUrl, ttlSeconds);
+          result.set(item.path, item.signedUrl);
         }
       }
-    } catch {
-      // Best-effort fallback
     }
   }
 

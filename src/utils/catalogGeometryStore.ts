@@ -193,6 +193,6 @@ export async function deleteCatalogLayerGeometry(
     });
     writtenLayerIds.get(userKey)?.delete(layerId);
   } catch {
-    // ignore
+    return;
   }
 }

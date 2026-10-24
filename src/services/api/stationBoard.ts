@@ -33,7 +33,9 @@ function getLocalBoardRows(): StationBoardRow[] {
 function setLocalBoardRows(rows: StationBoardRow[]): void {
   try {
     localStorage.setItem(getBoardStorageKey(), JSON.stringify(rows.slice(0, 400)));
-  } catch (_) { }
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Station board local storage', err instanceof Error ? err.message : String(err), 'warning');
+  }
 }
 
 function sameKey(a: StationBoardRow, b: StationBoardRow): boolean {
@@ -111,7 +113,9 @@ export async function upsertStationBoardItemInSupabase(
     if (idx >= 0) local[idx] = { ...local[idx], ...payload, id: local[idx].id || payload.id };
     else local.push(payload);
     setLocalBoardRows(local);
-  } catch (_) { }
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Station board local mirror', err instanceof Error ? err.message : String(err), 'warning');
+  }
   try {
     const { error } = await supabase
       .from(STATION_BOARD_TABLE)

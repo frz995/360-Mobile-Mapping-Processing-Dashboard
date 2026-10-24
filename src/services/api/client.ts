@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getActiveProjectId } from '../projectContext';
 import { getActiveOrganizationId } from '../tenantStorage';
+import { reportWriteFailure } from '../../lib/writeFailures';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
@@ -303,10 +304,11 @@ export function pruneLocalStorageSession(): void {
         } catch {
           // Unparseable storage: keep it — removing valid sessions spuriously
           // would log the user out on every refresh.
+          continue;
         }
       }
     }
-  } catch { }
+  } catch { return; }
 }
 
 // Immediately run local storage pruning on module load
@@ -479,7 +481,9 @@ export function configureSupabaseBackend(cfg: SupabaseBackendConfig): boolean {
 
   try {
     _activeSupabaseClient.auth.signOut().catch(() => {});
-  } catch { /* best-effort */ }
+  } catch (err) {
+    reportWriteFailure('auth.signOut', 'Reconfigure backend sign out', err instanceof Error ? err.message : String(err), 'warning');
+  }
 
   _activeSupabaseClient = createSafeSupabaseClient(url, key);
   _backendUrl = url;
@@ -490,7 +494,9 @@ export function configureSupabaseBackend(cfg: SupabaseBackendConfig): boolean {
       window.dispatchEvent(new CustomEvent('geosphere:backend-change', {
         detail: { url, anonKey: key }
       }));
-    } catch { /* dispatch failure is non-fatal */ }
+    } catch (err) {
+      reportWriteFailure('events.backend_change', 'Backend change event dispatch', err instanceof Error ? err.message : String(err), 'warning');
+    }
   }
   console.info(`[Supabase] Backend reconfigured → ${url}`);
   return true;

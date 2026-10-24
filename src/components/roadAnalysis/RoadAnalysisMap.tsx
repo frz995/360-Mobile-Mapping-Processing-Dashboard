@@ -107,7 +107,7 @@ function scheduleCatalogGeometryLoad(
               const stripped = stripEnvelopeFeatures(parsed);
               json = JSON.stringify(stripped);
             }
-          } catch {}
+          } catch { json = geojsonJson; }
         }
         if (!json && geojson) {
           json = JSON.stringify(geojson);
@@ -2088,7 +2088,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       for (const f of meshResult.meshGeojson.features) {
         let b = f.properties?.bbox;
         if (!b && f.properties?.bbox_str) {
-          try { b = JSON.parse(f.properties.bbox_str); } catch {}
+          try { b = JSON.parse(f.properties.bbox_str); } catch { b = null; }
         }
         if (Array.isArray(b) && b.length === 4) {
           if (b[0] < minX) minX = b[0];
@@ -2137,7 +2137,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       // Zoom IN to the focused subgrid with breathable smooth camera
       let targetBbox = selectedExplorerGrid.bbox;
       if (!targetBbox && selectedExplorerGrid.bbox_str) {
-        try { targetBbox = JSON.parse(selectedExplorerGrid.bbox_str); } catch {}
+        try { targetBbox = JSON.parse(selectedExplorerGrid.bbox_str); } catch { targetBbox = null; }
       }
       if (!targetBbox && selectedExplorerGrid.rings?.[0]) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2251,7 +2251,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       if (!rings || rings.length === 0) {
         let bbox = selectedExplorerGrid.bbox;
         if (!bbox && selectedExplorerGrid.bbox_str) {
-          try { bbox = JSON.parse(selectedExplorerGrid.bbox_str); } catch {}
+          try { bbox = JSON.parse(selectedExplorerGrid.bbox_str); } catch { bbox = null; }
         }
         if (bbox && Array.isArray(bbox) && bbox.length === 4) {
           rings = [[[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[2], bbox[3]], [bbox[0], bbox[3]], [bbox[0], bbox[1]]]];
@@ -2555,7 +2555,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           try {
             const parsed = JSON.parse(p.bbox_str);
             if (Array.isArray(parsed) && parsed.length === 4) bbox = parsed as any;
-          } catch {}
+          } catch { bbox = null; }
         }
         if (!bbox && Array.isArray(p.bbox) && p.bbox.length === 4) {
           bbox = p.bbox as any;

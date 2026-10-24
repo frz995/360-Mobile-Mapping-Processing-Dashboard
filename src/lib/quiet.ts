@@ -20,6 +20,8 @@ function readQuiet(): boolean {
   }
 }
 
+import { reportWriteFailure } from './writeFailures';
+
 let quiet = readQuiet();
 
 export function isDataQuiet(): boolean {
@@ -34,8 +36,8 @@ export function setDataQuiet(next: boolean): void {
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }
-  } catch {
-    // ignore storage errors
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Quiet mode state', err instanceof Error ? err.message : String(err), 'warning');
   }
 }
 

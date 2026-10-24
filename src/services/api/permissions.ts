@@ -28,7 +28,7 @@ function emit(): void {
     try {
       listener(cachedMatrix);
     } catch {
-      /* a failing subscriber must not block the others */
+      return;
     }
   });
 }

@@ -252,7 +252,7 @@ export function applyLightingToMap(map: MaplibreMap, presetKey: LightingPreset):
         'atmosphere-blend': presetKey === 'day' ? 0.3 : 0.8
       });
     } catch {
-      // Sky is optional, silently fallback
+      return;
     }
   }
 }
@@ -271,7 +271,7 @@ export function findFirstSymbolLayerId(map: MaplibreMap): string | undefined {
       }
     }
   } catch {
-    // fallback
+    return undefined;
   }
   return undefined;
 }

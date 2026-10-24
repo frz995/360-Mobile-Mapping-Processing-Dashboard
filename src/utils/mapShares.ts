@@ -11,6 +11,7 @@ import { resolvePanoramaUrl, resolvePanoramaConfigUrl, type StorageResolveSettin
 import { getActiveProjectId } from '../services/projectContext';
 import { getPOICount, getImagesProcessedCount } from './dashboardData';
 import { extractSubgridName } from './subgrid';
+import { reportWriteFailure } from '../lib/writeFailures';
 import type { ChoroplethSetting, ExplorerChoroplethPalette } from './choroplethSettings';
 
 export type ShareKind = 'webgis' | 'road';
@@ -251,7 +252,7 @@ export async function hashSharePassword(password: string): Promise<string> {
       const buf = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
       return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
     } catch {
-      // fall through to the pure-JS digest
+      return sha256Fallback(password);
     }
   }
   return sha256Fallback(password);
@@ -802,7 +803,7 @@ export async function createShare(input: CreateShareInput): Promise<{ share: Map
         password_hash: passwordHash, created_by: input.createdBy || null, created_at: new Date().toISOString(),
         expires_at: expiresAt, revoked_at: null, view_count: 0
       };
-      try { localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(fallbackShare)); } catch { /* quota */ }
+      try { localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(fallbackShare)); } catch (err) { reportWriteFailure('storage.local_storage', 'Local share token mirror', err instanceof Error ? err.message : String(err), 'warning'); }
       return { share: fallbackShare, url: sharePublicUrl(fallbackShare.token) };
     }
     throw new Error(
@@ -814,7 +815,7 @@ export async function createShare(input: CreateShareInput): Promise<{ share: Map
     const share = data as MapShare;
     try {
       localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(share));
-    } catch { /* storage quota exceeded */ }
+    } catch (err) { reportWriteFailure('storage.local_storage', 'Local share token mirror', err instanceof Error ? err.message : String(err), 'warning'); }
     return { share, url: sharePublicUrl(share.token) };
   }
 
@@ -822,19 +823,15 @@ export async function createShare(input: CreateShareInput): Promise<{ share: Map
 }
 
 export async function fetchShareByToken(token: string): Promise<MapShare | null> {
-  try {
-    const { data, error } = await supabase
-      .from('map_shares')
-      .select('id, token, kind, title, project_id, snapshot, basemap, password_hash, created_by, created_at, expires_at, revoked_at, view_count')
-      .eq('token', token)
-      .maybeSingle();
-    if (!error && data) {
-      const s = data as MapShare;
-      try { localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(s)); } catch { /* ignore */ }
-      return s;
-    }
-  } catch {
-    // Supabase network / offline fallback
+  const { data, error } = await supabase
+    .from('map_shares')
+    .select('id, token, kind, title, project_id, snapshot, basemap, password_hash, created_by, created_at, expires_at, revoked_at, view_count')
+    .eq('token', token)
+    .maybeSingle();
+  if (!error && data) {
+    const s = data as MapShare;
+    try { localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(s)); } catch (err) { reportWriteFailure('storage.local_storage', 'Local share cache mirror', err instanceof Error ? err.message : String(err), 'warning'); }
+    return s;
   }
 
   // Fallback to local storage mirror
@@ -850,16 +847,15 @@ export async function fetchShareByToken(token: string): Promise<MapShare | null>
         return parsed as MapShare;
       }
     }
-  } catch { /* parse error */ }
+  } catch { return null; }
 
   return null;
 }
 
 export async function touchShare(token: string): Promise<void> {
-  try {
-    await supabase.rpc('map_share_touch', { p_token: token });
-  } catch {
-    // view counting is best-effort
+  const { error } = await supabase.rpc('map_share_touch', { p_token: token });
+  if (error) {
+    reportWriteFailure('map_shares.touch', `Touch share token: ${token}`, error.message, 'warning');
   }
 }
 
@@ -868,7 +864,7 @@ export async function touchShare(token: string): Promise<void> {
 const UNLOCK_PREFIX = 'gs-share-unlock:';
 
 export function rememberShareUnlock(token: string, password: string): void {
-  try { sessionStorage.setItem(UNLOCK_PREFIX + token, password); } catch { /* ignore */ }
+  try { sessionStorage.setItem(UNLOCK_PREFIX + token, password); } catch (err) { reportWriteFailure('storage.session_storage', 'Share unlock token session cache', err instanceof Error ? err.message : String(err), 'warning'); }
 }
 
 export function recallShareUnlock(token: string): string | null {

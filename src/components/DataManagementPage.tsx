@@ -253,7 +253,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     try {
       const items = await fetchRecycleBinFromSupabase();
       setRecycleBinCount(items.length);
-    } catch { }
+    } catch {
+      setRecycleBinCount(0);
+    }
   }, []);
 
   useEffect(() => {
@@ -737,16 +739,12 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       const padLat = Math.max(0.0015, (maxLat - minLat) * 0.15);
       const padLng = Math.max(0.0015, (maxLng - minLng) * 0.15);
       iframes.forEach((ifr) => {
-        try {
-          postToMapFrame(ifr, { type: 'FOCUS_BOUNDARY', bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat] });
-          postToMapFrame(ifr, { type: 'FLY_TO', lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2, lon: (minLng + maxLng) / 2, zoom: 17 });
-        } catch { }
+        postToMapFrame(ifr, { type: 'FOCUS_BOUNDARY', bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat] });
+        postToMapFrame(ifr, { type: 'FLY_TO', lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2, lon: (minLng + maxLng) / 2, zoom: 17 });
       });
     } else if (subgrid) {
       iframes.forEach((ifr) => {
-        try {
-          postToMapFrame(ifr, { type: 'SET_SUBGRID_FILTER', subgrid, date: '', isSingleRun: false, runId: null });
-        } catch { }
+        postToMapFrame(ifr, { type: 'SET_SUBGRID_FILTER', subgrid, date: '', isSingleRun: false, runId: null });
       });
     }
   }, []);
@@ -789,9 +787,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
         iframes.forEach((ifr) => {
           if (!ifr || !ifr.contentWindow) return;
-          try {
-            postToMapFrame(ifr, {
-              type: 'FOCUS_BOUNDARY',
+          postToMapFrame(ifr, {
+            type: 'FOCUS_BOUNDARY',
               bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat]
             });
             postToMapFrame(ifr, {
@@ -807,8 +804,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
               date: '',
               isSingleRun: false,
               runId: null
-            });
-          } catch { }
+          });
         });
       }
     } else {
@@ -819,23 +815,21 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
         iframes.forEach((ifr) => {
           if (!ifr || !ifr.contentWindow) return;
-          try {
-            postToMapFrame(ifr, { type: 'CLEAR_BOUNDARY_FOCUS' });
-            postToMapFrame(ifr, {
-              type: 'FLY_TO',
-              lat: (minLat + maxLat) / 2,
-              lng: (minLng + maxLng) / 2,
-              lon: (minLng + maxLng) / 2,
-              zoom: 15
-            });
-            postToMapFrame(ifr, {
-              type: 'SET_SUBGRID_FILTER',
-              subgrid: '',
-              date: '',
-              isSingleRun: false,
-              runId: null
-            });
-          } catch { }
+          postToMapFrame(ifr, { type: 'CLEAR_BOUNDARY_FOCUS' });
+          postToMapFrame(ifr, {
+            type: 'FLY_TO',
+            lat: (minLat + maxLat) / 2,
+            lng: (minLng + maxLng) / 2,
+            lon: (minLng + maxLng) / 2,
+            zoom: 15
+          });
+          postToMapFrame(ifr, {
+            type: 'SET_SUBGRID_FILTER',
+            subgrid: '',
+            date: '',
+            isSingleRun: false,
+            runId: null
+          });
         });
       }
     }
@@ -889,6 +883,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         stg = res.staging;
       } catch {
         /* ignore — impact still computed with empty registry data */
+        ds = [];
       }
     }
     const impact = computeDeletionImpact({
@@ -1432,8 +1427,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     // Broadcast staged data update (with 50% opacity & matching trajectory colors) to WebGIS map iframes
     const iframes = document.querySelectorAll('iframe');
     iframes.forEach(f => {
-      try {
-        const itemPub = (item: any) => item.publishToWebGIS || item.publishToUSVPRO;
+      const itemPub = (item: any) => item.publishToWebGIS || item.publishToUSVPRO;
         postToMapFrame(f, {
           type: 'SET_STAGED_DATA',
           stagedItems: updatedDraft.map(item => ({
@@ -1446,7 +1440,6 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
             panoramas: item.panoramas || []
           }))
         });
-      } catch (err) { }
     });
 
     if (addNotification) {
@@ -1619,7 +1612,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         setSearchQuery(sg);
         setMapSubgridFilter(sg);
       }
-    } catch (_) {}
+    } catch (_) {
+      return;
+    }
   }, []);
 
   // Reset pagination on tab/search/pageSize change
@@ -2218,14 +2213,12 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
     const iframes = [currentMapIframeRef.current, afterMapIframeRef.current].filter(Boolean) as HTMLIFrameElement[];
     iframes.forEach((ifr) => {
-      try {
-        postToMapFrame(ifr, {
-          type: 'SET_STAGED_DATA',
-          stagedItems: updatedDaily,
-          isSingleRun: false,
-          runId: null
-        });
-      } catch {}
+      postToMapFrame(ifr, {
+        type: 'SET_STAGED_DATA',
+        stagedItems: updatedDaily,
+        isSingleRun: false,
+        runId: null
+      });
     });
 
     if (onRefreshMap) onRefreshMap();

@@ -86,7 +86,7 @@ const TourVideo: React.FC<{ moduleId: string; active: boolean; isMobile: boolean
         }
 
         if (!active) {
-            try { el.pause(); } catch { /* jsdom / unsupported */ }
+            try { el.pause(); } catch { return; }
             return;
         }
 

@@ -344,7 +344,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
         }
       }
     } catch {
-      // fall through to offline defaults below
+      setIsScanningFolders(false);
     }
     if (sessionSource?.selectedFolderId || sessionSource?.customFolderName) {
       // NAS scan unavailable: retain the restored session selections.
@@ -503,7 +503,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
       if (!silent) notifyPairingOutcome(records, images);
       return true;
     } catch {
-      // ignore
+      return false;
     } finally {
       setIsLoadingPairing(false);
     }

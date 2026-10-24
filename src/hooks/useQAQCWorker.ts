@@ -227,7 +227,7 @@ export async function persistDefectBatch(
       updated_at: new Date().toISOString(),
       ...(pid ? { project_id: pid } : {})
     }));
-    const { error: upsertErr } = await withRetry(
+    const upsertRes: any = await withRetry(
       async () => {
         // Migration 0032 widened the key to include run_id, so two runs of one
         // subgrid can each own a defect for the same filename. Requires 0032 to
@@ -245,10 +245,11 @@ export async function persistDefectBatch(
       try {
         reportWarn(`qa_defects batch sync failed after retries: ${err instanceof Error ? err.message : String(err)}`, 'persistDefectBatch');
       } catch {
-        // logging must never break the batch loop
+        return;
       }
       return { error: { message: String(err), code: 'RETRY_FAILED' } as any, data: null };
     });
+    const upsertErr = upsertRes?.error;
     if (upsertErr) {
       console.warn('qa_defects batch sync notice:', upsertErr);
       failedChunks++;

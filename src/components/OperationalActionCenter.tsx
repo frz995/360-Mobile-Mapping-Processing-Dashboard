@@ -46,7 +46,7 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
           setApprovalRequests(fetchedApprovals || []);
         }
       } catch {
-        // Fallback silently
+        return;
       } finally {
         if (isMounted) setIsLoadingJobs(false);
       }

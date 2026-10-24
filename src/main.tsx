@@ -77,7 +77,7 @@ async function boot() {
         new Promise((resolve) => setTimeout(resolve, 8000))
       ]);
     } catch {
-      // Non-fatal: the App surface reports NAS availability separately.
+      void 0;
     }
   }
   if (isShareRoute) {

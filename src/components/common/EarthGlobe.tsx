@@ -682,7 +682,7 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
     };
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch {}
+    } catch { return; }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -743,7 +743,7 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
       lastInteractionRef.current = performance.now();
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {}
+      } catch { return; }
     }
   };
 

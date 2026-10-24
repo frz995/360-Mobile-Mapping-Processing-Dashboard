@@ -61,6 +61,6 @@ export function sentryReportSink(entry: ReportEntry): void {
       Sentry.captureMessage(entry.message, entry.level === 'warn' ? 'warning' : 'info');
     }
   } catch {
-    // Never let Sentry break the app.
+    return;
   }
 }

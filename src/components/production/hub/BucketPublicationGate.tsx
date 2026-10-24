@@ -430,7 +430,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
           if (blob.size > 0) return blob;
         }
       } catch {
-        // try the next candidate location
+        continue;
       }
     }
     return null;

@@ -1,3 +1,4 @@
+import { reportWriteFailure } from '../lib/writeFailures';
 import { WORKSPACE_KEYS, type WorkspaceKey } from './urlRouter';
 
 const LOCATION_STORAGE_KEY = 'geosphere360_workspace_location';
@@ -26,8 +27,8 @@ export function readWorkspaceLocation(): WorkspaceLocationState {
 function writeWorkspaceLocation(state: WorkspaceLocationState): void {
   try {
     localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // localStorage unavailable — persistence is best-effort
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Workspace location cache', err instanceof Error ? err.message : String(err), 'warning');
   }
 }
 
@@ -57,8 +58,8 @@ export function persistWorkspaceTab<T extends string>(ws: WorkspaceKey, tab: T):
 export function clearWorkspaceLocation(): void {
   try {
     localStorage.removeItem(LOCATION_STORAGE_KEY);
-  } catch {
-    // ignore
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Workspace location clear', err instanceof Error ? err.message : String(err), 'warning');
   }
 }
 
@@ -88,15 +89,15 @@ export function hasLastActivity(): boolean {
 export function touchLastActivity(): void {
   try {
     localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
-  } catch {
-    // ignore
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Last activity timestamp cache', err instanceof Error ? err.message : String(err), 'warning');
   }
 }
 
 export function clearLastActivity(): void {
   try {
     localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
-  } catch {
-    // ignore
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Last activity clear', err instanceof Error ? err.message : String(err), 'warning');
   }
 }

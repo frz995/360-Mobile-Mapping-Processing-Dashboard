@@ -107,7 +107,9 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
           if (parsed) return parsed;
         }
       }
-    } catch { }
+    } catch {
+      return null;
+    }
     return null;
   }, [projectSettings]);
 

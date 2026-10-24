@@ -135,8 +135,7 @@ function emit(panel: ConsolePanel): void {
     try {
       listener(panel);
     } catch {
-      // A listener that throws must not strand the others, or the console
-      // stops responding to navigation while one broken panel keeps the rail.
+      return;
     }
   });
 }

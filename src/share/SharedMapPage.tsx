@@ -362,7 +362,7 @@ function ShareMap({
         if (NavControl) {
           map.addControl(new NavControl({ showCompass: true }), 'top-right');
         }
-      } catch { /* ignore nav control in tests */ }
+      } catch { return; }
     }
 
     if (map && typeof map.on === 'function') {
@@ -717,7 +717,7 @@ function ShareMap({
       clearTimeout(t2);
       try {
         map.remove();
-      } catch { /* ignore */ }
+      } catch { mapRef.current = null; }
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1060,9 +1060,7 @@ function LiveMapReference({
 
   useEffect(() => {
     if (!subgrid) return;
-    try {
-      postToMapFrame(iframeRef.current, { type: 'SHARE_FOCUS', subgrid });
-    } catch { /* cross-origin iframe may reject; ignore */ }
+    postToMapFrame(iframeRef.current, { type: 'SHARE_FOCUS', subgrid });
   }, [subgrid]);
 
   return (

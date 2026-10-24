@@ -116,7 +116,7 @@ function emit(key: WorkspaceKey): void {
     try {
       l(key);
     } catch {
-      // listener errors must not break navigation
+      return;
     }
   });
 }

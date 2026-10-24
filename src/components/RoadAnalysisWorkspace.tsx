@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { reportWriteFailure } from '../lib/writeFailures';
 import {
   Route,
   Map,
@@ -432,8 +433,8 @@ export function mirrorRoadAnalysisToCache(userKey: string, state: RoadAnalysisSa
     // cursor delete every stored geometry record for this user. The full bytes are
     // written to IndexedDB by the explicit save (before the RPC) and by every
     // persistRoadAnalysisCache edit, which always pass the complete in-memory set.
-  } catch {
-    // ignore quota / serialization errors
+  } catch (err) {
+    reportWriteFailure('storage.local_storage', 'Road analysis mirror', err instanceof Error ? err.message : String(err), 'warning');
   }
 }
 

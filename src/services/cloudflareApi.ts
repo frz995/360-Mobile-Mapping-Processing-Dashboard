@@ -10,7 +10,7 @@ export async function fetchDashboardApi(input: RequestInfo | URL, init: RequestI
     const token = data.session?.access_token;
     if (token) headers.set('Authorization', `Bearer ${token}`);
   } catch {
-    // The Cloudflare API will return 401 when no valid session is present.
+    void 0;
   }
   return fetch(input, { ...init, headers });
 }
