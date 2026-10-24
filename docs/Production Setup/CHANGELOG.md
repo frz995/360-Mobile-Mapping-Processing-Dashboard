@@ -1,5 +1,32 @@
 # GeoSphere 360 — Production Release Changelog
 
+## End-to-End Audit & Hardening Release (v40)
+
+A comprehensive security, reliability, and data-integrity hardening pass addressing all findings from the v40 audit baseline: WebGIS bridge containment, client credential elimination, telemetry/failure reporting, display metric honesty (Rule Zero), database boundary enforcement, and supply chain audit.
+
+### Security & WebGIS Bridge Containment
+
+- **Outbound broadcast lockdown (F2).** Eliminated all 108 wildcard (`'*'`) `postMessage` broadcasts across 9 components (`AdminSettingsView`, `DeletionSelectionMap`, `MapComponent`, `QAQCWorkbench`, `DataManagementPage`, `ProjectOnboarding`, `SelectionMapOverlay`, `App`, `useQAQCWorker`, `SharedMapPage`). All outbound messages now resolve frame origins strictly via `resolveFrameOrigin()` or `window.location.origin` with fail-closed semantics.
+- **Inbound listener validation (F3).** Secured all 10 `window`-level `message` listeners. Every listener now validates both origin through `createMapOriginMatcher()` and `event.source` against the child iframe reference before parsing payloads.
+- **Public share card XSS sanitization (F4).** User-controlled survey metadata, subgrid labels, and dates on `SharedMapPage.tsx` are strictly escaped via `escapeHtml()` prior to DOM interpolation.
+- **Client bundle credential elimination (F5).** Removed `VITE_PRODUCTION_API_KEY` from client code and build manifests. Authentication for backend services is handled exclusively by server-side proxies via `NAS_WORKER_TOKEN`. Grepping production build output confirms 0 embedded tokens.
+- **Authoritative environment taxonomy.** Published `docs/ENV.md` establishing a formal 3-tier taxonomy: Tier 1 (Public Client `VITE_*`), Tier 2 (Server Secrets), and Tier 3 (Server Configuration).
+
+### Database & Tenant Boundary
+
+- **Migration `0048` (`0048_sync_file_inventory_revoke.sql`).** Revoked default public execution on `sync_file_inventory_from_storage()` to align with the tenancy template (F6).
+- **Automated tenant gate (`db:gate`).** All 48 migrations applied cleanly; cross-tenant boundary assertions passed for all models.
+
+### Data Integrity & Failure Reporting
+
+- **Swallowed failure elimination (F9).** Reduced strict empty catches from 140 to 0 (100% elimination) and inline empty catches from 70 to 0 across 46 files. Storage and state write failures now route to `reportWriteFailure('storage.local_storage', ...)` with warning severity.
+- **Display metric accuracy & Rule Zero (F8).** Triaged 489 coercion sites (`?? 0` / `|| 0`). Preserved nullability for 48 unmeasured metrics across QA/QC stats, catchment calculations, and survey integrity panels to prevent misleading zero values.
+
+### Supply Chain & Quality Gates
+
+- **Production runtime audit (F10).** Verified 0 known vulnerabilities across 153 production dependencies via `npm audit --omit=dev`. 13 developer tooling vulnerabilities formally documented and accepted in `scripts/audit/npm-audit.json` under the Node 22 upgrade milestone.
+- **Blocking quality gates.** `scripts/lint.mjs` enforces zero security-surface regressions against `scripts/audit/baseline.json` as a blocking gate alongside physical file-size budgets. Full suite passes: 138 test files (1,700 unit tests), 0 TypeScript errors, 0 lint errors.
+
 ## Seller Console, Tenancy and Documentation Release (v34 / v35)
 
 The platform changed shape: it is now **one deployment on one domain**
