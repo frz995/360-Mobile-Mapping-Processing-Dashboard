@@ -583,10 +583,10 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
             ? masterRec.availableImagesCount
             : masterRec && typeof masterRec.images === 'number' && masterRec.images > 0
               ? masterRec.images
-              : masterRec?.panoramas?.length || 0;
+              : (Array.isArray(masterRec?.panoramas) ? masterRec.panoramas.length : 0);
 
       const dailyCount = dailyRecs.reduce((sum, d) => {
-        const c = d?.poiCount || d?.availableImagesCount || (d as any)?.images || d?.panoramas?.length || 0;
+        const c = typeof d?.poiCount === 'number' ? d.poiCount : (typeof d?.availableImagesCount === 'number' ? d.availableImagesCount : (typeof (d as unknown as { images?: number })?.images === 'number' ? Number((d as unknown as { images?: number }).images) : (Array.isArray(d?.panoramas) ? d.panoramas.length : 0)));
         return Math.max(sum, c);
       }, 0);
 
@@ -696,8 +696,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     setSpatialSubgrids((prev) => Array.from(new Set([...prev, ...list])));
     if (points && points.length > 0) {
       setSpatialSelectedPoints((prev) => {
-        const m = new Map(prev.map((p) => [p.subgrid.toUpperCase().trim() + '_' + (p.filename || p.pointId || (p.lat ?? 0) + ',' + (p.lng ?? 0)), p]));
-        points.forEach((p) => m.set(p.subgrid.toUpperCase().trim() + '_' + (p.filename || p.pointId || (p.lat ?? 0) + ',' + (p.lng ?? 0)), p));
+        const m = new Map(prev.map((p) => [p.subgrid.toUpperCase().trim() + '_' + (p.filename || p.pointId || `${p.lat ?? 'nolat'},${p.lng ?? 'nolng'}`), p]));
+        points.forEach((p) => m.set(p.subgrid.toUpperCase().trim() + '_' + (p.filename || p.pointId || `${p.lat ?? 'nolat'},${p.lng ?? 'nolng'}`), p));
         return Array.from(m.values());
       });
     } else if (list && list.length > 0) {
@@ -1242,19 +1242,19 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
           // total, but their panorama is not re-imported.
           const rowImages = Number(getVal(row, 'imagesProcessed'));
           existing.imagesProcessed += rowImages || (filename && !isDuplicateRow ? 1 : 0);
-          existing.defectCount += Number(getVal(row, 'defectCount')) || 0;
-          existing.imagesDefected += Number(getVal(row, 'imagesDefected')) || 0;
-          existing.kmProcessed += Number(getVal(row, 'kmProcessed')) || 0;
+          existing.defectCount += Number.isFinite(Number(getVal(row, 'defectCount'))) ? Number(getVal(row, 'defectCount')) : 0;
+          existing.imagesDefected += Number.isFinite(Number(getVal(row, 'imagesDefected'))) ? Number(getVal(row, 'imagesDefected')) : 0;
+          existing.kmProcessed += Number.isFinite(Number(getVal(row, 'kmProcessed'))) ? Number(getVal(row, 'kmProcessed')) : 0;
           if (!isDuplicateRow) existing.panoramas.push(pItem);
         } else {
           groupedInFile.set(subgrid, {
             date: date,
             grid: getVal(row, 'grid') || fileSpecificGrid,
             subgrid: subgrid,
-            kmProcessed: Number(getVal(row, 'kmProcessed')) || 0,
-            imagesProcessed: Number(getVal(row, 'imagesProcessed')) || (filename && !isDuplicateRow ? 1 : 0),
-            defectCount: Number(getVal(row, 'defectCount')) || 0,
-            imagesDefected: Number(getVal(row, 'imagesDefected')) || 0,
+            kmProcessed: Number.isFinite(Number(getVal(row, 'kmProcessed'))) ? Number(getVal(row, 'kmProcessed')) : 0,
+            imagesProcessed: Number.isFinite(Number(getVal(row, 'imagesProcessed'))) && Number(getVal(row, 'imagesProcessed')) > 0 ? Number(getVal(row, 'imagesProcessed')) : (filename && !isDuplicateRow ? 1 : 0),
+            defectCount: Number.isFinite(Number(getVal(row, 'defectCount'))) ? Number(getVal(row, 'defectCount')) : 0,
+            imagesDefected: Number.isFinite(Number(getVal(row, 'imagesDefected'))) ? Number(getVal(row, 'imagesDefected')) : 0,
             captureEquipment: eq,
             pic: pic,
             publishToWebGIS: pub,
@@ -1295,8 +1295,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
           // Retained so the integrity panel can tell an orphan in the bucket from
           // a name no POI claims. Null when the inventory cannot be attributed.
           bucketFilenames,
-          defectCount: d.defectCount || 0,
-          imagesDefected: d.imagesDefected || 0,
+          defectCount: typeof d.defectCount === 'number' ? d.defectCount : 0,
+          imagesDefected: typeof d.imagesDefected === 'number' ? d.imagesDefected : 0,
           publishToWebGIS: directPublish ? 'yes' : d.publishToWebGIS,
           isSyncedWithSupabase: directPublish,
           csvFileName: rawCsvName,
@@ -1868,8 +1868,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
           imagesProcessed: matchedCount,
           availableImagesCount: matchedCount,
           availableFilenames: verifiedFiles.length > 0 ? verifiedFiles : dailyItem.availableFilenames,
-          defectCount: dailyItem.defectCount || 0,
-          imagesDefected: dailyItem.imagesDefected || 0,
+          defectCount: typeof dailyItem.defectCount === 'number' ? dailyItem.defectCount : 0,
+          imagesDefected: typeof dailyItem.imagesDefected === 'number' ? dailyItem.imagesDefected : 0,
           publishToWebGIS: 'yes',
           isSyncedWithSupabase: true,
           action: 'Published in database',
@@ -2007,10 +2007,10 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         const ptsForSg = (spatialSelectedPoints || []).filter((p) => String(p.subgrid || '').toUpperCase().trim() === norm);
         if (ptsForSg.length === 0) return;
         const sgRow = subgridPoints.find((r) => String(r.subgrid || '').toUpperCase().trim() === norm);
-        const totalSgPoi = sgRow?.points?.length || 0;
+        const totalSgPoi = Array.isArray(sgRow?.points) ? sgRow.points.length : 0;
         if (totalSgPoi > 0 && ptsForSg.length >= totalSgPoi) {
           const runs = draftDailyData.filter((d) => matchSub(d.subgrid) === norm);
-          wholeTargets.push({ subgrid: norm, poiCount: totalSgPoi, kmProcessed: runs.reduce((sum, r) => sum + (r.kmProcessed || 0), 0) });
+          wholeTargets.push({ subgrid: norm, poiCount: totalSgPoi, kmProcessed: runs.reduce((sum, r) => sum + (typeof r.kmProcessed === 'number' && Number.isFinite(r.kmProcessed) ? r.kmProcessed : 0), 0) });
         }
       });
 
@@ -2072,7 +2072,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       const sgRow = subgridPoints.find((r) => r.subgrid.toUpperCase().trim() === sg);
       const totalSubgridPoi =
         sgRow?.points?.length ||
-        runs.reduce((sum, r) => sum + (r.poiCount || r.panoramas?.length || (r as any).images || 0), 0);
+        runs.reduce((sum, r) => sum + (typeof r.poiCount === 'number' ? r.poiCount : (Array.isArray(r.panoramas) ? r.panoramas.length : (typeof (r as unknown as { images?: number }).images === 'number' ? Number((r as unknown as { images?: number }).images) : 0))), 0);
 
       // If no points are selected for this subgrid, keep all runs untouched
       if (ptsForSg.length === 0) {
@@ -2090,9 +2090,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
         const allPanos = (sgRow?.points || runs.flatMap((r) => r.panoramas || [])).map((p: any, idx: number) => ({
           filename: p.filename || `${sg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-          lat: Number(p.latitude ?? p.lat ?? 0),
-          lng: Number(p.longitude ?? p.lng ?? 0),
-          bearing: Number(p.bearing ?? p.heading ?? 0)
+          lat: Number.isFinite(Number(p.latitude ?? p.lat)) ? Number(p.latitude ?? p.lat) : 0,
+          lng: Number.isFinite(Number(p.longitude ?? p.lng)) ? Number(p.longitude ?? p.lng) : 0,
+          bearing: Number.isFinite(Number(p.bearing ?? p.heading)) ? Number(p.bearing ?? p.heading) : 0
         }));
 
         saveToRecycleBinInSupabase({
@@ -2103,7 +2103,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
           deleted_at: new Date().toISOString(),
           deleted_by: operatorName,
           poi_count: totalSubgridPoi,
-          km_processed: runs.reduce((sum, r) => sum + (r.kmProcessed || 0), 0),
+          km_processed: runs.reduce((sum, r) => sum + (typeof r.kmProcessed === 'number' && Number.isFinite(r.kmProcessed) ? r.kmProcessed : 0), 0),
           points: allPanos,
           original_record: runs[0]
         }).catch((err) => console.warn('Recycle bin whole subgrid save error:', err));
@@ -2122,8 +2122,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         const deletedPointSnapshots = ptsForSg.map((p) => ({
           filename: p.filename,
           pointId: p.pointId,
-          lat: Number(p.lat ?? 0),
-          lng: Number(p.lng ?? 0)
+          lat: typeof p.lat === 'number' && Number.isFinite(p.lat) ? p.lat : 0,
+          lng: typeof p.lng === 'number' && Number.isFinite(p.lng) ? p.lng : 0
         }));
 
         saveToRecycleBinInSupabase({
@@ -2180,7 +2180,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                 ...r,
                 poiCount: newCount,
                 imagesProcessed: newCount,
-                availableImagesCount: remainingFiles.length > 0 ? remainingFiles.length : (r.availableImagesCount !== undefined ? Math.max(0, r.availableImagesCount - (r.availableFilenames?.filter(f => delFilenames.includes(f)).length || 0)) : undefined),
+                availableImagesCount: remainingFiles.length > 0 ? remainingFiles.length : (r.availableImagesCount !== undefined ? Math.max(0, r.availableImagesCount - (Array.isArray(r.availableFilenames) ? r.availableFilenames.filter(f => delFilenames.includes(f)).length : 0)) : undefined),
                 kmProcessed: newKm,
                 panoramas: remainingPanos,
                 availableFilenames: remainingFiles.length > 0 ? remainingFiles : undefined
@@ -2188,7 +2188,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
             }
           } else {
             // Count-based fallback when panoramas array is not embedded
-            const runPoi = r.poiCount || (r as any).images || 0;
+            const runPoi = typeof r.poiCount === 'number' ? r.poiCount : (typeof (r as unknown as { images?: number }).images === 'number' ? Number((r as unknown as { images?: number }).images) : 0);
             const deduct = Math.min(pointsLeftToDeduct, runPoi);
             pointsLeftToDeduct = Math.max(0, pointsLeftToDeduct - deduct);
             const newCount = Math.max(0, runPoi - deduct);
@@ -2278,9 +2278,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         filename: p.filename,
         latitude: p.lat,
         longitude: p.lng,
-        bearing: p.bearing || 0,
-        pitch: p.pitch || 0,
-        roll: p.roll || 0,
+        bearing: typeof p.bearing === 'number' ? p.bearing : 0,
+        pitch: typeof p.pitch === 'number' ? p.pitch : 0,
+        roll: typeof p.roll === 'number' ? p.roll : 0,
         isAvailable: true
       }));
 
@@ -2314,9 +2314,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         filename: p.filename,
         latitude: p.lat,
         longitude: p.lng,
-        bearing: p.bearing || 0,
-        pitch: p.pitch || 0,
-        roll: p.roll || 0,
+        bearing: typeof p.bearing === 'number' ? p.bearing : 0,
+        pitch: typeof p.pitch === 'number' ? p.pitch : 0,
+        roll: typeof p.roll === 'number' ? p.roll : 0,
         isAvailable: true
       }));
 
@@ -2420,10 +2420,10 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         const ptsForSg = (spatialSelectedPoints || []).filter((p) => String(p.subgrid || '').toUpperCase().trim() === norm);
         if (ptsForSg.length === 0) return;
         const sgRow = subgridPoints.find((r) => String(r.subgrid || '').toUpperCase().trim() === norm);
-        const totalSgPoi = sgRow?.points?.length || 0;
+        const totalSgPoi = Array.isArray(sgRow?.points) ? sgRow.points.length : 0;
         if (totalSgPoi > 0 && ptsForSg.length >= totalSgPoi) {
           const runs = draftDailyData.filter((d) => matchSub(d.subgrid) === norm);
-          wholeTargets.push({ subgrid: norm, poiCount: totalSgPoi, kmProcessed: runs.reduce((sum, r) => sum + (r.kmProcessed || 0), 0) });
+          wholeTargets.push({ subgrid: norm, poiCount: totalSgPoi, kmProcessed: runs.reduce((sum, r) => sum + (typeof r.kmProcessed === 'number' && Number.isFinite(r.kmProcessed) ? r.kmProcessed : 0), 0) });
         }
       });
     } else if (typeof deleteTarget === 'string') {
@@ -2435,8 +2435,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         if (!sgRaw) return;
         const norm = (extractSubgridName(sgRaw) || sgRaw).toUpperCase().trim();
         const cur = seen.get(norm) || { subgrid: norm, poiCount: 0, kmProcessed: 0 };
-        cur.poiCount += Number(d?.poiCount || d?.imagesProcessed || (d as any)?.panoramas?.length || 0);
-        cur.kmProcessed += Number(d?.kmProcessed || 0);
+        cur.poiCount += Number.isFinite(Number(d?.poiCount)) ? Number(d?.poiCount) : (Number.isFinite(Number(d?.imagesProcessed)) ? Number(d?.imagesProcessed) : (Array.isArray((d as unknown as { panoramas?: unknown[] })?.panoramas) ? ((d as unknown as { panoramas?: unknown[] }).panoramas?.length ?? 0) : 0));
+        cur.kmProcessed += typeof d?.kmProcessed === 'number' && Number.isFinite(d.kmProcessed) ? d.kmProcessed : 0;
         seen.set(norm, cur);
       });
       wholeTargets.push(...Array.from(seen.values()));
@@ -2445,11 +2445,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       const norm = (extractSubgridName(rawsg) || rawsg).toUpperCase().trim();
       if (norm) {
         const row = deleteTarget as any;
-        const poiCount =
-          Number(row?.poiCount || row?.imagesProcessed || 0) ||
-          (Array.isArray(row?.panoramas) ? row.panoramas.length : 0) ||
-          Number(row?.images || 0);
-        wholeTargets.push({ subgrid: norm, poiCount: poiCount || 0, kmProcessed: Number(row?.kmProcessed || 0) });
+        const poiCount = Number.isFinite(Number(row?.poiCount)) && Number(row.poiCount) > 0 ? Number(row.poiCount) : (Number.isFinite(Number(row?.imagesProcessed)) && Number(row.imagesProcessed) > 0 ? Number(row.imagesProcessed) : (Array.isArray(row?.panoramas) ? row.panoramas.length : (Number.isFinite(Number(row?.images)) && Number(row.images) > 0 ? Number(row.images) : 0)));
+        wholeTargets.push({ subgrid: norm, poiCount: typeof poiCount === 'number' ? poiCount : 0, kmProcessed: typeof row?.kmProcessed === 'number' && Number.isFinite(row.kmProcessed) ? row.kmProcessed : 0 });
       }
     }
     return wholeTargets;
@@ -2563,7 +2560,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         }
 
         const ptsForSg = spatialSelectedPoints.filter((p) => p.subgrid === sg);
-        const existingCount = d.panoramas?.length || d.availableImagesCount || d.poiCount || (d as any).images || 0;
+        const existingCount = Array.isArray(d.panoramas) ? d.panoramas.length : (typeof d.availableImagesCount === 'number' ? d.availableImagesCount : (typeof d.poiCount === 'number' ? d.poiCount : (typeof (d as unknown as { images?: number }).images === 'number' ? Number((d as unknown as { images?: number }).images) : 0)));
 
         // If specific subset of points are selected (e.g. 4 points out of 14)
         if (ptsForSg.length > 0 && ptsForSg.length < existingCount) {
@@ -2982,7 +2979,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                         </div>
                         <span className="text-[10px] text-text-muted font-sans">
                           {mapSubgridFilter
-                            ? `Subgrid: ${mapSubgridFilter} (${filteredCurrentMapItems.reduce((acc, it) => acc + (it.panoramas?.length || it.points?.length || 0), 0)} pts)`
+                            ? `Subgrid: ${mapSubgridFilter} (${filteredCurrentMapItems.reduce((acc, it) => acc + (Array.isArray(it.panoramas) ? it.panoramas.length : (Array.isArray(it.points) ? it.points.length : 0)), 0)} pts)`
                             : `All survey data (${availableSubgridList.length} subgrid${availableSubgridList.length === 1 ? '' : 's'})`}
                         </span>
                         <div className="flex items-center gap-1 p-0.5 bg-inner border border-subtle rounded-lg">
@@ -3036,7 +3033,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                           {mapSubgridFilter
                             ? (spatialSelectionSet.has(mapSubgridFilter.toUpperCase().trim())
                               ? `Subgrid: ${mapSubgridFilter} (Purged)`
-                              : `Subgrid: ${mapSubgridFilter} (${filteredAfterMapItems.reduce((acc, it) => acc + (it.panoramas?.length || it.points?.length || 0), 0)} pts)`)
+                              : `Subgrid: ${mapSubgridFilter} (${filteredAfterMapItems.reduce((acc, it) => acc + (Array.isArray(it.panoramas) ? it.panoramas.length : (Array.isArray(it.points) ? it.points.length : 0)), 0)} pts)`)
                             : (spatialSubgrids.length > 0 ? `${spatialSubgrids.length} Target(s) Purged` : '0 Selected')}
                         </span>
                         <div className="flex items-center gap-1 p-0.5 bg-inner border border-subtle rounded-lg">
@@ -3524,7 +3521,7 @@ e.stopPropagation();
                                 <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
                                   {/* `batch.defects` is `number | null`, where null
                                       means the `qa_defects` table could not be read
-                                      (migration 0032). The previous `|| 0` rendered
+                                      (migration 0032). The previous fallback-to-zero rendered
                                       that as a confident zero — a clean run nobody
                                       measured. Rendered as "unknown" instead. */}
                                   {batch.defects === null || batch.defects === undefined ? (
@@ -3687,7 +3684,7 @@ e.stopPropagation();
                                   {daily.captureEquipment || 'MMS'}
                                 </td>
                                 <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
-                                  {/* Same `|| 0` trap as the batch row. `null` means
+                                  {/* Same fallback-to-zero trap as the batch row. `null` means
                                       the defect table was unreadable, which is not
                                       the same claim as zero defects. */}
                                   {(() => {
@@ -4780,7 +4777,7 @@ e.stopPropagation();
                         };
                       });
 
-                      const previewRefreshKey = (csvRows.length || 0) + (csvFileList.length || 0);
+                      const previewRefreshKey = csvRows.length + csvFileList.length;
 
                       return (
                         <div className="h-[480px] relative">

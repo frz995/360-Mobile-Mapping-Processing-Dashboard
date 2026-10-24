@@ -180,7 +180,7 @@ export function DonutChart({
   const paths = useMemo(
     () =>
       layout.map((d, i) => {
-        const t = progress[i] ?? 0;
+        const t = typeof progress[i] === 'number' ? progress[i] : 0;
         const sweep = d.endAngle - d.startAngle;
         return {
           d: arcGen({
@@ -332,7 +332,7 @@ const COL_WIDTH = 30;
 
 /** Round the axis ceiling up to a readable step and return its ticks. */
 function axisScale(maxPct: number): { top: number; ticks: number[] } {
-  const ceiling = Math.max(10, maxPct || 0);
+  const ceiling = Math.max(10, Number.isFinite(maxPct) ? maxPct : 0);
   const steps = [25, 50, 80, 100];
   const top = steps.find((s) => ceiling <= s) ?? Math.ceil(ceiling / 100) * 100;
   const tickCount = top / (top === 25 ? 5 : top === 50 ? 10 : top === 80 ? 20 : 25);
@@ -361,13 +361,13 @@ export function ClassShareColumns({
 
   const plotW = PLOT_RIGHT - PLOT_LEFT;
   const slotW = plotW / Math.max(1, columns.length);
-  const { top, ticks } = axisScale(max(columns, (r) => r.percentage) ?? 0);
+  const maxPercentage = max(columns, (r) => r.percentage); const { top, ticks } = axisScale(typeof maxPercentage === 'number' ? maxPercentage : 0);
   const yScale = useMemo(() => scaleLinear().domain([0, top]).range([PLOT_BASE_Y, PLOT_TOP]), [top]);
 
   const bars = useMemo(
     () =>
       columns.map((row, i) => {
-        const t = progress[i] ?? 0;
+        const t = typeof progress[i] === 'number' ? progress[i] : 0;
         const targetY = yScale(row.percentage);
         const targetHeight = Math.max(0, PLOT_BASE_Y - targetY);
         const height = targetHeight * t;

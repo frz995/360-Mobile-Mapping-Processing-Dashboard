@@ -398,10 +398,10 @@ export interface DailyRowLike {
 }
 
 export function buildDailyReportHtml(daily: DailyRowLike[], meta?: ReportMeta): string {
-  const totalKm = Math.round(daily.reduce((a, b) => a + (b.kmProcessed || 0), 0) * 100) / 100;
-  const totalPoi = daily.reduce((a, b) => a + (b.addImageCount || b.images || 0), 0);
-  const totalFrames = daily.reduce((a, b) => a + (b.snapshotImageCount || b.images || 0), 0);
-  const totalDefects = daily.reduce((a, b) => a + (b.defects || 0), 0);
+  const totalKm = Math.round(daily.reduce((a, b) => a + (typeof b.kmProcessed === 'number' ? b.kmProcessed : 0), 0) * 100) / 100;
+  const totalPoi = daily.reduce((a, b) => a + (typeof b.addImageCount === 'number' ? b.addImageCount : (typeof b.images === 'number' ? b.images : 0)), 0);
+  const totalFrames = daily.reduce((a, b) => a + (typeof b.snapshotImageCount === 'number' ? b.snapshotImageCount : (typeof b.images === 'number' ? b.images : 0)), 0);
+  const totalDefects = daily.reduce((a, b) => a + (typeof b.defects === 'number' ? b.defects : 0), 0);
   const synced = daily.filter((b) => b.isSyncedWithSupabase || b.status === 'Complete').length;
 
   const sections: ReportSection[] = [
@@ -438,10 +438,10 @@ export function buildDailyReportHtml(daily: DailyRowLike[], meta?: ReportMeta): 
             <tr>
               <td>${esc((b.date || '').slice(0, 10))}</td>
               <td>${esc(b.grid || '')} <strong>${esc(b.subgrid || '')}</strong></td>
-              <td class="text-right">${(b.addImageCount || b.images || 0).toLocaleString()}</td>
-              <td class="text-right">${(b.snapshotImageCount || b.images || 0).toLocaleString()}</td>
-              <td class="text-right">${(b.kmProcessed || 0).toFixed(2)}</td>
-              <td class="text-right">${(b.defects || 0).toLocaleString()}</td>
+              <td class="text-right">${Number.isFinite(b.addImageCount ?? b.images) ? Number(b.addImageCount ?? b.images).toLocaleString() : '—'}</td>
+              <td class="text-right">${Number.isFinite(b.snapshotImageCount ?? b.images) ? Number(b.snapshotImageCount ?? b.images).toLocaleString() : '—'}</td>
+              <td class="text-right">${Number.isFinite(b.kmProcessed) ? Number(b.kmProcessed).toFixed(2) : '—'}</td>
+              <td class="text-right">${Number.isFinite(b.defects) ? Number(b.defects).toLocaleString() : '—'}</td>
               <td class="sub">${esc(b.captureEquipment || 'MMS')}</td>
               <td>${esc(b.pic || '')}</td>
               <td class="text-center"><span class="st${b.isSyncedWithSupabase || b.status === 'Complete' ? '' : ' st-mute'}">${b.isSyncedWithSupabase || b.status === 'Complete' ? 'Synced' : 'Pending'}</span></td>
@@ -618,7 +618,7 @@ export function buildLineageReportHtml(input: LineageReportInput, meta?: ReportM
               <td class="sub">${esc(d.dataset_type || '')}</td>
               <td class="sub">${esc(d.pipeline_stage || '')}</td>
               <td>${esc(d.subgrid || '')}</td>
-              <td class="text-right">${(d.file_count || 0).toLocaleString()}</td>
+              <td class="text-right">${Number.isFinite(d.file_count) ? Number(d.file_count).toLocaleString() : '—'}</td>
               <td><span class="st">${esc(d.status || '')}</span></td>
               <td>${esc(d.created_by || '')}</td>
               <td class="sub">${esc((d.created_at || '').slice(0, 16))}</td>

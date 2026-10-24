@@ -47,8 +47,8 @@ export function buildExecutivePdfHtml(input: ExecutivePdfReportInput): string {
   const { batches: reportBatches, auditLogs, projectSettings, operatorUser, qaSubgridRecords } = input;
   const totalPoiCount = reportBatches.reduce((acc, b) => acc + getPOICount(b), 0);
   const totalPanoramasCount = reportBatches.reduce((acc, b) => acc + getImagesProcessedCount(b), 0);
-  const totalKmVal = Math.round(reportBatches.reduce((acc, b) => acc + (b.kmProcessed || 0), 0) * 100) / 100;
-  const totalDefectsCount = reportBatches.reduce((acc, b) => acc + (b.defects || 0), 0);
+  const totalKmVal = Math.round(reportBatches.reduce((acc, b) => acc + (typeof b.kmProcessed === 'number' ? b.kmProcessed : 0), 0) * 100) / 100;
+  const totalDefectsCount = reportBatches.reduce((acc, b) => acc + (typeof b.defects === 'number' ? b.defects : 0), 0);
   const subgridsCount = reportBatches.length;
   const publishedCount = reportBatches.filter(b => b.isSyncedWithSupabase || b.status === 'Complete').length;
   const stagedCount = Math.max(0, subgridsCount - publishedCount);
@@ -108,7 +108,7 @@ export function buildExecutivePdfHtml(input: ExecutivePdfReportInput): string {
             const gridVal = b.grid || '1';
             const poiVal = getPOICount(b);
             const imgCount = getImagesProcessedCount(b);
-            const defectNum = b.defects || 0;
+            const defectNum = typeof b.defects === 'number' ? b.defects : 0;
             const isSynced = b.isSyncedWithSupabase || b.status === 'Complete';
             return `
             <tr>
@@ -116,7 +116,7 @@ export function buildExecutivePdfHtml(input: ExecutivePdfReportInput): string {
               <td class="sub">${esc(b.captureEquipment || 'MMS')}</td>
               <td class="text-right">${poiVal.toLocaleString()}</td>
               <td class="text-right">${imgCount.toLocaleString()}</td>
-              <td class="text-right">${(b.kmProcessed || 0).toFixed(2)}</td>
+              <td class="text-right">${Number.isFinite(b.kmProcessed) ? Number(b.kmProcessed).toFixed(2) : '—'}</td>
               <td class="text-right">${defectNum > 0 ? `${defectNum} flagged` : `<span class="st-mute">0 clean</span>`}</td>
               <td><span class="st">${isSynced ? 'Verified &amp; Published' : 'Staged in Process'}</span></td>
               <td>${esc(b.pic || '')}</td>
@@ -141,7 +141,7 @@ export function buildExecutivePdfHtml(input: ExecutivePdfReportInput): string {
             const sgKey = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
             const qaRec = qaSubgridRecords[sgKey] || qaSubgridRecords[b.imageFilename?.toUpperCase().trim() || ''] || null;
             const flags = qaRec?.flags || { blurry: false, obstruction: false, badGps: false };
-            const isConfirmedDefect = qaRec?.answer === 'yes' || (b.defects || 0) > 0;
+            const isConfirmedDefect = qaRec?.answer === 'yes' || (Number.isFinite(b.defects) && Number(b.defects) > 0);
             const flagCell = (v: boolean) => `<td class="text-center"><span class="st${v ? '' : ' st-mute'}">${v ? 'Flagged' : 'Pass'}</span></td>`;
             return `
             <tr>

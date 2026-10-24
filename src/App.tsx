@@ -1369,7 +1369,7 @@ export default function App() {
         subgrid: `${d.subgrid} (Run ${index + 1})`,
         imageFilename: (d as any).imageFilename || (d as any).filename || `${d.subgrid}.jpg`,
         ...resolveRunCounts(d as any),
-        kmProcessed: d.kmProcessed || 0,
+        kmProcessed: Number.isFinite(Number(d.kmProcessed)) ? Number(d.kmProcessed) : 0,
         captureEquipment: d.captureEquipment || 'MMS',
         pic: d.pic || '',
         status: ((d as any).status || 'Complete') as 'Complete' | 'Ongoing',
@@ -1398,9 +1398,9 @@ export default function App() {
   }, [dailyData, batchLogs]);
 
   const totalKm = useMemo(() => {
-    const dailyTotal = dailyData.reduce((sum, d) => sum + (Number(d.kmProcessed) || 0), 0);
+    const dailyTotal = dailyData.reduce((sum, d) => sum + (Number.isFinite(Number(d.kmProcessed)) ? Number(d.kmProcessed) : 0), 0);
     if (dailyTotal > 0) return Math.round(dailyTotal * 100) / 100;
-    const batchTotal = batchLogs.reduce((sum, b) => sum + (Number(b.kmProcessed) || 0), 0);
+    const batchTotal = batchLogs.reduce((sum, b) => sum + (Number.isFinite(Number(b.kmProcessed)) ? Number(b.kmProcessed) : 0), 0);
     return Math.round(batchTotal * 100) / 100;
   }, [dailyData, batchLogs]);
 
@@ -1472,7 +1472,7 @@ export default function App() {
     return batchLogs.reduce((sum, b) => {
       const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
       const bFrames = getImagesProcessedCount(b);
-      const bPoi = (typeof b.poiCount === 'number' && b.poiCount > 0) ? b.poiCount : (b.images || 0);
+      const bPoi = (typeof b.poiCount === 'number' && b.poiCount > 0) ? b.poiCount : (Number.isFinite(Number(b.images)) ? Number(b.images) : 0);
       if (bPoi === 0 && bFrames === 0) return sum;
 
       let cachedDefects: number | undefined;
@@ -1553,7 +1553,7 @@ export default function App() {
       if (sumDaily > 0) return sumDaily;
     }
     if (batchLogs.length > 0) {
-      const sumBatch = batchLogs.reduce((sum, b) => sum + (typeof b.poiCount === 'number' && b.poiCount > 0 ? b.poiCount : (b.images || 0)), 0);
+      const sumBatch = batchLogs.reduce((sum, b) => sum + (typeof b.poiCount === 'number' && b.poiCount > 0 ? b.poiCount : (Number.isFinite(Number(b.images)) ? Number(b.images) : 0)), 0);
       if (sumBatch > 0) return sumBatch;
     }
     return totalImages > 0 ? totalImages : 1;
@@ -1614,7 +1614,7 @@ export default function App() {
           const cachedAudit = resolveAuditForRun(qaqcAuditRuns, sg, runId);
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defectCount === 'number') ? matchedPrev.defectCount : 0;
-          const maxDefects = Math.max(sd.defectCount || 0, prevCount, cachedCount);
+          const maxDefects = Math.max(Number.isFinite(Number(sd.defectCount)) ? Number(sd.defectCount) : 0, prevCount, cachedCount);
           const finalCount = (poiCount > 0 || frameCount > 0) ? Math.min(maxDefects, Math.max(poiCount, frameCount)) : maxDefects;
           const isPub = sd.publishToWebGIS === 'yes';
           const qaqcStatus = sd.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : (isPub ? 'Published' : undefined));
@@ -1660,12 +1660,12 @@ export default function App() {
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defects === 'number') ? matchedPrev.defects : 0;
 
-          const batchPoi = (typeof sb.poiCount === 'number' && sb.poiCount > 0) ? sb.poiCount : (sb.images || 0);
+          const batchPoi = (typeof sb.poiCount === 'number' && sb.poiCount > 0) ? sb.poiCount : (Number.isFinite(Number(sb.images)) ? Number(sb.images) : 0);
           const maxBatchCap = batchPoi > 0 ? batchPoi : (totalSubFrames > 0 ? totalSubFrames : undefined);
 
           let finalCount = hasDailyInspection
             ? dailyDefectsSum
-            : Math.max(sb.defects || 0, prevCount, cachedCount);
+            : Math.max(Number.isFinite(Number(sb.defects)) ? Number(sb.defects) : 0, prevCount, cachedCount);
 
           if (maxBatchCap !== undefined) {
             finalCount = Math.min(finalCount, maxBatchCap);
@@ -2248,10 +2248,10 @@ export default function App() {
       return pansToUse.map((p, idx) => ({
         filename: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
         point_id: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-        latitude: p.latitude ?? (p as any).lat ?? (p as any).y ?? 0,
-        longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x ?? 0,
-        lat: p.latitude ?? (p as any).lat ?? (p as any).y ?? 0,
-        lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x ?? 0,
+        latitude: Number.isFinite(Number(p.latitude ?? (p as Record<string, unknown>).lat ?? (p as Record<string, unknown>).y)) ? Number(p.latitude ?? (p as Record<string, unknown>).lat ?? (p as Record<string, unknown>).y) : 0,
+        longitude: Number.isFinite(Number(p.longitude ?? (p as Record<string, unknown>).lon ?? (p as Record<string, unknown>).lng ?? (p as Record<string, unknown>).x)) ? Number(p.longitude ?? (p as Record<string, unknown>).lon ?? (p as Record<string, unknown>).lng ?? (p as Record<string, unknown>).x) : 0,
+        lat: Number.isFinite(Number(p.latitude ?? (p as Record<string, unknown>).lat ?? (p as Record<string, unknown>).y)) ? Number(p.latitude ?? (p as Record<string, unknown>).lat ?? (p as Record<string, unknown>).y) : 0,
+        lng: Number.isFinite(Number(p.longitude ?? (p as Record<string, unknown>).lon ?? (p as Record<string, unknown>).lng ?? (p as Record<string, unknown>).x)) ? Number(p.longitude ?? (p as Record<string, unknown>).lon ?? (p as Record<string, unknown>).lng ?? (p as Record<string, unknown>).x) : 0,
         bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
         image_url: resolvePanoramaUrl(p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`, projectSettings)
       }));
@@ -2546,7 +2546,7 @@ export default function App() {
           });
         }
       } else if (e.data?.type === 'CAMERA_ROTATED' && e.data?.source === 'viewer') {
-        const yawVal = Math.round((e.data.yaw ?? 0) * 100) / 100;
+        const yawVal = Math.round((Number.isFinite(Number(e.data.yaw)) ? Number(e.data.yaw) : 0) * 100) / 100;
 
         // Broadcast CAMERA_ROTATED immediately at 60fps to all map iframes for zero-lag sonar rotation
         postToMapFrames({
@@ -3546,8 +3546,9 @@ subgrid: nextSubgrid,
 
                           const getSubgridCoords = () => {
                             const firstPan = activeDailyLog?.panoramas?.[0] || (activeDailyLog as any)?.points?.[0] || activeBatchLog?.panoramas?.[0];
-                            const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (SUBGRID_COORDINATES[selectedSubgridFilter || '']?.[1] ?? 0);
-                            const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (SUBGRID_COORDINATES[selectedSubgridFilter || '']?.[0] ?? 0);
+                            const sc = SUBGRID_COORDINATES[selectedSubgridFilter || ''];
+                            const lat = Number(firstPan?.latitude ?? (firstPan as Record<string, unknown>)?.lat ?? (sc ? sc[1] : 0));
+                            const lng = Number(firstPan?.longitude ?? (firstPan as Record<string, unknown>)?.lon ?? (firstPan as Record<string, unknown>)?.lng ?? (sc ? sc[0] : 0));
                             return { lat, lng };
                           };
 
@@ -4152,7 +4153,7 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
                                         const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
                                         saveSubgridQa(itemKey, selectedQaFlags, qaQuestionnaireAnswer, false);
                                         const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                        updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Editing QA', { selectedQaFlags, answer: qaQuestionnaireAnswer, action: 'EDIT_QA', filename: activePanoramaFilename, subgrid: sg });
+                                        updateDefectStatusInSupabase(itemKey, Number.isFinite(Number(targetLog?.defects)) ? Number(targetLog?.defects) : 0, 'Editing QA', { selectedQaFlags, answer: qaQuestionnaireAnswer, action: 'EDIT_QA', filename: activePanoramaFilename, subgrid: sg });
                                       }}
                                       className="text-[8.5px] font-semibold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/30 flex items-center gap-1 cursor-pointer transition-all shadow-sm active:scale-95"
                                       title="Click to unlock & edit QA defect choices"
@@ -4195,7 +4196,7 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
                                           const nextFlags = { ...selectedQaFlags, blurry: !selectedQaFlags.blurry };
                                           saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                                           const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                          updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag1 || 'Blurry Frame', filename: activePanoramaFilename, subgrid: sg });
+                                          updateDefectStatusInSupabase(itemKey, Number.isFinite(Number(targetLog?.defects)) ? Number(targetLog?.defects) : 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag1 || 'Blurry Frame', filename: activePanoramaFilename, subgrid: sg });
                                         }}
                                         className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                           } ${selectedQaFlags.blurry
@@ -4223,7 +4224,7 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
                                           const nextFlags = { ...selectedQaFlags, obstruction: !selectedQaFlags.obstruction };
                                           saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                                           const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                          updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag2 || 'Lens Obstruction', filename: activePanoramaFilename, subgrid: sg });
+                                          updateDefectStatusInSupabase(itemKey, Number.isFinite(Number(targetLog?.defects)) ? Number(targetLog?.defects) : 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag2 || 'Lens Obstruction', filename: activePanoramaFilename, subgrid: sg });
                                         }}
                                         className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                           } ${selectedQaFlags.obstruction
@@ -4251,7 +4252,7 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
                                           const nextFlags = { ...selectedQaFlags, badGps: !selectedQaFlags.badGps };
                                           saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                                           const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                          updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag3 || 'Bad GPS Signal', filename: activePanoramaFilename, subgrid: sg });
+                                          updateDefectStatusInSupabase(itemKey, Number.isFinite(Number(targetLog?.defects)) ? Number(targetLog?.defects) : 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag3 || 'Bad GPS Signal', filename: activePanoramaFilename, subgrid: sg });
                                         }}
                                         className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                           } ${selectedQaFlags.badGps
@@ -4289,7 +4290,7 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
                                         const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
                                         saveSubgridQa(itemKey, selectedQaFlags, 'yes', true);
                                         const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                        const newDefects = (targetLog?.defects || 0) + 1;
+                                        const newDefects = (Number.isFinite(Number(targetLog?.defects)) ? Number(targetLog?.defects) : 0) + 1;
                                         setBatchLogs(prev => prev.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim() ? { ...b, defects: newDefects } : b));
                                         updateDefectStatusInSupabase(itemKey, newDefects, 'Flagged (Defect Confirmed)', { selectedQaFlags, answer: 'YES', filename: activePanoramaFilename, subgrid: sg });
                                       }}
@@ -4311,7 +4312,7 @@ postToMapFrames({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: fa
                                         const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
                                         saveSubgridQa(itemKey, selectedQaFlags, 'no', true);
                                         const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                        const currentDefects = targetLog?.defects || 0;
+                                        const currentDefects = Number.isFinite(Number(targetLog?.defects)) ? Number(targetLog?.defects) : 0;
                                         updateDefectStatusInSupabase(itemKey, currentDefects, 'Passed (No Defect)', { selectedQaFlags, answer: 'NO', filename: activePanoramaFilename, subgrid: sg });
                                       }}
                                       className={`py-1.5 px-2 rounded border text-[10px] font-bold text-center transition-all flex items-center justify-center gap-1.5 ${isQaLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-95'

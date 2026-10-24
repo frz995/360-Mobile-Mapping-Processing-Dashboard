@@ -320,7 +320,7 @@ export function buildShareSegments(dailyData: any[], projectSettings?: StorageRe
     const sg = (extractSubgridName(rawSg) || rawSg || '').toUpperCase().trim();
     const isPublished = item.publishToWebGIS === 'yes' || item.publishToWebGIS === 'Yes'
       || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.status === 'Complete' || item.isFromSupabase === true;
-    const km = Number(item.kmProcessed) || 0;
+    const km = Number.isFinite(Number(item.kmProcessed)) ? Number(item.kmProcessed) : 0;
 
     // Resolve a representative 360° panorama for this subgrid so the shared
     // viewer's corner PiP can render imagery without needing storage config.
@@ -345,7 +345,7 @@ export function buildShareSegments(dailyData: any[], projectSettings?: StorageRe
       km: Math.round(km * 100) / 100,
       poi: getPOICount(item),
       frames: getImagesProcessedCount(item),
-      defects: Number(item.defects) || 0,
+      defects: Number.isFinite(Number(item.defects)) ? Number(item.defects) : 0,
       date: typeof item.date === 'string' ? item.date.slice(0, 10) : undefined,
       pic: item.pic || undefined,
       status: isPublished ? 'published' : 'in-process',
@@ -378,8 +378,8 @@ export function buildWebgisSnapshot(dailyData: any[], projectSettings?: any): Sh
 
     const poi = getPOICount(item);
     const frames = getImagesProcessedCount(item);
-    const km = Number(item.kmProcessed) || 0;
-    const defects = Number(item.defects) || 0;
+    const km = Number.isFinite(Number(item.kmProcessed)) ? Number(item.kmProcessed) : 0;
+    const defects = Number.isFinite(Number(item.defects)) ? Number(item.defects) : 0;
     totalKm += km;
     totalPoi += poi;
     totalFrames += frames;
@@ -701,7 +701,7 @@ export function buildRoadSnapshot(
       subgrids: effectiveSubgrids,
       km: effectiveKm,
       poi: effectivePoi,
-      frames: opts?.stats?.frames ?? 0,
+      frames: Number.isFinite(Number(opts?.stats?.frames)) ? Number(opts?.stats?.frames) : 0,
       defects: effectiveDefects,
       passRate: effectivePassRate,
       lines: lines.length

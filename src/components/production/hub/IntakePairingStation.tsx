@@ -466,7 +466,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
       message:
         reasons.length > 0
           ? `${matched} of ${records.length} metadata row(s) verified against disk. ${reasons.join(' ')}`
-          : `All ${records.length} metadata row(s) verified 1-to-1 against the ${images?.length ?? 0} image(s) in the survey folder.`,
+          : `All ${records.length} metadata row(s) verified 1-to-1 against the ${Array.isArray(images) ? images.length : 0} image(s) in the survey folder.`,
       category: 'SYSTEM',
       read: false
     });
@@ -807,10 +807,10 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
       setPairedRecords(
         pairedRecords.map((r) => (doneSet.has(r.index) ? { ...r, renamedAt, isMatched: true } : r))
       );
-      const skipped = result.skipped?.length || 0;
+      const skipped = Array.isArray(result.skipped) ? result.skipped.length : 0;
       addNotification?.({
         title: skipped > 0 ? 'Rename Batch Finished With Skips' : 'Rename Batch Complete',
-        message: `${result.renamed || 0} image(s) renamed to metadata names on ${stageDir}${
+        message: `${typeof result.renamed === 'number' ? result.renamed : 0} image(s) renamed to metadata names on ${stageDir}${
           skipped > 0 ? `; ${skipped} skipped: ${(result.skipped || []).map((s) => `${s.src} (${s.reason})`).join(', ')}` : ''
         }`,
         category: 'SYSTEM',
@@ -819,7 +819,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
       addAuditLog?.(
         'EDIT',
         'NAS Batch Rename Applied',
-        `${result.renamed || 0} image(s) renamed to metadata names under ${stageDir}${skipped > 0 ? ` (${skipped} skipped)` : ''} by ${isGuestUser ? 'Guest' : 'Operator'}.`,
+        `${typeof result.renamed === 'number' ? result.renamed : 0} image(s) renamed to metadata names under ${stageDir}${skipped > 0 ? ` (${skipped} skipped)` : ''} by ${isGuestUser ? 'Guest' : 'Operator'}.`,
         skipped > 0 ? 'warning' : 'success'
       );
       void appendStageEventToSupabase({
@@ -827,8 +827,8 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
         stage: 'intake',
         event: 'PROGRESS',
         via: 'operator',
-        detail: `${result.renamed || 0} stitched image(s) renamed to metadata names (${stageDir})`,
-        counts: { renamed: result.renamed || 0, skipped, total: pairedRecords.length },
+        detail: `${typeof result.renamed === 'number' ? result.renamed : 0} stitched image(s) renamed to metadata names (${stageDir})`,
+        counts: { renamed: typeof result.renamed === 'number' ? result.renamed : 0, skipped, total: pairedRecords.length },
         updated_by: isGuestUser ? 'Guest' : 'Operator'
       });
     } finally {

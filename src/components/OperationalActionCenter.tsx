@@ -68,14 +68,14 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
     (d) => !d.publishToWebGIS || d.publishToWebGIS === 'no' || d.publishToWebGIS === 'in process'
   ).length;
 
-  const totalDefectsInLogs = batchLogs.reduce((acc, b) => acc + (b.defects || 0), 0);
+  const totalDefectsInLogs = batchLogs.reduce((acc, b) => acc + (Number.isFinite(b.defects) ? b.defects : 0), 0);
   const effectiveDefectsCount = Math.max(qaDefectsCount, totalDefectsInLogs);
 
   // Calculate specific subgrids that have defects (count each subgrid once — batch logs are derived
   // from daily data via reconcileBatchLogs, so the same defects must not be added twice).
   const defectBreakdown: { subgrid: string; defects: number }[] = [];
   dailyData.forEach((d) => {
-    const defs = Number(d.imagesDefected || d.defectCount || 0);
+    const defs = Number.isFinite(Number(d.imagesDefected ?? d.defectCount)) ? Number(d.imagesDefected ?? d.defectCount) : 0;
     const sg = (d.subgrid || '').toUpperCase().trim();
     if (sg && defs > 0) {
       const existing = defectBreakdown.find((x) => x.subgrid === sg);
@@ -85,7 +85,7 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
   });
   const defectSubgridsFromDaily = new Set(defectBreakdown.map((x) => x.subgrid));
   batchLogs.forEach((b) => {
-    const defs = Number(b.defects || 0);
+    const defs = Number.isFinite(Number(b.defects)) ? Number(b.defects) : 0;
     const sg = (b.subgrid || b.imageFilename || '').toUpperCase().trim();
     if (sg && defs > 0 && !defectSubgridsFromDaily.has(sg)) {
       defectBreakdown.push({ subgrid: sg, defects: defs });
@@ -223,7 +223,7 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
               {activeJobs[0].name || activeJobs[0].job_type}
             </span>
             <span className="text-[10px] font-sans text-text-muted">
-              {activeJobs[0].progress || 0}% &bull; {activeJobs[0].provider || 'PC-01'}
+              {typeof activeJobs[0].progress === 'number' ? `${activeJobs[0].progress}%` : '—'} &bull; {activeJobs[0].provider || 'PC-01'}
             </span>
             {activeJobs.length > 1 && (
               <span className="text-[10px] text-text-muted">

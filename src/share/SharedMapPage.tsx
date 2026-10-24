@@ -808,7 +808,7 @@ function LegendCard({ share }: { share: MapShare }) {
           ))}
         </div>
         <div className="pt-1.5 mt-1.5 border-t border-slate-100 text-[11px] text-slate-600 leading-relaxed">
-          <strong className="text-slate-900">{explorer.cellCount?.toLocaleString() || 0}</strong> mesh cells
+          <strong className="text-slate-900">{typeof explorer.cellCount === 'number' ? explorer.cellCount.toLocaleString() : '—'}</strong> mesh cells
           {explorer.grid?.cellKm ? (
             <>
               <br />
@@ -859,9 +859,9 @@ function LegendCard({ share }: { share: MapShare }) {
             </>
           )}
           <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-600 leading-relaxed">
-            {(st.lines ?? 0) > 0 && (
+            {typeof st.lines === 'number' && st.lines > 0 && (
               <>
-                <strong className="text-slate-900">{(st.lines || 0).toLocaleString()}</strong>{' '}
+                <strong className="text-slate-900">{st.lines.toLocaleString()}</strong>{' '}
                 {Array.isArray(share.snapshot?.catalogLayers) && share.snapshot.catalogLayers.length > 0 && (!share.snapshot?.lines || share.snapshot.lines.length === 0)
                   ? 'features'
                   : 'lines'}{' '}
@@ -869,8 +869,8 @@ function LegendCard({ share }: { share: MapShare }) {
               </>
             )}
             <strong className="text-slate-900">{typeof st.km === 'number' ? st.km.toFixed(2) : '0.00'} km</strong>
-            {(st.poi ?? 0) > 0 && <> · <strong className="text-slate-900">{st.poi.toLocaleString()}</strong> survey points</>}
-            {(st.subgrids ?? 0) > 0 && <> · <strong className="text-slate-900">{st.subgrids}</strong> subgrids</>}
+            {typeof st.poi === 'number' && st.poi > 0 && <> · <strong className="text-slate-900">{st.poi.toLocaleString()}</strong> survey points</>}
+            {typeof st.subgrids === 'number' && st.subgrids > 0 && <> · <strong className="text-slate-900">{st.subgrids}</strong> subgrids</>}
             {share.snapshot?.planName ? <><br/><span className="text-slate-500">{share.snapshot.planName}</span></> : null}
           </div>
         </div>
@@ -880,8 +880,8 @@ function LegendCard({ share }: { share: MapShare }) {
           <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#f59e0b' }} /> Staging survey</div>
           <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#ef4444' }} /> Defect panorama</div>
           <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-600 leading-relaxed">
-            <strong className="text-slate-900">{st.subgrids}</strong> subgrids · <strong className="text-slate-900">{typeof st.km === 'number' ? st.km.toFixed(2) : '0.00'} km</strong> · <strong className="text-slate-900">{(st.poi || 0).toLocaleString()}</strong> POIs
-            <br /><strong className="text-slate-900">{(st.frames || 0).toLocaleString()}</strong> panoramas · QA pass <strong className="text-slate-900">{typeof st.passRate === 'number' ? st.passRate.toFixed(1) : '100'}%</strong>
+            <strong className="text-slate-900">{st.subgrids ?? '—'}</strong> subgrids · <strong className="text-slate-900">{typeof st.km === 'number' ? st.km.toFixed(2) : '—'} km</strong> · <strong className="text-slate-900">{typeof st.poi === 'number' ? st.poi.toLocaleString() : '—'}</strong> POIs
+            <br /><strong className="text-slate-900">{typeof st.frames === 'number' ? st.frames.toLocaleString() : '—'}</strong> panoramas · QA pass <strong className="text-slate-900">{typeof st.passRate === 'number' ? `${st.passRate.toFixed(1)}%` : '—'}</strong>
           </div>
         </div>
       )}
@@ -952,7 +952,7 @@ function PipPanoramaViewer({
                 <ChevronLeft size={13} />
               </button>
               <span className="px-1 text-[9.5px] tabular-nums text-slate-500 select-none">
-                {(currentIndex ?? 0) + 1}/{totalCount}
+                {(typeof currentIndex === 'number' ? currentIndex : 0) + 1}/{totalCount}
               </span>
               <button
                 type="button"

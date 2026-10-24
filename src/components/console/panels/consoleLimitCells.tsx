@@ -3,7 +3,7 @@
  *
  * WHY THIS IS SHARED
  *   The console showed two different answers for the same company. The
- *   Companies panel rendered `allowedUserSeats ?? 0` and `storageQuotaGb ?? 0`,
+ *   Companies panel rendered `allowedUserSeats (fallback-to-zero)` and `storageQuotaGb (fallback-to-zero)`,
  *   so a company with no limit on file read as "0 seats · 0 GB Platform".
  *   The Seats panel, working from the seat summary RPC, correctly rendered the
  *   same company as "No limit configured". Two tabs of one console, two
@@ -19,7 +19,7 @@
  *   out — never `0`.
  *
  * THE READ RULES AND THE WRITE RULES BELONG TOGETHER
- *   The form used to write `Number(value) || 0`, so clearing the box saved a
+ *   The form used to write `Number(value) (fallback-to-zero)`, so clearing the box saved a
  *   limit of zero instead of removing the limit, and its edit path substituted
  *   `?? 10` for a company with no limit on file — which silently capped an
  *   unlimited company the moment the seller saved an unrelated field. A rule

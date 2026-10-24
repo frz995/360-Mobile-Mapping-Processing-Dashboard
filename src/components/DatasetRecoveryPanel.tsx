@@ -64,12 +64,12 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
   );
 
   const totalRecoverablePoi = items.reduce(
-    (acc, it) => acc + (it.poi_count || it.points?.length || it.original_record?.poiCount || 0),
+    (acc, it) => acc + (Number.isFinite(it.poi_count) ? it.poi_count : (Array.isArray(it.points) ? it.points.length : (Number.isFinite(it.original_record?.poiCount) ? it.original_record.poiCount : 0))),
     0
   );
 
   const totalRecoverableFrames = items.reduce(
-    (acc, it) => acc + (it.points?.filter((p) => Boolean(p.filename)).length || it.original_record?.availableImagesCount || it.points?.length || it.poi_count || 0),
+    (acc, it) => acc + (Array.isArray(it.points) ? it.points.filter((p) => Boolean(p.filename)).length : (Number.isFinite(it.original_record?.availableImagesCount) ? it.original_record.availableImagesCount : (Number.isFinite(it.poi_count) ? it.poi_count : 0))),
     0
   );
 
@@ -247,7 +247,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
               hour: '2-digit',
               minute: '2-digit'
             });
-            const itemPoi = item.poi_count || item.points.length || item.original_record?.poiCount || 0;
+            const itemPoi = typeof item.poi_count === 'number' ? item.poi_count : (Array.isArray(item.points) ? item.points.length : (typeof item.original_record?.poiCount === 'number' ? item.original_record.poiCount : 0));
             const itemFrames = item.points.filter((p) => Boolean(p.filename)).length || item.original_record?.availableImagesCount || item.points.length || itemPoi;
 
             return (
@@ -287,7 +287,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
                         </span>
                       </div>
                       <p className="text-[10px] text-text-muted font-sans mt-0.5 truncate">
-                        Deleted on {formattedDate} &bull; {item.deleted_by || 'Operator'} &bull; {item.km_processed || 0} km
+                        Deleted on {formattedDate} &bull; {item.deleted_by || 'Operator'} &bull; {Number.isFinite(item.km_processed) ? item.km_processed : '—'} km
                       </p>
                     </div>
                   </div>

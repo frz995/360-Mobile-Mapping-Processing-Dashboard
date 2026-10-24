@@ -367,7 +367,7 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
                   try {
                     viewerRef.current?.rotate({
                       yaw: (iy * Math.PI) / 180,
-                      pitch: curPos?.pitch ?? 0,
+                      pitch: typeof curPos?.pitch === 'number' ? curPos.pitch : 0,
                     });
                   } catch (_) { }
                 }
@@ -409,7 +409,7 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
             navbar: false,
             panorama: targetPanorama,
             caption: caption || '360° Panorama Inspection',
-            defaultYaw: `${initialYawRef.current ?? 0}deg`,
+            defaultYaw: `${typeof initialYawRef.current === 'number' ? initialYawRef.current : 0}deg`,
             defaultPitch: '0deg',
             defaultZoomLvl: initialFovRef.current
               ? fovToZoomLevel(initialFovRef.current, DEFAULT_MIN_FOV, DEFAULT_MAX_FOV)

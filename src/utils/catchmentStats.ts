@@ -122,35 +122,36 @@ export function summarizeMeshCells(cells: MeshCellData[] | null | undefined): Me
   let coverageKm = 0;
   let weightedComplexity = 0;
 
+  const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
   for (const cell of list) {
-    planKm += cell.planKm || 0;
-    areaKm2 += cell.areaKm2 || 0;
-    panotrackFrames += cell.panotrack || 0;
+    planKm += n(cell.planKm);
+    areaKm2 += n(cell.areaKm2);
+    panotrackFrames += n(cell.panotrack);
     // Older cells (and any caller still passing pre-coverageKm data) fall back to
     // deriving km from the percentage, which is correct for a single cell and a
     // safe floor for an aggregate.
     coverageKm += Number.isFinite(cell.coverageKm)
       ? cell.coverageKm
-      : ((cell.planKm || 0) * (cell.coverage || 0)) / 100;
-    weightedComplexity += (cell.complexity || 0) * (cell.areaKm2 || 0);
+      : (n(cell.planKm) * n(cell.coverage)) / 100;
+    weightedComplexity += n(cell.complexity) * n(cell.areaKm2);
 
     if (cell.corridor) {
-      corridor.shortKm += cell.corridor.shortKm || 0;
-      corridor.mediumKm += cell.corridor.mediumKm || 0;
-      corridor.arterialKm += cell.corridor.arterialKm || 0;
-      corridor.trunkKm += cell.corridor.trunkKm || 0;
+      corridor.shortKm += n(cell.corridor.shortKm);
+      corridor.mediumKm += n(cell.corridor.mediumKm);
+      corridor.arterialKm += n(cell.corridor.arterialKm);
+      corridor.trunkKm += n(cell.corridor.trunkKm);
     }
     if (cell.junctions) {
-      junctions.deadEnd += cell.junctions.deadEnd || 0;
-      junctions.threeWay += cell.junctions.threeWay || 0;
-      junctions.fourWay += cell.junctions.fourWay || 0;
-      junctions.fivePlus += cell.junctions.fivePlus || 0;
+      junctions.deadEnd += n(cell.junctions.deadEnd);
+      junctions.threeWay += n(cell.junctions.threeWay);
+      junctions.fourWay += n(cell.junctions.fourWay);
+      junctions.fivePlus += n(cell.junctions.fivePlus);
     }
     if (cell.frames) {
-      frames.verified += cell.frames.verified || 0;
-      frames.defect += cell.frames.defect || 0;
-      frames.transit += cell.frames.transit || 0;
-      frames.mismatch += cell.frames.mismatch || 0;
+      frames.verified += n(cell.frames.verified);
+      frames.defect += n(cell.frames.defect);
+      frames.transit += n(cell.frames.transit);
+      frames.mismatch += n(cell.frames.mismatch);
     }
   }
 
@@ -245,7 +246,7 @@ function classShareSection(
     title: 'Choropleth class share',
     subtitleRight: weightedByRoad ? '% of road length' : '% of mesh area',
     rows: classShareRows(cells, setting, (cell) =>
-      weightedByRoad ? cell.planKm || 0 : cell.areaKm2 || 0
+      weightedByRoad ? (Number.isFinite(cell.planKm) ? cell.planKm : 0) : (Number.isFinite(cell.areaKm2) ? cell.areaKm2 : 0)
     )
   };
 }
@@ -306,7 +307,7 @@ export function getMeshCategory(
       const rows: CatchmentRow[] = classShareRows(
         cells,
         setting,
-        (cell) => cell.areaKm2 || 0,
+        (cell) => (Number.isFinite(cell.areaKm2) ? cell.areaKm2 : 0),
         true
       ).map((r) => ({ ...r, label: `Density ${r.label}` }));
 
@@ -412,7 +413,7 @@ function bandLabel(setting: ChoroplethSetting, index: number): string {
   const cls = setting.classes[index];
   const unit = METRIC_UNIT[setting.metric] || '';
   const upper = cls?.upperBound;
-  if (upper === null || upper === undefined) return `> ${setting.classes[index - 1]?.upperBound ?? 0}${unit ? ` ${unit}` : ''}`;
+  if (upper === null || upper === undefined) { const prev = setting.classes[index - 1]?.upperBound; return `> ${Number.isFinite(Number(prev)) ? Number(prev) : 0}${unit ? ` ${unit}` : ''}`; }
   const lower = index === 0 ? null : setting.classes[index - 1]?.upperBound ?? null;
   const suffix = unit ? ` ${unit}` : '';
   if (lower === null) return `≤ ${upper}${suffix}`;

@@ -115,19 +115,20 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
       ].filter((f): f is string => Boolean(f))
     );
 
+    const parseNum = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
     const targetBucketCount =
       availableFilenamesSet.size > 0
         ? availableFilenamesSet.size
         : Math.max(
-            Number(masterRec?.availableImagesCount ?? (masterRec as any)?.imagesProcessed ?? (masterRec as any)?.images ?? 0),
-            ...dailyRecs.map((d) => Number(d.availableImagesCount ?? (d as any).imagesProcessed ?? (d as any).images ?? 0)),
+            parseNum(masterRec?.availableImagesCount ?? (masterRec as any)?.imagesProcessed ?? (masterRec as any)?.images),
+            ...dailyRecs.map((d) => parseNum(d.availableImagesCount ?? (d as any).imagesProcessed ?? (d as any).images)),
             0
           );
 
     const totalFrames =
       allPts.length ||
       targetBucketCount ||
-      Number(masterRec?.poiCount ?? dailyRecs[0]?.poiCount ?? (masterRec as any)?.images ?? 0);
+      parseNum(masterRec?.poiCount ?? dailyRecs[0]?.poiCount ?? (masterRec as any)?.images);
 
     allPts.forEach((p, idx) => {
       const pFilename = p.filename || `${norm}-${String(idx + 1).padStart(4, '0')}.jpg`;
@@ -284,12 +285,13 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
                   ].filter((f): f is string => Boolean(f))
                 );
 
+                const parseNum = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
                 const targetBucketCount =
                   availableFilenamesSet.size > 0
                     ? availableFilenamesSet.size
                     : Math.max(
-                        Number(masterRec?.availableImagesCount ?? (masterRec as any)?.imagesProcessed ?? (masterRec as any)?.images ?? 0),
-                        ...dailyRecs.map((d) => Number(d.availableImagesCount ?? (d as any).imagesProcessed ?? (d as any).images ?? 0)),
+                        parseNum(masterRec?.availableImagesCount ?? (masterRec as any)?.imagesProcessed ?? (masterRec as any)?.images),
+                        ...dailyRecs.map((d) => parseNum(d.availableImagesCount ?? (d as any).imagesProcessed ?? (d as any).images)),
                         0
                       );
 

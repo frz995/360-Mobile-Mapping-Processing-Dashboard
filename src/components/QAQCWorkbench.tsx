@@ -358,7 +358,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       const total = liveHistory.length;
       const defectCount = liveDefectsList.length;
       const passRate = total > 0 ? Math.round(((total - defectCount) / total) * 100) : 100;
-      const totalScore = liveHistory.reduce((acc, h) => acc + (h.blurVariance || 0), 0);
+      const totalScore = liveHistory.reduce((acc, h) => acc + (typeof h.blurVariance === 'number' && Number.isFinite(h.blurVariance) ? h.blurVariance : 0), 0);
       const meanTenengradScore = total > 0 ? Math.round((totalScore / total) * 10) / 10 : 0;
 
       const record: AuditRunRecord = {
@@ -624,10 +624,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             index: frameIdx,
             pointId: station.point_id || station.filename || `Station ${frameIdx}`,
             timestamp: defect.created_at ? new Date(defect.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : (cachedAudit?.completedAt || 'Logged'),
-            lat: station.lat ?? station.latitude ?? Number(defect.lat || defect.latitude || 0),
-            lng: station.lng ?? station.longitude ?? Number(defect.lng || defect.lon || defect.longitude || 0),
-            bearing: station.bearing ?? defect.bearing ?? 0,
-            stepDistance: station.stepDistance ?? defect.step_distance ?? 0,
+            lat: Number.isFinite(Number(station.lat ?? station.latitude)) ? Number(station.lat ?? station.latitude) : (Number.isFinite(Number(defect.lat ?? defect.latitude)) ? Number(defect.lat ?? defect.latitude) : 0),
+            lng: Number.isFinite(Number(station.lng ?? station.longitude)) ? Number(station.lng ?? station.longitude) : (Number.isFinite(Number(defect.lng ?? defect.lon ?? defect.longitude)) ? Number(defect.lng ?? defect.lon ?? defect.longitude) : 0),
+            bearing: Number.isFinite(Number(station.bearing ?? defect.bearing)) ? Number(station.bearing ?? defect.bearing) : 0,
+            stepDistance: Number.isFinite(Number(station.stepDistance ?? defect.step_distance)) ? Number(station.stepDistance ?? defect.step_distance) : 0,
             status: 'flagged' as const,
             defectType: defect.defect_type || defect.defectType || 'Defect Flagged',
             deliverableModel: (defect.defect_flags?.deliverableModel || projectSettings?.deliverableModel || 'masked_car') as 'masked_car' | 'generative_fill',
@@ -652,10 +652,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           index: frameIdx,
           pointId: station.point_id || station.filename || `Station ${frameIdx}`,
           timestamp: isAudited ? (cachedAudit?.completedAt || 'Passed') : 'Ready',
-          lat: station.lat ?? station.latitude ?? 0,
-          lng: station.lng ?? station.longitude ?? 0,
+          lat: Number.isFinite(Number(station.lat ?? station.latitude)) ? Number(station.lat ?? station.latitude) : 0,
+          lng: Number.isFinite(Number(station.lng ?? station.longitude)) ? Number(station.lng ?? station.longitude) : 0,
           bearing: station.bearing ?? ((idx * 15) % 360),
-          stepDistance: station.stepDistance ?? 0,
+          stepDistance: typeof station.stepDistance === 'number' ? station.stepDistance : 0,
           status: 'passed' as const,
           defectType: undefined,
           deliverableModel: (projectSettings?.deliverableModel || 'masked_car') as 'masked_car' | 'generative_fill',
@@ -673,8 +673,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const ptId = d.point_id || d.pointId || d.filename || `Station ${idx + 1}`;
         const fn = d.filename || d.image_url || ptId;
         const frameIdx = d.frame_index || d.index || (idx + 1);
-        const lat = Number(d.lat || d.latitude || 0);
-        const lng = Number(d.lng || d.lon || d.longitude || 0);
+        const lat = Number.isFinite(Number(d.lat ?? d.latitude)) ? Number(d.lat ?? d.latitude) : 0;
+        const lng = Number.isFinite(Number(d.lng ?? d.lon ?? d.longitude)) ? Number(d.lng ?? d.lon ?? d.longitude) : 0;
         const reasons = d.defect_flags?.reasons || d.reasons || [d.defect_type || 'Defect Flagged'];
         const blurVariance = d.defect_flags?.blurScore ?? d.blurVariance ?? 35.0;
 
@@ -684,8 +684,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           timestamp: d.created_at ? new Date(d.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Logged',
           lat,
           lng,
-          bearing: d.bearing || 0,
-          stepDistance: d.step_distance || 0,
+          bearing: typeof d.bearing === 'number' ? d.bearing : 0,
+          stepDistance: typeof d.step_distance === 'number' ? d.step_distance : 0,
           status: 'flagged' as const,
           defectType: d.defect_type || 'Defect Flagged',
           deliverableModel: (d.defect_flags?.deliverableModel || projectSettings?.deliverableModel || 'masked_car') as 'masked_car' | 'generative_fill',
@@ -755,7 +755,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
   const activeDisplayBearing = activeRecord
     ? activeRecord.bearing
-    : currentBearing || selectedStationFallback?.bearing || (selectedStationFallback as any)?.heading || 0;
+    : typeof currentBearing === 'number' ? currentBearing : (typeof selectedStationFallback?.bearing === 'number' ? selectedStationFallback.bearing : (typeof (selectedStationFallback as Record<string, unknown>)?.heading === 'number' ? Number((selectedStationFallback as Record<string, unknown>).heading) : 0));
 
   const activeDisplayStepDistance = activeRecord
     ? activeRecord.stepDistance
@@ -796,7 +796,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
       let pans = item.panoramas || item.points || [];
       if (pans.length === 0 && (item.poiCount || item.availableImagesCount)) {
-        const count = item.poiCount || item.availableImagesCount || 0;
+        const count = typeof item.poiCount === 'number' && item.poiCount > 0 ? item.poiCount : (typeof item.availableImagesCount === 'number' ? item.availableImagesCount : 0);
         pans = Array.from({ length: count }, (_, idx) => {
           const fn = (item.availableFilenames && item.availableFilenames[idx]) || `${activeSgNorm}-${String(idx + 1).padStart(4, '0')}.jpg`;
           return {
@@ -938,7 +938,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           lon: st.longitude ?? st.lng,
           latitude: st.latitude ?? st.lat,
           longitude: st.longitude ?? st.lng,
-          bearing: st.bearing ?? 0,
+          bearing: typeof st.bearing === 'number' ? st.bearing : 0,
           status: colorInfo.status,
           isPublished: colorInfo.isPublished,
           published: colorInfo.isPublished,
@@ -987,7 +987,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 lat: activeNode.latitude ?? activeNode.lat,
                 lon: activeNode.longitude ?? activeNode.lng,
                 lng: activeNode.longitude ?? activeNode.lng,
-                bearing: activeNode.bearing ?? 0
+                bearing: typeof activeNode.bearing === 'number' ? activeNode.bearing : 0
               }
             });
         }
@@ -1236,14 +1236,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             lat: firstStation.lat,
             lon: firstStation.lng,
             lng: firstStation.lng,
-            bearing: firstStation.bearing || 0
+            bearing: typeof firstStation.bearing === 'number' ? firstStation.bearing : 0
           },
           zoom: 18
         });
         postToMapFrame(mapIframeRef.current, {
           type: 'SET_CAMERA_HEADING',
-          bearing: firstStation.bearing || 0,
-          heading: firstStation.bearing || 0
+          bearing: typeof firstStation.bearing === 'number' ? firstStation.bearing : 0,
+          heading: typeof firstStation.bearing === 'number' ? firstStation.bearing : 0
         });
       } catch (_) { }
     }
@@ -1456,7 +1456,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               />
             </div>
             <span className="text-text-base tabular-nums font-bold font-sans text-xs">{progressPct}%</span>
-            <span className="text-text-muted text-[11px] tabular-nums font-sans">{elapsedSeconds || cachedAudit?.elapsedSeconds || 0}s</span>
+            <span className="text-text-muted text-[11px] tabular-nums font-sans">{typeof elapsedSeconds === 'number' ? elapsedSeconds : (typeof cachedAudit?.elapsedSeconds === 'number' ? cachedAudit.elapsedSeconds : 0)}s</span>
           </div>
         )}
 
@@ -2097,7 +2097,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           : undefined
                       }
                       panoramaUrl={!shouldUseMultiRes ? activeDisplayThumbnail : undefined}
-                      initialYaw={activeDisplayBearing ?? 0}
+                      initialYaw={typeof activeDisplayBearing === 'number' ? activeDisplayBearing : 0}
                       initialFov={projectSettings?.defaultFov}
                       onPositionChange={(pos) => {
                         // Heading-cone sync: reflect 360 rotation onto the embedded WebGIS map.
@@ -2803,14 +2803,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                                         lat: item.lat,
                                         lon: item.lng,
                                         lng: item.lng,
-                                        bearing: item.bearing || 0
+                                        bearing: typeof item.bearing === 'number' ? item.bearing : 0
                                       },
                                       zoom: 18
                                     });
                                     postToMapFrame(mapIframeRef.current, {
                                       type: 'SET_CAMERA_HEADING',
-                                      bearing: item.bearing || 0,
-                                      heading: item.bearing || 0
+                                      bearing: typeof item.bearing === 'number' ? item.bearing : 0,
+                                      heading: typeof item.bearing === 'number' ? item.bearing : 0
                                     });
                                   } catch (_) { }
                                 }

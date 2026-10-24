@@ -176,22 +176,22 @@ export function resolveSubgridLifecycle(params: {
   const getPublishedCount = (): number => {
     if (!params.publishedCountsBySubgrid) return 0;
     if (params.publishedCountsBySubgrid instanceof Map) {
-      return params.publishedCountsBySubgrid.get(normSg) || 0;
+      const c = params.publishedCountsBySubgrid.get(normSg); return typeof c === 'number' ? c : 0;
     }
-    return (params.publishedCountsBySubgrid as Record<string, number>)[normSg] || 0;
+    const c = (params.publishedCountsBySubgrid as Record<string, number>)[normSg]; return typeof c === 'number' ? c : 0;
   };
 
   const getBucketCount = (): number => {
     if (!params.bucketCountsBySubgrid) return 0;
     if (params.bucketCountsBySubgrid instanceof Map) {
-      return params.bucketCountsBySubgrid.get(normSg) || 0;
+      const c = params.bucketCountsBySubgrid.get(normSg); return typeof c === 'number' ? c : 0;
     }
-    return (params.bucketCountsBySubgrid as Record<string, number>)[normSg] || 0;
+    const c = (params.bucketCountsBySubgrid as Record<string, number>)[normSg]; return typeof c === 'number' ? c : 0;
   };
 
   const publishedPoints = getPublishedCount();
   const bucketImages = getBucketCount();
-  const rawFrames = stagingAgg?.frames || 0;
+  const rawFrames = typeof stagingAgg?.frames === 'number' ? stagingAgg.frames : 0;
 
   const deliverable = subgridDatasets.find((d) => d.dataset_type === 'DELIVERABLE');
   const processed = subgridDatasets.find((d) => d.dataset_type === 'PROCESSED');

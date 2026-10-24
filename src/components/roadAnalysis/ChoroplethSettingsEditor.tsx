@@ -135,7 +135,7 @@ export const ChoroplethSettingsEditor: React.FC<ChoroplethSettingsEditorProps> =
     // Add a top class, splitting the current open-ended range at the midpoint
     // of its lower bound. The new class takes the next palette stop rather than
     // the top class's colour, so it is visibly distinct on the map and legend.
-    const topBound = draft.classes[draft.classes.length - 2]?.upperBound ?? 0;
+    const topBound = Number.isFinite(draft.classes[draft.classes.length - 2]?.upperBound) ? Number(draft.classes[draft.classes.length - 2]?.upperBound) : 0;
     const inferred = topBound * 2 || 1;
     const ramp = ATLAS_PALETTES[palette]?.stops.map(s => s.color) || [];
     patch({
@@ -359,7 +359,7 @@ export const ChoroplethSettingsEditor: React.FC<ChoroplethSettingsEditorProps> =
               </span>
               {isTop ? (
                 <span className="text-[8.5px] font-mono text-[var(--text-muted,#9BAAA9)] w-14 text-right shrink-0">
-                  {cellCount[i] || 0} cells
+                  {Number.isFinite(cellCount[i]) ? cellCount[i] : '—'} cells
                 </span>
               ) : (
                 <input

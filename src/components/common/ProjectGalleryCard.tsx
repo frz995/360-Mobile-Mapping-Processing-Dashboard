@@ -236,10 +236,10 @@ export function ProjectGalleryCard({
 
   const resolvedActual = typeof actualKm === 'number' && !isNaN(actualKm)
     ? actualKm
-    : (Number(project.scope?.actualKm) || 0);
+    : (Number.isFinite(Number(project.scope?.actualKm)) ? Number(project.scope?.actualKm) : 0);
   const resolvedTarget = typeof targetKm === 'number' && targetKm > 0
     ? targetKm
-    : (Number(project.scope?.targetKm) || 0);
+    : (Number.isFinite(Number(project.scope?.targetKm)) ? Number(project.scope?.targetKm) : 0);
   const progress = typeof progressPct === 'number' && !isNaN(progressPct)
     ? progressPct
     : resolvedTarget > 0

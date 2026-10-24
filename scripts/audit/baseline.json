@@ -9,7 +9,7 @@
     "unvalidatedWindowListeners": 0,
     "sourceOnlyWindowListeners": 3,
     "dangerouslySetInnerHTML": 1,
-    "zeroCoercions": 343,
+    "zeroCoercions": 48,
     "emptyCatchStrict": 140,
     "emptyCatchConsoleOnly": 67,
     "inlineEmptyCatch": 70,

@@ -257,9 +257,9 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             const runKey = (r.run_id || '').toString().trim();
             if (runKey) {
               const k = `${norm}_${runKey}`;
-              qaDefectsPerRun.set(k, (qaDefectsPerRun.get(k) || 0) + 1);
+              qaDefectsPerRun.set(k, (Number(qaDefectsPerRun.get(k)) > 0 ? Number(qaDefectsPerRun.get(k)) : 0) + 1);
             } else {
-              qaDefectsPerSubgrid.set(norm, (qaDefectsPerSubgrid.get(norm) || 0) + 1);
+              qaDefectsPerSubgrid.set(norm, (Number(qaDefectsPerSubgrid.get(norm)) > 0 ? Number(qaDefectsPerSubgrid.get(norm)) : 0) + 1);
             }
           }
         });
@@ -310,10 +310,10 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const entry = {
             subgrid: norm,
             runId: r.run_id || null,
-            totalStations: Number(r.total_stations) || 0,
-            defectCount: Number(r.defect_count) || 0,
+            totalStations: Number.isFinite(Number(r.total_stations)) ? Number(r.total_stations) : 0,
+            defectCount: Number.isFinite(Number(r.defect_count)) ? Number(r.defect_count) : 0,
             passRate: Number(r.pass_rate) || 100,
-            meanTenengradScore: Number(r.mean_tenengrad_score) || 0,
+            meanTenengradScore: Number.isFinite(Number(r.mean_tenengrad_score)) ? Number(r.mean_tenengrad_score) : 0,
             defectsList: Array.isArray(r.defects_list) ? r.defects_list : [],
             history: Array.isArray(r.history) ? r.history : [],
             pic: r.pic || '',
@@ -460,7 +460,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       }
       const rowDefects = typeof r.defects === 'number' ? r.defects : typeof r.defect_count === 'number' ? r.defect_count : 0;
       if (rowDefects > 0) {
-        g.recordDefects = (g.recordDefects || 0) + rowDefects;
+        g.recordDefects = (Number.isFinite(g.recordDefects) ? g.recordDefects : 0) + rowDefects;
       }
       if (filename && !g.imageFilenames.includes(filename)) {
         g.imageFilenames.push(filename);
@@ -476,7 +476,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     const publishedEntries = Array.from(publishedGrouped.entries());
     for (const [runKey, g] of publishedEntries) {
       const subgrid = g.subgrid;
-      const explicitPoi = g.recordImages || g.imageFilenames.length || g.points.length || 0;
+      const explicitPoi = (typeof g.recordImages === 'number' && g.recordImages > 0 ? g.recordImages : 0) || g.imageFilenames.length || g.points.length;
       const countFromDB = g.imageFilenames.length || explicitPoi;
       const poiCount = countFromDB > 0 ? countFromDB : explicitPoi;
 
@@ -699,7 +699,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
            if (r.production_attempt_id) sgObj.productionAttemptId = r.production_attempt_id;
            if (r.production_release_id) sgObj.productionReleaseId = r.production_release_id;
            if (r.defect_count && Number(r.defect_count) > 0) {
-            sgObj.defectCount = (sgObj.defectCount || 0) + Number(r.defect_count);
+            sgObj.defectCount = (Number.isFinite(sgObj.defectCount) ? sgObj.defectCount : 0) + Number(r.defect_count);
           }
           if (filename && !sgObj.imageFilenames.includes(filename)) {
             sgObj.imageFilenames.push(filename);
@@ -724,7 +724,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         const stagingEntries = Array.from(stagingGrouped.entries());
         for (const [runKey, g] of stagingEntries) {
           const sg = g.subgrid;
-          const explicitPoi = g.poiCount || g.imagesProcessed || g.imageFilenames.length || g.points.length || 0;
+          const explicitPoi = (typeof g.poiCount === 'number' && g.poiCount > 0 ? g.poiCount : (typeof g.imagesProcessed === 'number' && g.imagesProcessed > 0 ? g.imagesProcessed : (g.imageFilenames.length > 0 ? g.imageFilenames.length : g.points.length)));
           const count = explicitPoi;
           const calcKm = calculatePathDistanceKm(g.points);
           const km = g.kmProcessed > 0 ? g.kmProcessed : (calcKm > 0 ? calcKm : Math.round((count * 0.005) * 100) / 100);
@@ -745,7 +745,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             imagesStorageVerified = verifyRes.verified;
           } else {
             const normSg0 = (sg || '').toUpperCase().trim();
-            const fromSubgridIndex = storageImageCounts.get(normSg0) || 0;
+            const fromSubgridIndex = storageImageCounts.has(normSg0) ? (storageImageCounts.get(normSg0) as number) : 0;
             if (fromSubgridIndex > 0) {
               verifiedCount = fromSubgridIndex;
             } else {
@@ -1083,9 +1083,9 @@ export async function publishToSupabase(record: {
         description: `Published Batch (Grid ${record.grid || '1'} / ${sgKey}) [id:${record.id || 'batch'}] [pic:${record.pic || 'Unassigned'}] - ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
         latitude,
         longitude,
-        heading: Number(p.bearing ?? p.heading ?? 0),
-        pitch: Number(p.pitch ?? 0),
-        roll: Number(p.roll ?? 0),
+        heading: Number.isFinite(Number(p.bearing ?? p.heading)) ? Number(p.bearing ?? p.heading) : 0,
+        pitch: Number.isFinite(Number(p.pitch)) ? Number(p.pitch) : 0,
+        roll: Number.isFinite(Number(p.roll)) ? Number(p.roll) : 0,
         is_fallback_coord: !hasRealLon || !hasRealLat,
         defect_count: (p.is_defect || (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))) ? 1 : 0,
         qa_status: p.is_defect ? 'flagged' : 'published',
@@ -1217,12 +1217,12 @@ export async function saveToStagingSupabase(record: {
         // description is still written for backwards compatibility with
         // already-deployed rows and any external reader.
         ...(realCsvFileName ? { csv_file_name: realCsvFileName } : {}),
-        description: `Staged Batch (${record.subgrid || filename}) [id:${batchId}] [csv:${record.csvFileName || batchId}] [pic:${record.pic || p.pic || 'Unassigned'}] [grid:${record.grid || '1'}] [poi:${record.poiCount || rawList.length}] [km:${record.kmProcessed || 0}] [eq:${record.captureEquipment || 'MMS'}] [pub:${record.publishToWebGIS || 'in process'}]`,
+        description: `Staged Batch (${record.subgrid || filename}) [id:${batchId}] [csv:${record.csvFileName || batchId}] [pic:${record.pic || p.pic || 'Unassigned'}] [grid:${record.grid || '1'}] [poi:${record.poiCount || rawList.length}] [km:${Number.isFinite(Number(record.kmProcessed)) ? Number(record.kmProcessed) : 0}] [eq:${record.captureEquipment || 'MMS'}] [pub:${record.publishToWebGIS || 'in process'}]`,
         latitude,
         longitude,
-        heading: Number(p.bearing ?? p.heading ?? 0),
-        pitch: Number(p.pitch ?? 0),
-        roll: Number(p.roll ?? 0),
+        heading: Number.isFinite(Number(p.bearing ?? p.heading)) ? Number(p.bearing ?? p.heading) : 0,
+        pitch: Number.isFinite(Number(p.pitch)) ? Number(p.pitch) : 0,
+        roll: Number.isFinite(Number(p.roll)) ? Number(p.roll) : 0,
         subgrid: sgKey,
         grid: record.grid || '1',
         km_processed: typeof record.kmProcessed === 'number' ? record.kmProcessed : (record.kmProcessed ? Number(record.kmProcessed) : 0),

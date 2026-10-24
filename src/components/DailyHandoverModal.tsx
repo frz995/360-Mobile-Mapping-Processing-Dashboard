@@ -108,8 +108,8 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
         dailyData.forEach((item) => {
             const sg = (item.subgrid || '').toUpperCase().trim();
             if (!sg) return;
-            const poi = Number(item.poiCount || item.imagesProcessed || 0);
-            const frames = Number(item.availableImagesCount || (item.panoramas ? item.panoramas.length : 0) || 0);
+            const rawPoi = Number(item.poiCount ?? item.imagesProcessed); const poi = Number.isFinite(rawPoi) ? rawPoi : 0;
+            const rawFrames = Number(item.availableImagesCount ?? (item.panoramas ? item.panoramas.length : 0)); const frames = Number.isFinite(rawFrames) ? rawFrames : 0;
             const existing = storageMap.get(sg);
             if (existing) {
                 existing.totalPoi += poi;
@@ -134,9 +134,9 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
         const defectSubgridsMap = new Map<string, number>();
         dailyData.forEach((item) => {
             const sg = (item.subgrid || '').toUpperCase().trim();
-            const defs = Number(item.imagesDefected || item.defectCount || 0);
+            const rawDefs = Number(item.imagesDefected ?? item.defectCount); const defs = Number.isFinite(rawDefs) ? rawDefs : 0;
             if (sg && defs > 0) {
-                defectSubgridsMap.set(sg, (defectSubgridsMap.get(sg) || 0) + defs);
+                defectSubgridsMap.set(sg, (Number(defectSubgridsMap.get(sg)) > 0 ? Number(defectSubgridsMap.get(sg)) : 0) + defs);
             }
         });
 

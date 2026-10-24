@@ -120,7 +120,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
     setCreateError(null);
     try {
       const preset = REGION_PRESETS[region];
-      const parsedTargetKm = parseFloat(targetKmInput) || 0;
+      const parsedTargetKm = Number.isFinite(parseFloat(targetKmInput)) ? parseFloat(targetKmInput) : 0;
       const scope = preset
         ? { crs: preset.crs, region: preset.region, bbox: preset.bbox, basemap: 'dark', equipment: 'MMS', targetKm: parsedTargetKm, actualKm: 0, targetImages: 0 }
         : { crs: 'EPSG:4326', region, basemap: 'dark', equipment: 'MMS', targetKm: parsedTargetKm, actualKm: 0, targetImages: 0 };
@@ -168,10 +168,10 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
     const isAct = p.id === activeProject?.id;
     const currentTarget = isAct && typeof (projectSettings as any)?.targetKm === 'number' && (projectSettings as any).targetKm > 0
       ? (projectSettings as any).targetKm
-      : (p.scope?.targetKm || 0);
+      : (Number.isFinite(p.scope?.targetKm) ? p.scope.targetKm : 0);
     const currentActual = isAct && typeof totalKm === 'number'
       ? totalKm
-      : (p.scope?.actualKm || 0);
+      : (Number.isFinite(p.scope?.actualKm) ? p.scope.actualKm : 0);
     setEditTargetKm(currentTarget ? String(currentTarget) : '');
     setEditActualKm(currentActual ? String(currentActual) : '');
     setEditDescription(p.description || '');
@@ -191,8 +191,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
       const updatedScope = {
         ...(editingProject.scope || {}),
         region: editRegion,
-        targetKm: !isNaN(parsedTargetKm) ? parsedTargetKm : (editingProject.scope?.targetKm || 0),
-        actualKm: !isNaN(parsedActualKm) ? parsedActualKm : (editingProject.scope?.actualKm || 0),
+        targetKm: !isNaN(parsedTargetKm) ? parsedTargetKm : (Number.isFinite(editingProject.scope?.targetKm) ? editingProject.scope.targetKm : 0),
+        actualKm: !isNaN(parsedActualKm) ? parsedActualKm : (Number.isFinite(editingProject.scope?.actualKm) ? editingProject.scope.actualKm : 0),
         ...(preset ? { crs: preset.crs, bbox: preset.bbox } : {})
       };
       const res = await onUpdateProject(editingProject.id, {
@@ -269,7 +269,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
                     ? (typeof totalKm === 'number' ? totalKm : (Number(p.scope?.actualKm) || 0))
                     : (Number(p.scope?.actualKm) || 0);
 
-                  const targetKm = Number(p.scope?.targetKm) || 0;
+                  const targetKm = Number.isFinite(Number(p.scope?.targetKm)) ? Number(p.scope.targetKm) : 0;
 
                   const progressPct = targetKm > 0
                     ? Math.min(100, Math.round(((actualKm / targetKm) * 100) * 10) / 10)

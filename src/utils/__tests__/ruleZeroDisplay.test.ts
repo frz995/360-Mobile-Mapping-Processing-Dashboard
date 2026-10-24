@@ -143,5 +143,31 @@ describe('Rule Zero Display Metrics (WP 5)', () => {
       expect(renderLedgerKm(0)).toBe('0.0 km')
       expect(renderLedgerKm(12.5)).toBe('12.5 km')
     })
+
+    it('resolves GPS coordinates safely without coercing missing coordinates to (0, 0)', () => {
+      const resolveGps = (p: { latitude?: number | string; lat?: number | string }) => {
+        const val = p.latitude ?? p.lat
+        const n = Number(val)
+        return Number.isFinite(n) ? n : undefined
+      }
+
+      expect(resolveGps({})).toBeUndefined()
+      expect(resolveGps({ lat: undefined })).toBeUndefined()
+      expect(resolveGps({ lat: 2.502 })).toBe(2.502)
+      expect(resolveGps({ latitude: '102.815' })).toBe(102.815)
+    })
+
+    it('resolves QAQC inspection elapsed time safely without coercing unmeasured to 0s', () => {
+      const formatElapsed = (elapsed?: number, cachedElapsed?: number) => {
+        if (typeof elapsed === 'number') return `${elapsed}s`
+        if (typeof cachedElapsed === 'number') return `${cachedElapsed}s`
+        return '—'
+      }
+
+      expect(formatElapsed(undefined, undefined)).toBe('—')
+      expect(formatElapsed(0, undefined)).toBe('0s')
+      expect(formatElapsed(15, undefined)).toBe('15s')
+      expect(formatElapsed(undefined, 42)).toBe('42s')
+    })
   })
 })

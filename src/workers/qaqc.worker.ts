@@ -149,13 +149,13 @@ async function runInspection(payload: QaqcWorkerStartPayload): Promise<void> {
         const prevStation = i > 0 ? stations[i - 1] : undefined;
 
         const ptId = currStation.__pointId || currStation.filename || currStation.point_id || `${cleanSubgrid}-${String(i + 1).padStart(4, '0')}.jpg`;
-        const lat = Number(currStation.latitude ?? currStation.lat ?? 0);
-        const lng = Number(currStation.longitude ?? currStation.lng ?? currStation.lon ?? 0);
+        const rawLat = currStation.latitude ?? currStation.lat; const lat = Number.isFinite(Number(rawLat)) ? Number(rawLat) : NaN;
+        const rawLng = currStation.longitude ?? currStation.lng ?? currStation.lon; const lng = Number.isFinite(Number(rawLng)) ? Number(rawLng) : NaN;
 
-        let bearing = Number(currStation.bearing ?? currStation.heading ?? 0);
+        let bearing = Number.isFinite(Number(currStation.bearing ?? currStation.heading)) ? Number(currStation.bearing ?? currStation.heading) : 0;
         if (!bearing && prevStation) {
-          const prevLat = Number(prevStation.latitude ?? prevStation.lat ?? 0);
-          const prevLng = Number(prevStation.longitude ?? prevStation.lng ?? prevStation.lon ?? 0);
+          const prevRawLat = prevStation.latitude ?? prevStation.lat; const prevLat = Number.isFinite(Number(prevRawLat)) ? Number(prevRawLat) : NaN;
+          const prevRawLng = prevStation.longitude ?? prevStation.lng ?? prevStation.lon; const prevLng = Number.isFinite(Number(prevRawLng)) ? Number(prevRawLng) : NaN;
           if (prevLat && prevLng && lat && lng && (prevLat !== lat || prevLng !== lng)) {
             bearing = calculateForwardBearing(prevLat, prevLng, lat, lng);
           }
@@ -180,8 +180,8 @@ async function runInspection(payload: QaqcWorkerStartPayload): Promise<void> {
             isBadGps = true;
             gpsReason = 'Missing or zero GPS coordinates';
           } else if (prevStation) {
-            const prevLat = Number(prevStation.latitude ?? prevStation.lat ?? 0);
-            const prevLng = Number(prevStation.longitude ?? prevStation.lng ?? prevStation.lon ?? 0);
+            const prevRawLat = prevStation.latitude ?? prevStation.lat; const prevLat = Number.isFinite(Number(prevRawLat)) ? Number(prevRawLat) : NaN;
+            const prevRawLng = prevStation.longitude ?? prevStation.lng ?? prevStation.lon; const prevLng = Number.isFinite(Number(prevRawLng)) ? Number(prevRawLng) : NaN;
             if (prevLat && prevLng) {
               stepDist = calculateGeodesicDistanceMeters(prevLat, prevLng, lat, lng);
               if (stepDist > gpsMaxJumpDistance) {
@@ -357,9 +357,9 @@ async function runInspection(payload: QaqcWorkerStartPayload): Promise<void> {
         const fallbackRecord: StationInspectionRecord = {
           index: i + 1,
           pointId: fallbackId,
-          lat: Number(stations[i]?.latitude ?? stations[i]?.lat ?? 0),
-          lng: Number(stations[i]?.longitude ?? stations[i]?.lng ?? stations[i]?.lon ?? 0),
-          bearing: Number(stations[i]?.bearing ?? stations[i]?.heading ?? 0),
+          lat: Number.isFinite(Number(stations[i]?.latitude ?? stations[i]?.lat)) ? Number(stations[i]?.latitude ?? stations[i]?.lat) : 0,
+          lng: Number.isFinite(Number(stations[i]?.longitude ?? stations[i]?.lng ?? stations[i]?.lon)) ? Number(stations[i]?.longitude ?? stations[i]?.lng ?? stations[i]?.lon) : 0,
+          bearing: Number.isFinite(Number(stations[i]?.bearing ?? stations[i]?.heading)) ? Number(stations[i]?.bearing ?? stations[i]?.heading) : 0,
           stepDistance: 0,
           thumbnailUrl: stations[i]?.__imageUrl || stations[i]?.image_url || '',
           status: 'skipped',

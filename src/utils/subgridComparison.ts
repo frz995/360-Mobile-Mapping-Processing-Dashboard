@@ -866,7 +866,7 @@ export function splitRunsAtJunctions(
   runs.forEach((r) => {
     r.forEach((p) => {
       const k = coordKey(p);
-      vCount.set(k, (vCount.get(k) || 0) + 1);
+      vCount.set(k, (Number(vCount.get(k)) > 0 ? Number(vCount.get(k)) : 0) + 1);
     });
   });
 
@@ -881,7 +881,7 @@ export function splitRunsAtJunctions(
         current.push(p);
       }
       const k = coordKey(p);
-      if ((vCount.get(k) || 0) > 1) {
+      if (Number(vCount.get(k)) > 1) {
         if (current.length >= 2) out.push(current);
         current = [p];
       }
@@ -1911,7 +1911,7 @@ export function computeSubgridMetrics(
     // Masterlist KM: sum from batchLogs
     const matchingBatches = (batchLogs || []).filter((b) => extractSubgridName(b.subgrid) === sg);
     let masterlistKm = matchingBatches.reduce((sum, b) => {
-      const km = Number(b.kmProcessed ?? b.km_processed ?? b.km ?? 0);
+      const rawKm = Number(b.kmProcessed ?? (b as Record<string, unknown>).km_processed ?? (b as Record<string, unknown>).km); const km = Number.isFinite(rawKm) ? rawKm : 0;
       return sum + (Number.isFinite(km) ? km : 0);
     }, 0);
 
@@ -1955,7 +1955,7 @@ export function computeSubgridMetrics(
       outboundPoints.forEach((p) => {
         const coords: [number, number] = [Number(p.lng), Number(p.lat)];
         const dest = resolveSpatialSubgrid(coords, catalogLayers) || 'adjacent subgrid';
-        outboundByDest.set(dest, (outboundByDest.get(dest) || 0) + 1);
+        outboundByDest.set(dest, (Number(outboundByDest.get(dest)) > 0 ? Number(outboundByDest.get(dest)) : 0) + 1);
       });
 
       const pointsInsideSg = pts.length - outboundPoints.length;

@@ -49,7 +49,7 @@ export interface DefectCountSources {
    * `fromRunRows: null` already means two different things: "this run has no
    * run-scoped rows" (a real answer, fall through to the next source) and
    * "the table was unreadable" (no answer at all). The precedence chain cannot
-   * tell them apart, so an unreadable table silently fell to the final `?? 0`
+   * tell them apart, so an unreadable table silently fell to the final fallback-to-zero
    * and the board rendered "0 defects" — migration 0032, which shipped to a
    * pilot-bound client.
    *
@@ -88,7 +88,7 @@ export function resolveRunDefectCount(sources: DefectCountSources): number | nul
     present(sources.fromSubgridRows);
 
   // Reached only when no source supplied a count. With an unreadable
-  // `qa_defects` table, the final `?? 0` used to be a fabricated answer: it
+  // `qa_defects` table, the final fallback-to-zero used to be a fabricated answer: it
   // claimed a clean run nobody had measured. Say "unknown" instead.
   if (count === null) return sources.defectsUnreadable ? null : 0;
 

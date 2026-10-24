@@ -5,7 +5,7 @@
  *   It is the largest block in the dashboard panel, and it is the block that
  *   had the most confident wrong numbers in it: a failed storage read made
  *   every registered company read as "0 B / 0 files", because the cells were
- *   computed as `b ? … : 0` and `b?.mmsPicBytes || 0`.
+ *   computed as `b ? … : 0` and `b?.mmsPicBytes (fallback-to-zero)`.
  *
  * THE THREE-WAY CELL
  *   A usage cell can be in one of three states, and they must look different:

@@ -757,7 +757,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
               const norm = row.subgrid.toUpperCase().trim();
               const isSelected = selectedSubgrids.includes(norm);
               const subPts = (selectedPoints || []).filter((p) => p.subgrid === norm);
-              const totalPts = row.points?.length || row.totalPoi || 0;
+              const totalPts = Array.isArray(row.points) ? row.points.length : (typeof row.totalPoi === 'number' ? row.totalPoi : 0);
               const isPartial = isSelected && subPts.length > 0 && totalPts > 0 && subPts.length < totalPts;
 
               return (
@@ -1008,7 +1008,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
           )}
           {selectedSubgrids.map((sg) => {
             const subPts = selectedPoints.filter((p) => p.subgrid === sg);
-            const totalPts = subgridPoints.find((r) => r.subgrid === sg)?.points?.length || 0;
+            const foundRow = subgridPoints.find((r) => r.subgrid === sg); const totalPts = Array.isArray(foundRow?.points) ? foundRow.points.length : 0;
             const isPartial = subPts.length > 0 && totalPts > 0 && subPts.length < totalPts;
             return (
               <span

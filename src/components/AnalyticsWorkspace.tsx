@@ -137,7 +137,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
         }
       }
     }
-    return Number(projectSettings?.targetKm) || 0;
+    const rawTarget = Number(projectSettings?.targetKm); return Number.isFinite(rawTarget) ? rawTarget : 0;
   }, [hasRoadPlanSource, roadAnalysisConfig, projectSettings]);
 
   const subgridPlanKm = useMemo(() => {
@@ -162,8 +162,8 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
         daily: dailyData,
         aggregates,
         qaBySubgrid,
-        targetKm: Number(projectSettings?.targetKm) || 0,
-        targetImages: Number(projectSettings?.targetImages) || 0,
+        targetKm: Number.isFinite(Number(projectSettings?.targetKm)) ? Number(projectSettings?.targetKm) : 0,
+        targetImages: Number.isFinite(Number(projectSettings?.targetImages)) ? Number(projectSettings?.targetImages) : 0,
         roadPlanKm,
         subgridPlanKm,
         hasRoadPlanSource,

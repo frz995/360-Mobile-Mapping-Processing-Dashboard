@@ -233,7 +233,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
           )}
           {listing && (
             <div className="px-3.5 py-2 border-t border-subtle text-[10px] text-text-muted bg-inner/40 flex items-center justify-between font-mono">
-              <span>{listing.fileCount?.toLocaleString?.() || listing.fileCount || 0} files in <span className="text-zinc-200">{listing.path || '/'}</span></span>
+              <span>{Number.isFinite(listing.fileCount) ? (listing.fileCount?.toLocaleString?.() ?? listing.fileCount) : '—'} files in <span className="text-zinc-200">{listing.path || '/'}</span></span>
               <span>{formatBytes(listing.sizeBytes)}</span>
             </div>
           )}
@@ -249,7 +249,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               </div>
               <p className="text-[11px] text-text-muted mt-1 font-mono break-all">{selected.path}</p>
               <div className="text-[11px] text-text-muted mt-2 font-mono">
-                {selected.fileCount?.toLocaleString?.() || selected.fileCount || 0} files · {formatBytes(selected.sizeBytes)}
+                {Number.isFinite(selected.fileCount) ? (selected.fileCount?.toLocaleString?.() ?? selected.fileCount) : '—'} files · {formatBytes(selected.sizeBytes)}
               </div>
               <button
                 onClick={() => onOpenProductionHub?.(selected.path, guessSubgridFromPath(selected.path))}

@@ -523,15 +523,15 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     }, [launch, onEnterDashboard]);
 
     // Telemetry calculations
-    const computedDistance = dailyData.reduce((acc, item) => acc + (Number(item.distance || item.kmProcessed) || 0), 0);
+    const computedDistance = dailyData.reduce((acc, item) => acc + (Number.isFinite(Number(item.distance ?? item.kmProcessed)) ? Number(item.distance ?? item.kmProcessed) : 0), 0);
     const computedFrames = dailyData.reduce((acc, item) => acc + getImagesProcessedCount(item), 0);
-    const computedDefects = dailyData.reduce((acc, item) => acc + (Number(item.imagesDefected || item.defectCount) || 0), 0);
+    const computedDefects = dailyData.reduce((acc, item) => acc + (Number.isFinite(Number(item.imagesDefected ?? item.defectCount)) ? Number(item.imagesDefected ?? item.defectCount) : 0), 0);
     const computedPoi = dailyData.reduce((acc, item) => acc + getPOICount(item), 0);
     const activeJobs = batchLogs.filter((b: any) => b.status === 'In Progress' || b.status === 'Ongoing').length;
 // A target distance that was never configured is 0 (unknown), NOT the distance
 // surveyed so far — falling back to computedDistance made pctTarget a permanent
 // 100.0%, i.e. a confident "target met" claim for a target that does not exist.
-const targetDistance = Number(projectSettings?.targetKm) || Number(projectSettings?.targetDistanceKm) || 0;
+const targetDistance = Number.isFinite(Number(projectSettings?.targetKm ?? projectSettings?.targetDistanceKm)) ? Number(projectSettings?.targetKm ?? projectSettings?.targetDistanceKm) : 0;
 const hasTarget = targetDistance > 0;
 const pctTarget: string | null = hasTarget
     ? Math.min(100, (computedDistance / targetDistance) * 100).toFixed(1)
@@ -1316,8 +1316,8 @@ const slaPercent: string | null = computedFrames > 0
         return {
             regionName,
             stateName: activeDistrict?.state || zoneLabel,
-            latitude: activeDistrict?.lat ?? 0,
-            longitude: activeDistrict?.lng ?? 0,
+            latitude: Number.isFinite(Number(activeDistrict?.lat)) ? Number(activeDistrict.lat) : 0,
+            longitude: Number.isFinite(Number(activeDistrict?.lng)) ? Number(activeDistrict.lng) : 0,
             totalFrames: frames,
             totalPoi: poi,
             surveyMileage: computedDistance,

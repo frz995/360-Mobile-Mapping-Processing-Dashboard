@@ -148,9 +148,9 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
   const workerOnline = !!health && health.status === 'ok';
   const workerUrl = projectSettings?.productionApiUrl || api.baseUrl || 'Not configured';
   const mountPath = storage?.base_path || projectSettings?.nasWorkBasePath || '';
-  const used = storage?.used || 0;
-  const total = storage?.total || 0;
-  const free = storage?.free || 0;
+  const used = typeof storage?.used === 'number' ? storage.used : 0;
+  const total = typeof storage?.total === 'number' ? storage.total : 0;
+  const free = typeof storage?.free === 'number' ? storage.free : 0;
 
   return (
     <div className="space-y-4 animate-in fade-in font-sans">
@@ -424,8 +424,8 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
                   Free Space: <strong className="text-emerald-300 font-semibold">{formatBytes(free)}</strong>
                 </span>
                 <span>
-                  Files: <strong className="text-text-base font-semibold">{storage.files?.toLocaleString?.() || storage.files || 0}</strong> · Folders:{" "}
-                  <strong className="text-text-base font-semibold">{storage.folders?.toLocaleString?.() || storage.folders || 0}</strong>
+                  Files: <strong className="text-text-base font-semibold">{Number.isFinite(storage.files) ? (storage.files?.toLocaleString?.() ?? storage.files) : 0}</strong> · Folders:{" "}
+                  <strong className="text-text-base font-semibold">{Number.isFinite(storage.folders) ? (storage.folders?.toLocaleString?.() ?? storage.folders) : 0}</strong>
                 </span>
               </div>
             </div>

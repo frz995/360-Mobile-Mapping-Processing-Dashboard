@@ -255,9 +255,9 @@ export function computeRoadAnalysisFingerprint(
     roadLines: !!roadLines,
     hasManual: !!manual,
     manualGeoJson: manual ? JSON.stringify(manual) : null,
-    extractedCount: extracted?.length || 0,
+    extractedCount: Array.isArray(extracted) ? extracted.length : 0,
     extractedSample: (extracted || []).slice(0, 3).map((l) => l.coordinates.length),
-    catalogCount: catalogLayers?.length || 0,
+    catalogCount: Array.isArray(catalogLayers) ? catalogLayers.length : 0,
     catalogIds: (catalogLayers || []).map(
       (l) =>
         `${l.id}:${l.visible}:${l.color}:${l.opacity}:${l.strokeWidth}:${l.fillColor || ''}:${l.fillOpacity ?? ''}:${l.strokeStyle || ''}:${l.pointRadius ?? ''}:${l.pointStrokeColor || ''}:${l.pointStrokeWidth ?? ''}`
@@ -1466,14 +1466,14 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       });
 
       const sum = matchingBatches.reduce((acc, b) => {
-        const km = Number(b.kmProcessed ?? (b as any).km_processed ?? (b as any).km ?? 0);
+        const rawKm = Number(b.kmProcessed ?? (b as Record<string, unknown>).km_processed ?? (b as Record<string, unknown>).km); const km = Number.isFinite(rawKm) ? rawKm : 0;
         return acc + (Number.isFinite(km) ? km : 0);
       }, 0);
 
       if (sum > 0) return sum;
     } else {
       const sum = internalBatchLogs.reduce((acc, b) => {
-        const km = Number(b.kmProcessed ?? (b as any).km_processed ?? (b as any).km ?? 0);
+        const rawKm = Number(b.kmProcessed ?? (b as Record<string, unknown>).km_processed ?? (b as Record<string, unknown>).km); const km = Number.isFinite(rawKm) ? rawKm : 0;
         return acc + (Number.isFinite(km) ? km : 0);
       }, 0);
       if (sum > 0) return sum;
@@ -1774,9 +1774,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       catalogLayers: leanCatalogLayers,
       systemStyles,
       catalogPlanLayerId,
-      planDistanceKm: Number(planDistanceKm) || 0,
+      planDistanceKm: Number.isFinite(Number(planDistanceKm)) ? Number(planDistanceKm) : 0,
       subgridPlanKm: Object.fromEntries(subgridMetrics.map((m) => [m.subgrid, m.planKm])),
-      totalSubgrids: subgridMetrics.length || 0,
+      totalSubgrids: subgridMetrics.length,
       choroplethSettings: choroplethSettings as unknown as Record<string, unknown>,
       explorerGridSpec: explorerGridSpec as unknown as Record<string, unknown>,
       updatedAt: new Date().toISOString(),
@@ -2546,7 +2546,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
             const totalFeaturesOrLines = effectiveLines.length > 0
               ? effectiveLines.length
-              : (catalogLayers || []).reduce((acc, l) => acc + (l.featureCount || 0), 0);
+              : (catalogLayers || []).reduce((acc, l) => acc + (typeof l.featureCount === 'number' ? l.featureCount : 0), 0);
 
             // Project Explorer choropleth. Rebuilt from the very cells the live
             // map publishes (so the share matches what the operator is looking
@@ -2573,7 +2573,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
               segments: buildShareSegments(internalDailyData || [], projectSettings),
               stats: {
                 subgrids: explorerBlock?.cellCount || activeSubgridsCount || (capturedPoints.length > 0 ? new Set(capturedPoints.map((p) => p.subgrid).filter(Boolean)).size : 0),
-                km: Number(capturedDistanceKm?.toFixed(2)) || extractedLengthKm || 0,
+                km: Number.isFinite(Number(capturedDistanceKm)) ? Number(capturedDistanceKm.toFixed(2)) : (Number.isFinite(Number(extractedLengthKm)) ? Number(extractedLengthKm) : 0),
                 poi: capturedPoints.length,
                 frames: 0,
                 defects: panotrackCounts.defect,

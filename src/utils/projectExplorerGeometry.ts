@@ -442,9 +442,9 @@ export function getDensityChoroplethColor(
  */
 export function hexToRgba(hex: string, alpha = 0.35): string {
   const c = hex.replace('#', '');
-  const r = parseInt(c.substring(0, 2), 16) || 0;
-  const g = parseInt(c.substring(2, 4), 16) || 0;
-  const b = parseInt(c.substring(4, 6), 16) || 0;
+  const r = Number.isFinite(parseInt(c.substring(0, 2), 16)) ? parseInt(c.substring(0, 2), 16) : 0;
+  const g = Number.isFinite(parseInt(c.substring(2, 4), 16)) ? parseInt(c.substring(2, 4), 16) : 0;
+  const b = Number.isFinite(parseInt(c.substring(4, 6), 16)) ? parseInt(c.substring(4, 6), 16) : 0;
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
@@ -1662,7 +1662,7 @@ export function calculateBufferAnalytics(
 
         // Record node for intersection graph
         const key = `${p[0].toFixed(4)},${p[1].toFixed(4)}`;
-        nodeHits.set(key, (nodeHits.get(key) || 0) + 1);
+        nodeHits.set(key, (Number(nodeHits.get(key)) > 0 ? Number(nodeHits.get(key)) : 0) + 1);
 
         if (currentSub.length >= 2) {
           const prev = currentSub[currentSub.length - 2];

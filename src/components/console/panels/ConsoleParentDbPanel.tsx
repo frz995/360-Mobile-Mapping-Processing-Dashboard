@@ -88,7 +88,7 @@ export const ConsoleParentDbPanel: React.FC<Props> = ({ directory }) => {
    *
    * The console's own figure is preferred because the catalog's aggregate
    * collapses "no configured quota" onto zero (migration 0045) and cannot say
-   * how many companies are unlimited. `?? null`, never `?? 0`: an unread quota
+   * how many companies are unlimited. `?? null`, never fallback-to-zero: an unread quota
    * is unknown, and a zero here feeds the over-provisioning check below.
    */
   const allocatedQuotaGb = directory.metrics.totalQuota ?? stats?.totalAllocatedStorageGb ?? null;

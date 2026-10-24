@@ -18,7 +18,7 @@
  *                 as a limit of zero. Summing it as zero under-reports the
  *                 portfolio, so it is counted separately and disclosed.
  *
- *   The old code conflated the two: `o.settings?.allowedUserSeats || 0` mapped
+ *   The old code conflated the two: `o.settings?.allowedUserSeats (fallback-to-zero)` mapped
  *   "no limit configured" onto 0, and a company sold an unlimited seat pool
  *   silently became a company sold no seats.
  */

@@ -416,7 +416,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
       disposed = true;
     };
   }, [cleanSg, scanFolderId]);
-  const hasFinalImages = (finalImages?.length || 0) > 0;
+  const hasFinalImages = Array.isArray(finalImages) && finalImages.length > 0;
 
   const fetchImageBlobFromNas = async (relCandidates: string[]): Promise<Blob | null> => {
     for (const rel of relCandidates) {
@@ -588,7 +588,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
       setImgUpload((prev) => ({
         ...prev,
         lastLine: status.lines.length > 0 ? status.lines[status.lines.length - 1] : prev.lastLine,
-        done: Math.min(prev.total, status.line_count || 0)
+        done: Math.min(prev.total, typeof status.line_count === 'number' ? status.line_count : 0)
       }));
       if (status.status !== 'RUNNING') {
         const ok = status.status === 'DONE';
@@ -1461,7 +1461,7 @@ pause
         <div className="w-full h-1 bg-inner rounded-full overflow-hidden">
           <div
             className="h-full bg-text-base transition-all duration-300"
-            style={{ width: `${verifiedPct ?? 0}%` }}
+            style={{ width: `${typeof verifiedPct === 'number' ? verifiedPct : 0}%` }}
           />
         </div>
 
@@ -1580,7 +1580,7 @@ pause
                 </h3>
                 <p className="text-[11px] text-text-muted">
                   Layout: {bucketConfig.strategy} • Subgrid: {cleanSg || '—'} •{' '}
-                  {(generatedManifest?.enumeratedFrames ?? 0) > 0
+                  {typeof generatedManifest?.enumeratedFrames === 'number' && generatedManifest.enumeratedFrames > 0
                     ? `${generatedManifest?.enumeratedFrames} listed object(s)`
                     : 'no enumerated frames'}{' '}
                   • inventory {inventoryVerified ? 'verified' : 'not verified'}

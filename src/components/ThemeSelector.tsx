@@ -393,9 +393,9 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
     const stagedRadiusValue = RADIUS_OPTIONS.find(o => o.key === cardRadius)?.value || '12px';
     const stagedDensity = DENSITY_OPTIONS.find(o => o.key === uiDensity) || DENSITY_OPTIONS[1];
 
-    const totalDistance = dailyData.reduce((acc, item) => acc + (Number(item.kmProcessed || item.distance) || 0), 0);
-    const totalFrames = dailyData.reduce((acc, item) => acc + (Number(item.availableImagesCount || item.panoramas?.length || item.imagesProcessed || item.images) || 0), 0);
-    const totalDefects = dailyData.reduce((acc, item) => acc + (Number(item.imagesDefected || item.defectCount) || 0), 0);
+    const totalDistance = dailyData.reduce((acc, item) => acc + (Number.isFinite(Number(item.kmProcessed ?? item.distance)) ? Number(item.kmProcessed ?? item.distance) : 0), 0);
+    const totalFrames = dailyData.reduce((acc, item) => acc + (Number.isFinite(Number(item.availableImagesCount ?? (item.panoramas ? item.panoramas.length : (item.imagesProcessed ?? item.images)))) ? Number(item.availableImagesCount ?? (item.panoramas ? item.panoramas.length : (item.imagesProcessed ?? item.images))) : 0), 0);
+    const totalDefects = dailyData.reduce((acc, item) => acc + (Number.isFinite(Number(item.imagesDefected ?? item.defectCount)) ? Number(item.imagesDefected ?? item.defectCount) : 0), 0);
     const activeJobs = batchLogs.filter((b: any) => b.status === 'In Progress' || b.status === 'Ongoing').length;
     const targetDistance = Number(projectSettings?.targetKm) || Number(projectSettings?.targetDistanceKm) || (totalDistance > 0 ? totalDistance : 0);
     const pctTarget = targetDistance > 0 ? Math.min(100, (totalDistance / targetDistance) * 100).toFixed(1) : '0.0';
@@ -833,7 +833,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                         <div className="flex-1 min-h-0 overflow-hidden flex flex-col gap-1 justify-evenly my-1 text-[8px]">
                                             {batchLogs.length > 0 ? (
                                                 batchLogs.slice(0, 6).map((row: any, idx: number) => {
-                                                    const frameCount = row.availableImagesCount ?? row.panoramas?.length ?? row.images ?? 0;
+                                                    const rawFrames = Number(row.availableImagesCount ?? (row.panoramas ? row.panoramas.length : row.images)); const frameCount = Number.isFinite(rawFrames) ? rawFrames : 0;
                                                     return (
                                                         <div
                                                             key={row.id || idx}

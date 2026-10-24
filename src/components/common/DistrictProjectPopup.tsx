@@ -174,9 +174,9 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
     lng: (regionBbox[0] + regionBbox[2]) / 2,
   }), [regionBbox]);
 
-  const safeFrames = Number(data.totalFrames ?? 0);
-  const safePoi = Number(data.totalPoi ?? 0);
-  const safeMileage = Number(data.surveyMileage ?? 0);
+  const safeFrames = typeof data.totalFrames === 'number' && Number.isFinite(data.totalFrames) ? data.totalFrames : null;
+  const safePoi = typeof data.totalPoi === 'number' && Number.isFinite(data.totalPoi) ? data.totalPoi : null;
+  const safeMileage = typeof data.surveyMileage === 'number' && Number.isFinite(data.surveyMileage) ? data.surveyMileage : null;
   // A null SLA means no frames were measured — it must never be coerced into a
 // number, and the literal '%' suffix must not attach to the unknown marker.
 const pipelineSla = data.pipelineSla ?? null;
@@ -541,7 +541,7 @@ const pipelineSla = data.pipelineSla ?? null;
           </div>
 
           {/* Overall project details (text summary, no KPI cards) */}
-          {safeFrames === 0 && safePoi === 0 ? (
+          {((safeFrames === null && safePoi === null) || (safeFrames === 0 && safePoi === 0)) ? (
             <p className="text-[10px] sm:text-[11px] leading-relaxed text-neutral-300">
               No survey frames or platform POIs are committed to this project yet — captured data will appear here as
               soon as ingress to <span className="text-white font-semibold">{scopeText}</span> begins.
@@ -549,10 +549,10 @@ const pipelineSla = data.pipelineSla ?? null;
           ) : (
             <p className="text-[10px] sm:text-[11px] leading-relaxed text-neutral-300">
               This project captures{' '}
-              <span className="text-white font-semibold">{safeFrames.toLocaleString()} mapping frames</span>{' '}
-              and <span className="text-white font-semibold">{safePoi.toLocaleString()} platform POIs</span>{' '}
+              <span className="text-white font-semibold">{safeFrames !== null ? safeFrames.toLocaleString() : '—'} mapping frames</span>{' '}
+              and <span className="text-white font-semibold">{safePoi !== null ? safePoi.toLocaleString() : '—'} platform POIs</span>{' '}
               across {scopeText}, covering{' '}
-              <span className="text-white font-semibold">{safeMileage.toFixed(1)} km</span> of surveyed route
+              <span className="text-white font-semibold">{safeMileage !== null ? `${safeMileage.toFixed(1)} km` : '—'}</span> of surveyed route
               with a pipeline SLA of{' '}
               <span className="text-white font-semibold">{pipelineSla === null ? '—' : `${pipelineSla}%`}</span>.
             </p>

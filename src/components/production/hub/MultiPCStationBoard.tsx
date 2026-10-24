@@ -174,17 +174,17 @@ function deriveStation(
   const task = report?.task;
 
   if (agentLive) {
-    const files = subOut?.files ?? 0;
+    const files = typeof subOut?.files === 'number' ? subOut.files : 0;
     // Tile-rig stations (POINT_MODE, default PC 1 blur): the atomic unit is a
     // capture point (rig folder of camera tiles), not a stitchable image.
     const pt = report?.points?.subgrids?.[cleanSg];
-    const ptCounted = pt && (pt.points_total ?? 0) > 0 ? pt : null;
-    const ptTotal = ptCounted ? ptCounted.points_total ?? 0 : 0;
+    const ptCounted = pt && typeof pt.points_total === 'number' && pt.points_total > 0 ? pt : null;
+    const ptTotal = ptCounted && typeof ptCounted.points_total === 'number' ? ptCounted.points_total : 0;
     const unit: StationBoardMetricUnit = ptCounted ? 'points' : 'frames';
     const hasTotal = ptCounted ? true : intakeTotal > 0;
     const total = ptCounted ? ptTotal : hasTotal ? intakeTotal : files;
     const done = ptCounted
-      ? Math.min(ptCounted.points_done ?? 0, ptTotal)
+      ? Math.min(typeof ptCounted.points_done === 'number' ? ptCounted.points_done : 0, ptTotal)
       : Math.min(files, total || files);
     let status: StationBoardStatus;
     let startedAt: string | undefined;
@@ -244,9 +244,9 @@ function deriveStation(
       sourceFolder: `${tpl.from}${cleanSg}/`,
       outputFolder: `${tpl.to}${cleanSg}/`,
       status: row.status || 'WAITING',
-      completedFrames: row.completed_frames || 0,
-      totalFrames: row.total_frames || intakeTotal || 0,
-      hasTotal: (row.total_frames || 0) > 0 || intakeTotal > 0,
+      completedFrames: Number.isFinite(Number(row.completed_frames)) ? Number(row.completed_frames) : 0,
+      totalFrames: Number.isFinite(Number(row.total_frames)) ? Number(row.total_frames) : (intakeTotal > 0 ? intakeTotal : 0),
+      hasTotal: (Number(row.total_frames) > 0) || intakeTotal > 0,
       unit: row.metric_unit === 'points' ? 'points' : 'frames',
       startedAt: row.started_at || undefined,
       completedAt: row.completed_at || undefined,

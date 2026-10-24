@@ -34,7 +34,7 @@ export function getPOICount(item?: { poiCount?: number; imagesProcessed?: number
   if (Array.isArray(item.panoramas) && item.panoramas.length > 0) {
     return item.panoramas.length;
   }
-  return Number(item.imagesProcessed ?? item.images ?? 0);
+  const raw = item.imagesProcessed ?? item.images; return Number.isFinite(Number(raw)) ? Number(raw) : 0;
 }
 
 /** A daily/run record's frame and POI evidence, in descending order of trust. */
@@ -64,7 +64,7 @@ export function resolveRunCounts(src: RunCountSource): { images: number; poiCoun
     return {
         // `images` is a required number on BatchLog, so a run with no frame
         // evidence at all reports 0 here rather than a borrowed POI figure.
-        images: src.availableImagesCount ?? src.imagesProcessed ?? 0,
+        images: typeof src.availableImagesCount === 'number' ? src.availableImagesCount : (typeof src.imagesProcessed === 'number' ? src.imagesProcessed : 0),
         poiCount: src.poiCount,
     };
 }
@@ -256,9 +256,9 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
     if (!normSub) continue;
 
     const isPublished = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
-    const singlePoi = d.poiCount || (d.panoramas?.length) || 0;
+    const singlePoi = typeof d.poiCount === 'number' ? d.poiCount : (Array.isArray(d.panoramas) ? d.panoramas.length : 0);
     const singleImg = getImagesProcessedCount(d);
-    const kmVal = Number(d.kmProcessed || 0);
+    const kmVal = Number.isFinite(Number(d.kmProcessed)) ? Number(d.kmProcessed) : 0;
     let parsedStatusDefects = 0;
     if (d.qaqcStatus) {
       const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);

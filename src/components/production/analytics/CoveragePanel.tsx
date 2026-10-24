@@ -25,7 +25,7 @@ const DARK_TOOLTIP = {
 };
 
 export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
-  const rows = [...analytics.perSubgrid].sort((a, b) => (b.actualCoveragePct ?? 0) - (a.actualCoveragePct ?? 0));
+  const rows = [...analytics.perSubgrid].sort((a, b) => (typeof b.actualCoveragePct === 'number' ? b.actualCoveragePct : 0) - (typeof a.actualCoveragePct === 'number' ? a.actualCoveragePct : 0));
   // Subgrids without a per-subgrid plan attribution have no coverage % — exclude from the chart.
   const chartableRows = rows.filter((r) => typeof r.actualCoveragePct === 'number');
   // Cap chart display to top 24 subgrids to avoid heavy SVG overdraw and illegible text bars when projects have 100+ subgrids

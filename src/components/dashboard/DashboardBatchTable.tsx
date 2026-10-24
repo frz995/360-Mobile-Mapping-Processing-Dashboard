@@ -115,7 +115,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                     <td className="px-3.5 py-3.5 font-medium text-text-base whitespace-nowrap">{log.grid || '1'}</td>
                     <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{batchSubgrid}</td>
                     <td className="px-3.5 py-3.5 font-sans text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(log).toLocaleString()}</td>
-                    <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{(log.kmProcessed || 0).toFixed(1)} km</td>
+                    <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{Number.isFinite(log.kmProcessed) ? `${Number(log.kmProcessed).toFixed(1)} km` : '—'}</td>
                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                       <button
                         onClick={(e) => {
@@ -229,7 +229,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                               setDefectGalleryContext({
                                 mode: 'master',
                                 subgrid: batchSubgrid,
-                                totalPoi: (typeof log.poiCount === 'number' && log.poiCount > 0) ? log.poiCount : (log.images || 0)
+                                totalPoi: (typeof log.poiCount === 'number' && log.poiCount > 0) ? log.poiCount : (Number.isFinite(log.images) ? log.images : 0)
                               });
                               setIsDefectsGalleryOpen(true);
                             }}

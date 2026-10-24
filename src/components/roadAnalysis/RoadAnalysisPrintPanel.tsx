@@ -525,8 +525,8 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
     const summaryCardsHtml = (isExplorer
       ? [
           { k: 'Metric', v: explorerMetricLabel || explorerMetric || '—' },
-          { k: 'Mesh Cells', v: (explorerCellCount ?? 0).toLocaleString() },
-          { k: 'Classes', v: String(explorerSetting?.classes.length ?? 0) },
+          { k: 'Mesh Cells', v: typeof explorerCellCount === 'number' ? explorerCellCount.toLocaleString() : '—' },
+          { k: 'Classes', v: Array.isArray(explorerSetting?.classes) ? String(explorerSetting.classes.length) : '—' },
           { k: 'Scope', v: scopeLabel || 'All subgrids' },
           { k: 'Basemap', v: basemapName },
           { k: 'Generated', v: generatedAt.split(' • ')[1] || generatedAt }

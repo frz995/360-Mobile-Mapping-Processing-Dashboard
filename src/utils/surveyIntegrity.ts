@@ -370,7 +370,7 @@ export function computeSurveyIntegrity(subject: IntegritySubject): IntegrityRepo
     // is a LOWER BOUND — we know which recorded frames are there, but not how
     // many orphans accompany them. `checkIntegrityIdentities` returns null in
     // that case rather than asserting an identity it cannot verify.
-    foundImages = gpsLinkedImages + (unlinkedImages?.length ?? 0);
+    foundImages = gpsLinkedImages + (Array.isArray(unlinkedImages) ? unlinkedImages.length : 0);
 
     // The ACTIONABLE gap: POIs that were expected and whose frame is absent.
     //
@@ -396,10 +396,10 @@ export function computeSurveyIntegrity(subject: IntegritySubject): IntegrityRepo
   for (const name of recordedClean) {
     const key = frameKey(name);
     if (!key) continue;
-    multiplicity.set(key, (multiplicity.get(key) ?? 0) + 1);
+    multiplicity.set(key, (Number(multiplicity.get(key)) > 0 ? Number(multiplicity.get(key)) : 0) + 1);
   }
   const duplicates: DuplicateEntry[] = unique(
-    recordedClean.filter((n) => n && (multiplicity.get(frameKey(n)) ?? 0) > 1)
+    recordedClean.filter((n) => n && (Number(multiplicity.get(frameKey(n))) > 1))
   ).map((filename) => ({ filename, occurrences: multiplicity.get(frameKey(filename)) ?? 1 }));
   const duplicateOccurrences = duplicates.reduce((sum, d) => sum + Math.max(0, d.occurrences - 1), 0);
 
@@ -591,14 +591,14 @@ export function aggregateSubgridIntegrity(
   // check returns null in that state rather than asserting something it cannot
   // verify.
   const gpsLinked = addNullable((r) => r.gpsLinkedImages);
-  const found = gpsLinked === null ? null : gpsLinked + (unlinked?.length ?? 0);
+  const found = gpsLinked === null ? null : gpsLinked + (Array.isArray(unlinked) ? unlinked.length : 0);
 
   return {
     runId: null,
     subgrid,
     surveyDate: childReports[0]?.surveyDate ?? null,
     poiCount: addNullable((r) => r.poiCount),
-    expectedImages: addNullable((r) => r.expectedImages) ?? 0,
+    expectedImages: Number.isFinite(Number(addNullable((r) => r.expectedImages))) ? Number(addNullable((r) => r.expectedImages)) : 0,
     foundImages: found,
     missingImages: missing,
     duplicates: merge((r) => r.duplicates),
