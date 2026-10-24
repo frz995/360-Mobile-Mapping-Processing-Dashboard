@@ -224,8 +224,7 @@ Only the first two are required. All are compiled into the shipped bundle.
 | `VITE_WASABI_BUCKET` / `VITE_WASABI_REGION` | No | `us-east-1` | Wasabi target |
 | `VITE_NAS_SERVER_URL` | No | — | Direct NAS image origin (proxy-disabled only) |
 | `VITE_NAS_WORK_BASE_PATH` | No | — | Default NAS working directory |
-| `VITE_PRODUCTION_API_URL` | No | — | Worker base URL — **only when mode is `direct`** |
-| `VITE_PRODUCTION_API_KEY` | No | — | Static worker secret — **direct mode only**. Prefer proxying |
+| `VITE_PRODUCTION_API_URL` | No | — | Worker base URL — **only when mode is `direct`** (worker auth uses server-side `NAS_WORKER_TOKEN`) |
 | `VITE_ROAD_GEOMETRY_BUCKET` | No | `road-analysis-geometry` | Private layer geometry bucket |
 | `VITE_ROAD_EXTRACTION_ROUTE` | No | `overpass` | `overpass` or `custom` |
 | `VITE_ROAD_EXTRACTION_URL` | No | overpass-api.de | Overpass endpoint (browser fallback only) |

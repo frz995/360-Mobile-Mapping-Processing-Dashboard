@@ -281,9 +281,8 @@ VITE_MAP_URL=https://webgis.domain.com
 
 # Direct-mode worker endpoint. ONLY honoured when VITE_WORKER_API_MODE=direct —
 # the recommended setup proxies through Cloudflare Pages instead, which keeps the
-# worker token server-side and off the client.
+# worker token server-side (NAS_WORKER_TOKEN) and off the client.
 # VITE_PRODUCTION_API_URL=http://localhost:8000
-# VITE_PRODUCTION_API_KEY=your-worker-secret-token
 
 # Local dev proxy to the on-prem worker (NOT VITE_-prefixed: read by the Vite
 # dev server, which injects the bearer token so the browser never sees it).

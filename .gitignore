@@ -76,6 +76,7 @@ docs/*
 !docs/Deployment-Topology.md
 !docs/SELLER_PARTNER_CONSOLE_GUIDE.md
 !docs/SELLER_PARTNER_CONSOLE_GUIDE.html
+!docs/ENV.md
 
 doc/
 *.docx
