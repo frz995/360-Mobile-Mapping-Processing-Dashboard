@@ -60,6 +60,7 @@ supabase/bootstrap.sql
 scratch/
 git clone supabase.txt
 opencode.json
+.opencode/
 dev-smoke.log
 
 # Exclude implementation plans, agent rules/issues, and internal documentation
